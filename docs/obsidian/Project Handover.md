@@ -15,7 +15,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 
 ## Current state
 
-**2026-11-02, after #252.** Dated entries below run oldest first, from the 2026-10-30 audit on. Everything earlier is in [[Project Handover 2026-11-02]].
+**2026-11-02, after #253.** Dated entries below run oldest first, from the 2026-10-30 audit on. Everything earlier is in [[Project Handover 2026-11-02]].
 - T01 to T46 are delivered and locally qualified, apart from the assistant (T35 to T37), which the founder deferred. [[Pre-hosting Candidate]] is the candidate record.
 - 2026-10-30: #234 starts the fixes from the 2026-10-30 audit, the first of seven PRs. No migration.
   - The stale-order and refunds jobs get `EMAIL_FROM`, the notification key and the app URL from one shared settings block in each compose file, and the config check refuses them without these (DEF-065).
@@ -46,6 +46,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 - 2026-11-02: #250 closes the refund gaps that review found: a won dispute on a failed refund alerts a person (PAY-064), a kept application fee alerts finance (PAY-062), a staff refund is never resized (PAY-063), merchandise tabs place a closed review under Refunded (UI-028), a refund in flight that fails closes a review a lost dispute left to it (PAY-058, narrowed), a second closing email can send (DEF-082), queued "still valid" emails stop at cancellation (DEF-083), and winning a dispute on a cancelled event opens the refund (EVT-012). Its browser run also caught calendar links whose names dropped their visible words (DEF-084). No migration.
 - 2026-11-02: #251 settles comp codes (PAY-065: a code that makes the standard price free ignores the member price), refuses commerce totals under $2.00 (PAY-066), and fixes what the opening review of #230 to #232 found: the door card after a failed re-read (DEF-085), cancelled events admitting (EVT-013), and smaller items. It also closes the named test gaps. No migration.
 - 2026-11-02: #252 is the audit's proof. A browser journey runs a code, a member price, one refund, a cancellation and the held figure. Staging gained `compensation-dispute-won` and `commerce-compensation-dispute-lost`, and all 14 scenarios passed on real Stripe test mode for the first time since accounts became unique to a society (DEF-093, DEF-094). The four journeys passed on dev with real Checkout pages, including a lost webhook settled by the sweep in 168 seconds. No app code changed.
+- 2026-11-02: the preview was deployed at `75e3109` (#252; backup `ops-preview-2026-11-01T23-21-22-232Z.dump` first; 73 migrations, none new), so it now has every fix of the audit's plan. Readiness answers 200 on port 3090, the six workers ran on the release's ops image with exit 0, and `MFA_ENFORCEMENT_MODE` is still `off`. The public URL was already down, because the tunnel service had stopped.
 
 **Snapshot after #252.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.
@@ -59,7 +60,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 - The dev database now has all 73 migrations and the `pnpm seed:demo` data; the dev folder serves main.
 
 **Public preview**
-- `https://thunderstrux.mistayu.com` runs the production build through `pnpm ops:deploy` as project `ops-preview`: release `2df7769` (#246; 73 migrations), Stripe test mode, and no image bucket yet.
+- `https://thunderstrux.mistayu.com` runs the production build through `pnpm ops:deploy` as project `ops-preview`: release `75e3109` (#252; 73 migrations), Stripe test mode, and no image bucket yet.
 - It listens on loopback port 3090 behind the Cloudflare Tunnel, uses `cf-connecting-ip` for client addresses and denies legacy access. MFA enforcement is `off` for now at the owner's request; set it back to `enforce` and redeploy before anyone else uses it.
 - The dev stack (port 3080) is loopback-only and is never tunnelled.
 - Preview reachability satisfies no release gate. See [[Production Operations]].
@@ -93,11 +94,12 @@ Pointers only; each linked note owns its rule.
 
 ## Next safe actions
 
-1. **Deploy the audit's last fixes, on the owner's go-ahead.** #250 to #252 are on main but not on the preview, which is still at `2df7769`. Back up first, and keep `.env.preview` at `MFA_ENFORCEMENT_MODE=off`. The plan's four end-to-end journeys are done: on dev in real test mode (#252), and in the browser journey. Only the sent payout amount stays unproven, because the test account's available balance was $0.
+1. **Next engineering work.** The 2026-10-30 audit is finished and on the preview. Only the sent payout amount stays unproven, because the test account's available balance was $0.
 
    The compensation engine merge (DEBT-003) is due before PAY-002's campaign. Product changes follow ([[THUNDERSTRUX_PRD#What comes next]]): no email step for guest checkout, buyer pays the fee, several ticket types per order, checkout questions with attendee names and the student number in the export, then the O-Week flow.
 2. **Preview (owner).**
-   - After the next deploy, make one real test-mode payment on the preview and confirm its webhook settles it. The two snapshot destinations can't be pinged (#238), so that is their proof. The Accounts v2 destination has passed.
+   - Start the `cloudflared` Windows service. It was found stopped on 2026-11-02, so `thunderstrux.mistayu.com` answers 530 while the preview itself is healthy on port 3090. Nothing shows why it stopped, and the machine had been asleep.
+   - Then make one real test-mode payment on the preview and confirm its webhook settles it. The two snapshot destinations can't be pinged (#238), so that is their proof. The Accounts v2 destination has passed.
    - Add an `ASSET_STORAGE_*` bucket for image uploads.
    - Keep `MFA_ENFORCEMENT_MODE=off` in `.env.preview`: a deploy doesn't change it, and only the owner decides when it does.
    - Never point the tunnel at the dev stack again.

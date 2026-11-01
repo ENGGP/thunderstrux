@@ -89,6 +89,8 @@ async function society(name) {
   const id = ownedOrg(name);
   // Persist ownership before any app request can create a Stripe Session.
   await writeFile(statePath(name), JSON.stringify({organisationId: id, createdAt: Math.floor(Date.now() / 1000) - 60}), {mode: 0o600});
+  // An account belongs to one society, and the run has one: each scenario's society takes it over.
+  await db.organisation.updateMany({where: {stripeAccountId: account}, data: {stripeAccountId: null}});
   await db.organisation.create({data: {id, name: id, slug: id, stripeAccountId: account, stripeChargesEnabled: true, stripePayoutsEnabled: true, stripeDetailsSubmitted: true}});
   const staff = await person(name, 'finance');
   await db.organisationStaff.create({data: {organisationId: id, userId: staff.id, role: 'finance_manager'}});

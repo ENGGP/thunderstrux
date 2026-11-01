@@ -68,5 +68,10 @@ describe("security limits (T39)", () => {
 
     expect(await cleanUpExpiredTokens(now)).toMatchObject({ notifications: 1 });
     expect((await prisma.notificationOutbox.findMany({ select: { id: true } })).map((row) => row.id).sort()).toEqual([standing.id, justPassed.id].sort());
+
+    // A key nobody can date can't be shown to have passed, so it stays.
+    const unreadable = await notice("stripe-deadline/org_synthetic/not-a-date");
+    expect(await cleanUpExpiredTokens(now)).toMatchObject({ notifications: 0 });
+    expect(await prisma.notificationOutbox.count({ where: { id: unreadable.id } })).toBe(1);
   });
 });

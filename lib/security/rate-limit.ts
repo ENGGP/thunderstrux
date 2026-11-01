@@ -66,7 +66,7 @@ type EnforceRateLimitInput = {
 // A campus shares one public address, so a rush looks like one client. Per-address
 // limits here only stop floods (DEF-066); the per-email, per-token and per-account
 // limits stop abuse of one target.
-const policies: Record<RateLimitPolicy, RateLimitPolicyConfig> = {
+export const policies: Record<RateLimitPolicy, RateLimitPolicyConfig> = {
   asset_upload: { limit: 20, windowSeconds: 3600, failureMode: "closed" },
   asset_delete: { limit: 30, windowSeconds: 600, failureMode: "closed" },
   organisation_profile: { limit: 30, windowSeconds: 600, failureMode: "closed" },

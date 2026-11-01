@@ -170,7 +170,7 @@ A key stops a repeat only while its row exists, so each one needs something else
 | `stripe-payout-account/` | An audit row per Stripe event |
 | `payment-review/` | `paidAt` on a failed order: a paid replay leaves that order alone (PAY-057) |
 | `membership-renewal/`, `membership-expired/` | `queueMembershipNotices` does look for the row, but each can be due for 7 days at most and a grant's `endsAt` never changes |
-| `stripe-deadline/` | Nothing but the row, and Stripe can set a deadline more than 30 days off. So these rows stay until 30 days after the deadline in their key |
+| `stripe-deadline/` | Nothing but the row, and Stripe can set a deadline more than 30 days off. So these rows stay until 30 days after the deadline in their key, and a deadline already past is never announced |
 
 ## Providers
 

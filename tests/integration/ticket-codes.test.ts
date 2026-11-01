@@ -3,7 +3,8 @@ import { POST as createCodeRoute } from "@/app/api/events/[eventId]/codes/route"
 import { PATCH as updateCodeRoute } from "@/app/api/events/[eventId]/codes/[codeId]/route";
 import { POST as checkoutRoute } from "@/app/api/payments/checkout/event/route";
 import { prisma } from "@/lib/db";
-import { getPublishedEventDetail, listingAvailability } from "@/lib/events/public-events";
+import { getPublishedEventDetail, listingAvailability, priceForViewer, priceWithTicketCode } from "@/lib/events/public-events";
+import { codeForBuyer, normaliseTicketCode, readTicketCode } from "@/lib/events/ticket-codes";
 import { createEventCheckout } from "@/lib/payments/checkout-creation";
 import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-reconciliation";
 import { openOrderRefund } from "@/lib/payments/order-refunds";
@@ -188,6 +189,76 @@ describe("ticket codes", () => {
     // One ticket was $12.00 with the code, whatever its list price.
     await expect(refund({ ticketIds: [ticket.id], amount: 1201, cancelTickets: true, notifyBuyer: false })).rejects.toMatchObject({ kind: "invalid_selection" });
     expect(await refund()).toMatchObject({ amount: 1200 });
+  });
+
+  test("a code that makes the standard price free ignores the member price: no limit of one, and the member ticket stays unused", async () => {
+    const fixture = await codedEvent({ memberPrice: 1600 });
+    await addCode(fixture, { code: "COMPED", percentOff: 100 });
+    const member = await createMember();
+    await createMembershipGrant(fixture.owner.organisation.id, member.id, member.email);
+
+    // The page and checkout agree.
+    const usable = await prisma.$transaction((tx) => readTicketCode(tx, fixture.event.id, normaliseTicketCode("COMPED") as string, new Date()));
+    if (!usable.ok) throw new Error("code unusable");
+    const detail = await getPublishedEventDetail(fixture.event.id);
+    const general = priceWithTicketCode(priceForViewer(detail!.ticketTypes, true), usable.code).find((type) => type.id === fixture.general.id)!;
+    expect(general).toMatchObject({ price: 0, memberPriced: false, codePrice: true });
+    // Even where the member price is free already, so the code changes no price.
+    expect(priceWithTicketCode(priceForViewer(detail!.ticketTypes.map((type) => ({ ...type, memberPrice: 0 })), true), usable.code).find((type) => type.id === fixture.general.id)).toMatchObject({ price: 0, memberPriced: false });
+
+    expect(await buy(member.id, fixture, fixture.general.id, 3, 0, "COMPED")).toMatchObject({ status: "fulfilled" });
+    expect(await prisma.order.findFirstOrThrow({ where: { eventId: fixture.event.id, userId: member.id } })).toMatchObject({ quantity: 3, membershipGrantId: null, discountAmount: 6000 });
+    expect(await buy(member.id, fixture, fixture.general.id, 1, 1600)).toMatchObject({ status: "redirect" });
+  });
+
+  test("a code that only makes the member price free still counts as the member ticket", async () => {
+    const fixture = await codedEvent({ memberPrice: 1600 });
+    await addCode(fixture, { code: "ALMOST", amountOff: 1600 });
+    const member = await createMember();
+    const grant = await createMembershipGrant(fixture.owner.organisation.id, member.id, member.email);
+
+    const usable = await prisma.$transaction((tx) => readTicketCode(tx, fixture.event.id, "ALMOST", new Date()));
+    if (!usable.ok) throw new Error("code unusable");
+    const detail = await getPublishedEventDetail(fixture.event.id);
+    expect(priceWithTicketCode(priceForViewer(detail!.ticketTypes, true), usable.code).find((type) => type.id === fixture.general.id)).toMatchObject({ price: 0, memberPriced: true });
+
+    await expect(buy(member.id, fixture, fixture.general.id, 2, 0, "ALMOST")).rejects.toMatchObject({ kind: "member_price_limit" });
+    expect(await buy(member.id, fixture, fixture.general.id, 1, 0, "ALMOST")).toMatchObject({ status: "fulfilled" });
+    expect(await prisma.order.findFirstOrThrow({ where: { eventId: fixture.event.id, userId: member.id } })).toMatchObject({ membershipGrantId: grant.id });
+  });
+
+  test("a discount that changes nothing on a free ticket doesn't use up the code's limit", async () => {
+    const fixture = await codedEvent();
+    await addCode(fixture, { code: "ONCE", percentOff: 50, maxUses: 1 });
+    const member = await createMember();
+    await prisma.ticketType.update({ where: { id: fixture.general.id }, data: { price: 0 } });
+    expect(await buy(member.id, fixture, fixture.general.id, 1, 0, "ONCE")).toMatchObject({ status: "fulfilled" });
+    expect(await prisma.order.findFirstOrThrow({ where: { eventId: fixture.event.id } })).toMatchObject({ ticketCodeId: null, codeSnapshot: null });
+
+    await prisma.ticketType.update({ where: { id: fixture.general.id }, data: { price: 2000 } });
+    expect(await buy(member.id, fixture, fixture.general.id, 1, 1000, "ONCE")).toMatchObject({ status: "redirect" });
+  });
+
+  test("a discount that changes nothing on a free member price doesn't use up the limit either", async () => {
+    const fixture = await codedEvent({ memberPrice: 0 });
+    await addCode(fixture, { code: "ONCE", percentOff: 50, maxUses: 1 });
+    const member = await createMember();
+    await createMembershipGrant(fixture.owner.organisation.id, member.id, member.email);
+    expect(await buy(member.id, fixture, fixture.general.id, 1, 0, "ONCE")).toMatchObject({ status: "fulfilled" });
+    expect(await prisma.order.findFirstOrThrow({ where: { eventId: fixture.event.id } })).toMatchObject({ ticketCodeId: null, codeSnapshot: null });
+  });
+
+  test("a code that only unlocks a hidden type changes no price, and still counts against its limit", async () => {
+    const fixture = await codedEvent();
+    await addCode(fixture, { code: "CREWONLY", ticketTypeId: fixture.crew.id, maxUses: 1 });
+    const member = await createMember();
+    expect(await buy(member.id, fixture, fixture.crew.id, 1, 3000, "CREWONLY")).toMatchObject({ status: "redirect" });
+    expect(await prisma.order.findFirstOrThrow({ where: { eventId: fixture.event.id } })).toMatchObject({ codeSnapshot: "CREWONLY" });
+    await expect(buy((await createMember()).id, fixture, fixture.crew.id, 1, 3000, "CREWONLY")).rejects.toMatchObject({ kind: "code_unavailable" });
+  });
+
+  test("a repeated ?code= in the URL reads as no code", async () => {
+    expect(await codeForBuyer("any-event", ["FIRST", "SECOND"])).toBeNull();
   });
 
   test("a code that would leave a paid price under $2.00 after a price edit is refused at checkout, not made free", async () => {

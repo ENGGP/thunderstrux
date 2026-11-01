@@ -158,10 +158,10 @@ export default async function CheckoutPage({
       <Card>
         <h2 className="mb-4 text-lg font-semibold text-ink">Your tickets</h2>
         <MoneySummary
-          lines={[{ label: usedCode ? `${ticketType.name} (code ${usedCode.code})` : memberPlan && ticketType.standardPrice != null ? `${ticketType.name} (member price)` : ticketType.name, quantity, unitPrice: ticketType.price }]}
+          lines={[{ label: usedCode ? `${ticketType.name} (code ${usedCode.code})` : ticketType.memberPriced ? `${ticketType.name} (member price)` : ticketType.name, quantity, unitPrice: ticketType.price }]}
           note={[
-            usedCode ? `Code ${usedCode.code}: ${describeCode(usedCode, ticketType.name)}${ticketType.standardPrice != null && ticketType.codePrice ? `, down from ${formatMoney(memberPlan && ticketType.memberPrice !== null ? ticketType.memberPrice : ticketType.standardPrice)} each` : ""}.` : null,
-            memberPlan && ticketType.memberPrice !== null && ticketType.standardPrice != null
+            usedCode ? `Code ${usedCode.code}: ${describeCode(usedCode, ticketType.name)}${ticketType.standardPrice != null && ticketType.codePrice ? `, down from ${formatMoney(ticketType.memberPriced && ticketType.memberPrice !== null ? ticketType.memberPrice : ticketType.standardPrice)} each` : ""}.` : null,
+            memberPlan && ticketType.memberPriced
               ? `Member price through your ${membershipLabel(memberPlan)}. If it ends while we hold your tickets, you keep this price.`
               : free
                 ? "No payment needed."

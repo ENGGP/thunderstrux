@@ -78,6 +78,20 @@ describe("society dates use the society's zone, not Brisbane", () => {
     }
   });
 
+  test("a merchandise order lists under the date its society saw", async () => {
+    const { organisation } = await perthSociety();
+    const buyer = await createMember();
+    await prisma.commerceOrder.create({ data: {
+      organisationId: organisation.id, kind: "merchandise", userId: buyer.id, paymentKind: "free", status: "paid", paidAt: instant, fulfilledAt: instant, createdAt: instant,
+      totalAmount: 0, buyerEmailSnapshot: buyer.email, sellerName: organisation.name
+    } });
+    setMockSession({ userId: buyer.id, email: buyer.email, accountRole: "member" });
+    for (const html of [await renderPage(await PurchasesPage({ searchParams: Promise.resolve({ family: "merchandise" }) })), await renderPage(await DashboardPage())]) {
+      expect(perthDays(html)).toBeGreaterThan(0);
+      expect(brisbaneDays(html)).toBe(0);
+    }
+  });
+
   test("a staff order's history is timed in the society's zone", async () => {
     const { organisation, user, event } = await perthSociety();
     const order = await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, status: "paid", paidAt: instant, createdAt: instant });

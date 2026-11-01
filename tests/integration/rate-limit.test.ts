@@ -17,6 +17,7 @@ import {
   checkRateLimitReadiness,
   enforceRateLimit,
   getRateLimitClientIp,
+  policies,
   setRateLimitRedisClientFactoryForTests,
   setRateLimitTestBackend,
   setRateLimitTestBackendFailure,
@@ -669,6 +670,18 @@ describe("rate-limited routes", () => {
     await expect(
       prisma.organisation.count({ where: { accountUserId: user.id } })
     ).resolves.toBe(0);
+  });
+
+  // DEF-066: a campus shares one address, so these only stop floods.
+  test("per-address limits leave room for a campus rush", () => {
+    expect(policies).toMatchObject({
+      guest_email_ip: { limit: 200, windowSeconds: 3600 },
+      signup_ip: { limit: 250, windowSeconds: 3600 },
+      login_ip_global: { limit: 500, windowSeconds: 600 },
+      guest_token_ip: { limit: 500, windowSeconds: 600 },
+      account_token_ip: { limit: 500, windowSeconds: 600 },
+      ticket_code_check: { limit: 600, windowSeconds: 600 }
+    });
   });
 
   test("join and leave throttling prevents membership writes", async () => {

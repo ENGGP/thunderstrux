@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { assertImmutableImageRef, validateHostedConfig } from "../../scripts/container-config.mjs";
 
@@ -22,6 +23,21 @@ function hardenedService(extra = {}) {
     ...extra
   };
 }
+
+test("every job in the real compose files takes the shared worker settings", async () => {
+  const jobs = ["email-worker", "notification-worker", "stale-order-worker", "compensation-worker", "checkout-recovery-worker", "monitor-worker"];
+  const service = (text, name) => text.split(/^  (?=[a-z-]+:\r?$)/m).find((block) => block.startsWith(`${name}:`)) ?? "";
+  for (const file of ["docker-compose.yml", "docker-compose.hosted.yml"]) {
+    const text = await readFile(file, "utf8");
+    for (const job of jobs) {
+      assert.match(service(text, job), /<<: \*worker\s/, `${job} in ${file}`);
+      assert.match(service(text, job), /\*worker-env/, `${job} in ${file}`);
+    }
+  }
+  const schedules = await readFile("docker-compose.schedules.yml", "utf8");
+  for (const job of jobs) assert.match(service(schedules, job), /<<: \*every-minute/, job);
+  assert.match(await readFile("docker-compose.hosted.yml", "utf8"), /EMAIL_FROM: \$\{EMAIL_FROM:\?/);
+});
 
 test("hosted images must use immutable lowercase digest references", () => {
   assert.equal(assertImmutableImageRef(image), image);

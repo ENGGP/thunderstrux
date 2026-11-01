@@ -189,7 +189,7 @@ export function TicketCodesEditor({
               onChange={(event) => setForm({ ...form, code: event.target.value.toUpperCase() })}
               value={form.code}
             />
-            <Select error={errors.ticketTypeId} label="For" onChange={(event) => setForm({ ...form, ticketTypeId: event.target.value })} value={form.ticketTypeId}>
+            <Select error={errors.ticketTypeId} label="For" onChange={(event) => setForm({ ...form, ticketTypeId: event.target.value, discount: form.discount === "none" && !ticketTypes.find((type) => type.id === event.target.value)?.hidden ? "percent" : form.discount })} value={form.ticketTypeId}>
               <option value="">Every ticket anyone can see</option>
               {ticketTypes.map((type) => (
                 <option key={type.id} value={type.id}>{type.hidden ? `${type.name} (hidden: the code unlocks it)` : type.name}</option>

@@ -36,11 +36,13 @@ export type CalendarItem =
 // reach that day (design round C1: "an event past midnight shows where it starts").
 const nightEndsMinutes = 6 * 60;
 
-// The last day an event really covers. Shorter than a day, even past midnight,
-// it sits on the day it starts (as Google Calendar and Outlook do); longer, it
-// spans every day it reaches beyond the small hours.
+// The last day an event really covers. Shorter than a day on the clock, even past
+// midnight, it sits on the day it starts (as Google Calendar and Outlook do); longer,
+// it spans every day it reaches beyond the small hours. On the clock, or noon to noon
+// would be 23 hours on the night the clocks change.
 function lastDayOf(event: CalendarEvent, firstDay: string, timeZone: string) {
-  if (event.endTime.getTime() - event.startTime.getTime() < 24 * hourMs) return firstDay;
+  const elapsed = event.endTime.getTime() - event.startTime.getTime();
+  if (elapsed + offsetAt(event.endTime, timeZone) - offsetAt(event.startTime, timeZone) < 24 * hourMs) return firstDay;
   const endDay = localDay(new Date(event.endTime.getTime() - 1), timeZone);
   const lastDay = localMinutes(event.endTime, timeZone) <= nightEndsMinutes && localDay(event.endTime, timeZone) === endDay ? addDays(endDay, -1) : endDay;
   return lastDay < firstDay ? firstDay : lastDay;

@@ -62,6 +62,8 @@ function verdict(ticket: ConsoleTicket, timeZone: string, outcome: Outcome) {
           : "This ticket is no longer valid.";
     return { tone: "danger", label: "Don't admit", detail };
   }
+  // Active until its refund lands, which can take a while, and check-in refuses it.
+  if (ticket.eventCancelled) return { tone: "danger", label: "Don't admit", detail: "This event is cancelled." };
   if (ticket.checkedInAt) {
     const time = formatClock(ticket.checkedInAt, timeZone);
     const by = ticket.checkedInBy ? ` by ${ticket.checkedInBy}` : "";
@@ -105,12 +107,11 @@ function CheckInCard({ eventId, timeZone, initial, initialOutcome = null }: { ev
     setBusy(true);
     try {
       const fresh = await readTicket(eventId, ticket.id);
-      if (fresh) {
-        setTicket(fresh);
-        setUnknown(false);
-      }
+      if (fresh) setTicket(fresh);
+      setUnknown(!fresh);
     } catch {
-      // Still no answer: the card keeps saying the status is unknown.
+      // No answer, so what the card showed may be out of date: it might be a refunded ticket.
+      setUnknown(true);
     } finally {
       setBusy(false);
     }
@@ -147,6 +148,7 @@ function CheckInCard({ eventId, timeZone, initial, initialOutcome = null }: { ev
     router.refresh();
   }
 
+  const admits = ticket.validity === "active" && !ticket.eventCancelled;
   const name = ticket.buyerName ?? ticket.buyerEmail ?? "Unknown buyer";
   const state = unknown ? { tone: "unknown", label: "Status unknown", detail: "We didn't hear back, so we can't say whether that saved." } : verdict(ticket, timeZone, outcome);
   const tone = tones[state.tone];
@@ -171,10 +173,10 @@ function CheckInCard({ eventId, timeZone, initial, initialOutcome = null }: { ev
         <strong className={`hidden md:block ${tone.label}`}>{state.label}</strong>
         {detail ? <p className={`text-sm font-semibold ${refusal || state.tone === "danger" ? "text-danger" : "text-ink"}`} role={refusal ? "alert" : unknown ? "status" : undefined}>{detail}</p> : null}
       </div>
-      <div className={ticket.validity === "active" || unknown ? "flex min-h-14 items-center justify-end md:min-h-11" : undefined}>
+      <div className={admits || unknown ? "flex min-h-14 items-center justify-end md:min-h-11" : undefined}>
         {unknown ? (
           <button className={buttonClasses({ className: big })} disabled={busy} onClick={reload} type="button">Reload ticket</button>
-        ) : ticket.validity !== "active" ? null : ticket.checkedInAt && locked ? (
+        ) : !admits ? null : ticket.checkedInAt && locked ? (
           <span aria-hidden="true" className={`inline-flex items-center justify-center rounded-control border border-success-border bg-surface px-4 font-semibold text-success ${big}`}>
             Checked in
           </span>
@@ -298,7 +300,7 @@ function Camera({ onCode }: { onCode: (text: string) => boolean }) {
 
 type ScanOutcome =
   | { ticket: ConsoleTicket; outcome: Outcome }
-  | { tone: "warning" | "danger" | "unknown"; label: string; detail: string; ticketId?: string };
+  | { tone: "warning" | "danger" | "unknown"; label: string; detail: string; ticketId?: string; again?: boolean };
 
 const notThisEvent = { tone: "danger", label: "Not for this event", detail: "This code isn't a ticket for this event. Don't admit: check the event on their ticket." } as const;
 const noAnswer = { tone: "unknown", label: "Status unknown", detail: "We didn't hear back, so we can't say whether that saved. Reload the ticket before admitting." } as const;
@@ -310,6 +312,8 @@ function ScanPanel({ eventId, timeZone }: { eventId: string; timeZone: string })
   const router = useRouter();
   const [result, setResult] = useState<(ScanOutcome & { id: number }) | null>(null);
   const [checking, setChecking] = useState(false);
+  // The camera ignores a code it has just read, so a code that wasn't saved needs it restarted.
+  const [camera, setCamera] = useState(0);
   const busy = useRef(false);
   const count = useRef(0);
 
@@ -323,7 +327,7 @@ function ScanPanel({ eventId, timeZone }: { eventId: string; timeZone: string })
       return { ...noAnswer, ticketId: text };
     }
     const refused = refusals[response.status];
-    if (refused) return { tone: "warning", label: "Not saved", detail: refused };
+    if (refused) return { tone: "warning", label: "Not saved", detail: refused, again: true };
     // Another event's ticket, another society's, or no ticket at all: the same 404.
     if (response.status === 404) return notThisEvent;
     const outcome: Outcome = response.ok ? "checked-in" : response.status === 409 && (await conflictReason(response)) === "already_checked_in" ? "already-used" : null;
@@ -356,7 +360,7 @@ function ScanPanel({ eventId, timeZone }: { eventId: string; timeZone: string })
 
   return (
     <div className="grid gap-3">
-      <Camera onCode={onCode} />
+      <Camera key={camera} onCode={onCode} />
       <div aria-live="polite" className="grid gap-3">
         {checking ? <p className="text-sm font-semibold text-ink">Checking ticket…</p> : null}
         {result && "ticket" in result ? (
@@ -370,6 +374,10 @@ function ScanPanel({ eventId, timeZone }: { eventId: string; timeZone: string })
             {result.ticketId ? (
               <div>
                 <button className={buttonClasses({ busy: checking })} disabled={checking} onClick={() => reload(result.ticketId!)} type="button">Reload ticket</button>
+              </div>
+            ) : result.again ? (
+              <div>
+                <button className={buttonClasses({})} onClick={() => { setResult(null); setCamera(camera + 1); }} type="button">Scan again</button>
               </div>
             ) : null}
           </div>

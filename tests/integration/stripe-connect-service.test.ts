@@ -4,6 +4,7 @@ import { POST as accountsWebhook } from "@/app/api/stripe/accounts/webhook/route
 import { POST as connectWebhook } from "@/app/api/stripe/connect/webhook/route";
 import { prisma } from "@/lib/db";
 import { GET as statusRoute } from "@/app/api/stripe/connect/status/route";
+import { decryptNotification } from "@/lib/email/notification-crypto";
 import { createTestRateLimitBackend, setRateLimitTestBackend, setRateLimitTestEnabled } from "@/lib/security/rate-limit";
 import { setMockSession } from "@/tests/helpers/auth";
 import {
@@ -306,7 +307,7 @@ describe("Stripe Connect application service", () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const notices = (key: string) => prisma.notificationOutbox.findMany({ where: { organisationId: organisation.id, eventKey: { startsWith: key } }, select: { recipient: true } });
     const alerts = () => error.mock.calls.map(([line]) => { try { return JSON.parse(String(line)); } catch { return {}; } }).filter((entry) => entry.event === "society_charges_paused");
-    const deadline = new Date(Date.UTC(2026, 11, 1)).toISOString();
+    const deadline = new Date(Date.now() + 30 * 86_400_000).toISOString();
     const account = (charges: boolean, due: string[] = [], current_deadline: string | null = null) =>
       v2Account(accountId, { card: charges ? "active" : "restricted", due, deadline: current_deadline });
 
@@ -331,6 +332,24 @@ describe("Stripe Connect application service", () => {
     expect(await prisma.organisation.findUniqueOrThrow({ where: { id: other.organisation.id }, select: { stripeChargesEnabled: true, stripeAccountStatus: true } }))
       .toEqual({ stripeChargesEnabled: false, stripeAccountStatus: "RESTRICTED" });
   });
+  test("a Stripe deadline is dated in the society's zone, and one already past isn't announced", async () => {
+    const { organisation } = await createOrganisationAccount({ stripeReady: true });
+    await prisma.organisation.update({ where: { id: organisation.id }, data: { timeZone: "Australia/Perth" } });
+    const accountId = organisation.stripeAccountId as string;
+    const notices = () => prisma.notificationOutbox.findMany({ where: { organisationId: organisation.id, eventKey: { startsWith: "stripe-deadline/" } } });
+    const year = new Date().getUTCFullYear() + 1;
+
+    stripeMocks.retrieveAccount.mockResolvedValue(v2Account(accountId, { due: ["identity.individual.id_number"], deadline: new Date(Date.now() - 86_400_000).toISOString() }));
+    await getOrganisationStripeConnectStatus(organisation.id);
+    expect(await notices()).toEqual([]);
+
+    // 2 Mar in Brisbane, the default zone, and still 1 Mar in Perth.
+    stripeMocks.retrieveAccount.mockResolvedValue(v2Account(accountId, { due: ["identity.individual.id_number"], deadline: new Date(Date.UTC(year, 2, 1, 15)).toISOString() }));
+    await getOrganisationStripeConnectStatus(organisation.id);
+    const [notice] = await notices();
+    expect(JSON.stringify(decryptNotification(notice.encryptedPayload, notice.id))).toContain(`by 1 Mar ${year}`);
+  });
+
   // SEC-033: Stripe's own email goes only to whoever onboarded the account.
   test("every staff member who manages Stripe hears once when the payout bank account is added or made the default; other changes say nothing", async () => {
     const { organisation, user } = await createOrganisationAccount({ stripeReady: true });

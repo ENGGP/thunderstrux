@@ -804,6 +804,29 @@ describe("ticket visibility and check-in API", () => {
     parseJsonResponse(await getEventTickets(jsonRequest(`http://localhost/api/events/${eventId}/tickets?q=${encodeURIComponent(q)}`), routeContext({ eventId })));
   const conflictReason = async (response: Response) => (await parseJsonResponse(response)).error.details[0].reason;
 
+  test("a cancelled event's ticket doesn't admit, though it stays active until its refund lands", async () => {
+    const { event, ticket } = await doorFixture();
+    await prisma.event.update({ where: { id: event.id }, data: { cancelledAt: new Date() } });
+    expect((await post(checkInTicket, ticket)).status).toBe(404);
+    expect(await prisma.ticket.findUniqueOrThrow({ where: { id: ticket.id } })).toMatchObject({ validity: "active", checkedInAt: null });
+    // The console says why, rather than going back to Valid.
+    expect((await search(event.id, ticket.id.slice(-6).toUpperCase())).tickets[0]).toMatchObject({ validity: "active", eventCancelled: true });
+  });
+
+  test("door staff see who checked a ticket in by name, never by email", async () => {
+    const { owner, event, ticket } = await doorFixture();
+    await prisma.user.update({ where: { id: owner.user.id }, data: { firstName: null, lastName: null } });
+    expect((await post(checkInTicket, ticket)).status).toBe(200);
+    const reference = ticket.id.slice(-6).toUpperCase();
+    expect((await search(event.id, reference)).tickets[0].checkedInBy).toBe(owner.user.email);
+
+    const door = await createMember();
+    await createOrganisationStaff({ organisationId: owner.organisation.id, userId: door.id, role: "check_in_staff" });
+    setMockSession({ userId: door.id, email: door.email, accountRole: "member" });
+    selectMockContext({ mode: "staff", organisationId: owner.organisation.id });
+    expect((await search(event.id, reference)).tickets[0]).toMatchObject({ status: "checked-in", checkedInBy: null });
+  });
+
   test("two check-ins at once admit the ticket once; the loser is told it is already checked in, and by whom", async () => {
     const { owner, event, ticket } = await doorFixture();
     const responses = await Promise.all([post(checkInTicket, ticket), post(checkInTicket, ticket)]);

@@ -523,8 +523,9 @@ export async function persistConnectedAccountStatus(account: ConnectedAccount) {
           subject: `Card payments are paused for ${organisation.name}`,
           message: `Stripe has paused card payments for ${organisation.name}, so paid tickets, memberships and merchandise are off sale. Free tickets still work. Open Payments in Thunderstrux to see what Stripe needs, then update your details in Stripe.`
         });
-      } else if (status.charges_enabled && status.currently_due.length > 0 && status.current_deadline) {
-        // The outbox keeps one email per key, so each deadline is announced once.
+      } else if (status.charges_enabled && status.currently_due.length > 0 && status.current_deadline && new Date(status.current_deadline) > now) {
+        // The outbox keeps one email per key, so each deadline is announced once. One already
+        // past is news to nobody, and its row is gone 30 days on, so it would otherwise send again.
         await notifyStripeManagers(tx, organisation, `stripe-deadline/${organisation.id}/${status.current_deadline}`, {
           subject: `Stripe needs more details from ${organisation.name}`,
           message: `Stripe needs more details from ${organisation.name} by ${formatDate(status.current_deadline, organisation.timeZone)}, or it may pause card payments or payouts. Open Payments in Thunderstrux to update your details in Stripe.`

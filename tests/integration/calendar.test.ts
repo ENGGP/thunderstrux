@@ -115,6 +115,12 @@ describe("society calendar (T33)", () => {
     ]);
     expect(laneSegments(days("2026-12-07", 7), overnight)[0]).toMatchObject({ start: 2, end: 2, before: false, after: false });
     expect(placeDay([overnight[0].kind === "event" ? overnight[0].event : (null as never)], brisbane)[0]).toMatchObject({ top: 60, bottom: 24 * 60, clipped: true });
+
+    // A day is a day on the clock. Noon to noon when the clocks go forward is 23 hours, and
+    // spans two days like any other weekend; noon to 11 am when they go back is 24, and doesn't.
+    const spans = (start: string, end: string) => calendarItems([event("span", start, end)], [], sydney).map((item) => [item.firstDay, item.lastDay]);
+    expect(spans("2026-10-03T02:00:00Z", "2026-10-04T01:00:00Z")).toEqual([["2026-10-03", "2026-10-04"]]);
+    expect(spans("2027-04-03T01:00:00Z", "2027-04-04T01:00:00Z")).toEqual([["2027-04-03", "2027-04-03"]]);
     expect(calendarItems([event("late-morning", "2026-12-08T15:00:00Z", "2026-12-09T21:00:00Z")], [], brisbane)[0]).toMatchObject({ firstDay: "2026-12-09", lastDay: "2026-12-10", multiDay: true });
     // The camp splits across two weeks and is flagged on each side.
     const [first] = laneSegments(days("2026-10-26", 7), items);

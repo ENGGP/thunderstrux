@@ -76,7 +76,7 @@ export function PayoutsCard({ payouts, payoutsEnabled, payoutsPaused = false, se
         </div>
 
         <dl className="grid gap-3 sm:grid-cols-3">
-          <Figure amount={events.amount} label="Waiting for events to end" note={eventNote} />
+          <Figure amount={events.amount} label="Held for events" note={eventNote} />
           <Figure amount={commerce.amount} label="Memberships and merchandise" note="Sales from the last 7 days" />
           <Figure
             amount={payouts.onTheWay.amount}

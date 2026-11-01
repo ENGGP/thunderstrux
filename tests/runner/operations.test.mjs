@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,6 +12,14 @@ import {
   databaseUrlForRestore,
   migrationDigest
 } from "../../scripts/operations-guards.mjs";
+
+test("a deploy refuses an env file with an empty EMAIL_FROM, before touching anything", async () => {
+  const envFile = join(await mkdtemp(join(tmpdir(), "operations-env-")), ".env");
+  await writeFile(envFile, "EMAIL_FROM=\n");
+  const deploy = spawnSync(process.execPath, ["scripts/operations.mjs", "deploy", "--project", "ops-email-from", "--env-file", envFile, "--url", "http://127.0.0.1:1"], { encoding: "utf8" });
+  assert.notEqual(deploy.status, 0);
+  assert.match(deploy.stderr, /Set EMAIL_FROM in the env file/);
+});
 
 test("operations identifiers are narrowly scoped", () => {
   assert.equal(assertOperationsProject("ops-local-rehearsal"), "ops-local-rehearsal");

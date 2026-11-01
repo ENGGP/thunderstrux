@@ -256,8 +256,10 @@ export async function createEventCheckout({
         // A member gets one ticket per event at this price; the count runs under
         // the buyer lock, so racing checkouts can't both get it, and later
         // tickets pay the standard price. A member price that saves nothing
-        // neither limits a member nor uses that ticket up.
-        const memberGrant = userId && ticketType.memberPrice !== null && ticketType.memberPrice < ticketType.price
+        // neither limits a member nor uses that ticket up, and nor does a code
+        // that makes the standard price free: a comp is the society's gift.
+        const comp = usedCode !== null && priceWithCode(ticketType.price, usedCode) === 0;
+        const memberGrant = userId && !comp && ticketType.memberPrice !== null && ticketType.memberPrice < ticketType.price
           ? await activeEntitlementGrant(tx, userId, event.organisationId, "member_prices", reservationNow)
           : null;
         const grant = memberGrant && (await memberPriceTicketCount(tx, actor.id, event.id, reservationNow)) === 0 ? memberGrant : null;
@@ -275,7 +277,8 @@ export async function createEventCheckout({
           const message = `${ticketType.name} can't be sold at ${formatMoney(unitPrice)}: paid tickets start at ${formatMoney(minPaidPrice)}. Ask the society about it.`;
           throw new CheckoutCreationError("price_below_minimum", message, [{ path: ["ticketTypeId"], message }]);
         }
-        const codeFacts = usedCode
+        // A discount that changes nothing for this buyer (a free ticket) doesn't use up the code's limit.
+        const codeFacts = usedCode && (ticketType.hidden || unitPrice !== basePrice)
           ? { ticketCodeId: usedCode.id, codeSnapshot: usedCode.code, discountAmount: (basePrice - unitPrice) * quantity }
           : { ticketCodeId: null, codeSnapshot: null, discountAmount: 0 };
         const [eligibility] = eventReadiness(

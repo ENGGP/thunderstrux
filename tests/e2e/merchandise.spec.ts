@@ -131,7 +131,8 @@ test("a guest checks out free merchandise, a member reviews a paid basket, and t
   await page.goto(`/societies/${organisation.slug}/merchandise/basket`);
   await page.getByRole("link", { name: "Checkout merchandise" }).click();
   await expect(page.getByRole("heading", { name: "Where should we send your receipt?" })).toBeVisible();
-  await expect(page.getByText("2 items from")).toBeVisible();
+  // The summary line, not the phone-only context line that also names the items.
+  await expect(page.getByText(`2 items from ${organisation.name}`, { exact: true })).toBeVisible();
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("First name").fill("Gia");
   await page.getByLabel("Last name").fill("Guest");

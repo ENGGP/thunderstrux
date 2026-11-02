@@ -235,12 +235,13 @@ export function SocietyProfile({
   return (
     <section className="grid gap-6 rounded-card border border-line bg-surface p-5 sm:p-6">
       {/* Steps read as tabs, not a row of actions; each stays a button with aria-current. */}
-      <nav aria-label="Profile setup steps" className={tabBarClasses}>
+      {/* min-w-0: a grid item, so the bar scrolls instead of widening the page. */}
+      <nav aria-label="Profile setup steps" className={`min-w-0 ${tabBarClasses}`}>
         {steps.map((label, index) => (
           <button
             key={label}
             type="button"
-            className={`${tabClasses(index === step)} disabled:cursor-not-allowed`}
+            className={`relative ${tabClasses(index === step)} disabled:cursor-not-allowed`}
             onClick={() => go(index)}
             aria-current={index === step ? "step" : undefined}
             disabled={busy}
@@ -336,39 +337,37 @@ export function SocietyProfile({
                     }}
                     type="file"
                   />
-                  <div>
+                  {/* The image first, then what you can do with it, as on the event form. */}
+                  {profile[`${kind}AssetId`] && (
+                    <img
+                      alt={`${kind} preview`}
+                      className={
+                        kind === "logo"
+                          ? "h-24 w-24 rounded-control border border-line object-contain"
+                          : "max-h-48 w-full rounded-control object-cover"
+                      }
+                      src={`/api/orgs/${profile.slug}/assets/${profile[`${kind}AssetId`]}`}
+                    />
+                  )}
+                  <div className="flex flex-wrap gap-2">
                     <Button aria-describedby={`${kind}-label`} onClick={() => fileInputs.current[kind]?.click()} type="button" variant="secondary">
                       {profile[`${kind}AssetId`] ? `Replace ${kind}` : `Upload ${kind}`}
                     </Button>
-                  </div>
-                  {profile[`${kind}AssetId`] && (
-                    <>
-                      <img
-                        alt={`${kind} preview`}
-                        className={
-                          kind === "logo"
-                            ? "h-24 w-24 rounded-control border border-line object-contain"
-                            : "max-h-48 w-full rounded-control object-cover"
+                    {profile[`${kind}AssetId`] && (
+                      <Button
+                        type="button"
+                        variant="tertiary"
+                        onClick={() =>
+                          setProfile((current) => ({
+                            ...current,
+                            [`${kind}AssetId`]: null,
+                          }))
                         }
-                        src={`/api/orgs/${profile.slug}/assets/${profile[`${kind}AssetId`]}`}
-                      />
-                      <div>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          onClick={() =>
-                            setProfile((current) => ({
-                              ...current,
-                              [`${kind}AssetId`]: null,
-                            }))
-                          }
-                        >
-                          Remove {kind}
-                        </Button>
-                      </div>
-                    </>
-                  )}
+                      >
+                        Remove {kind}
+                      </Button>
+                    )}
+                  </div>
                 </div>
               ))}
             </>

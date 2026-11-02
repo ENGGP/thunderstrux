@@ -240,7 +240,8 @@ test('member staff choose a tenant, retain it during this login and see role-awa
   await page.goto('/tickets');
   await expect(page.getByRole('heading', { name: 'My tickets', exact: true })).toBeVisible();
   // On a phone Sign out is inside the Menu, and My tickets stays outside it.
-  await expect(page.getByRole('link', { name: 'My tickets', exact: true })).toBeVisible();
+  // The personal nav names it too, so look in the header.
+  await expect(page.getByRole('banner').getByRole('link', { name: 'My tickets', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Menu', exact: true }).click();
   await page.getByRole('navigation', { name: 'Menu' }).getByRole('button', { name: 'Sign out' }).click();
   await expect(page).toHaveURL('http://localhost:3100/');

@@ -8,7 +8,7 @@ sources: [AGENTS.md, package.json]
 
 # Engineering Delivery Workflow
 
-**Owns:** what stays fixed in delivery, how a change is branched, validated by risk, reviewed, cleaned up and merged, and how finished side sessions and their worktrees are closed.
+**Owns:** what stays fixed in delivery, the GitHub settings behind it, how a change is branched, validated by risk, reviewed, cleaned up and merged, and how finished side sessions and their worktrees are closed.
 **Read when:** before you validate or deliver any change.
 **Not here:** how to run the commands ([[Development Workflow]], [[E2E and Staging Payments]]); open risks ([[Issue and Defect Register]]).
 
@@ -126,3 +126,26 @@ This is the last step of any plan that used side sessions. Start it only when ev
 4. Tell the owner what was closed, what was kept and why. If an archive leaves a folder behind, report it. Never kill a process to free a folder, and never delete it recursively.
 
 Leave alone the sessions the owner forked by hand and the spare worktree the app keeps for new sessions. A session that isn't closed this way stays with the app's own cleanup.
+
+## GitHub Settings
+
+These back the fixed lines. Changing one needs the owner's go-ahead.
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| Pull request required on `main` | On, 0 approvals | Nothing reaches `main` by direct push. There is one maintainer, so no approval is asked for |
+| `enforce_admins` | On | The owner goes through a PR too |
+| Force pushes and deleting `main` | Blocked | Its history can't be rewritten or removed |
+| Required status checks | None | `release-pair` runs only on some paths, so requiring it would leave docs PRs waiting. A failed one blocks by the fixed line instead |
+| Merge methods | Squash only | One commit per PR, which section 5's branch rules rely on |
+| `delete_branch_on_merge` | On | GitHub removes a merged PR's branch. Local branches still follow section 5 |
+
+Read them back with:
+
+```bash
+gh api repos/ENGGP/thunderstrux/branches/main/protection -q '{approvals:.required_pull_request_reviews.required_approving_review_count,checks:.required_status_checks,admins:.enforce_admins.enabled,force:.allow_force_pushes.enabled,deletion:.allow_deletions.enabled}'
+```
+
+```bash
+gh api repos/ENGGP/thunderstrux -q '{squash:.allow_squash_merge,merge:.allow_merge_commit,rebase:.allow_rebase_merge,deleteBranch:.delete_branch_on_merge}'
+```

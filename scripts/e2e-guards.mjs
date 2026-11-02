@@ -6,7 +6,7 @@ export const runIdPattern = /^(baseline|browser|staging)-[a-f0-9]{24}$/;
 // every event the app received was shaped for its release: Stripe's monthly versions
 // within a named release have no breaking changes, and the listener's --latest moves
 // with them, so the date can differ and the name can't.
-export const stripeApiVersion = '2026-09-30.endive';
+export const stripeApiVersion = '2026-10-28.endive';
 export const isPinnedStripeRelease = version => version?.split('.')[1] === stripeApiVersion.split('.')[1];
 
 export function assertRunId(value) {

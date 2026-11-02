@@ -31,7 +31,8 @@ const idOf = (value: string | { id: string } | null | undefined) => (typeof valu
 
 // Stripe's dispute status, as the order sees it. warning_closed is an inquiry
 // that never became a chargeback, and prevented a dispute that never went
-// ahead: either way the society kept the money.
+// ahead: either way the society kept the money. An appeal stays open: Stripe
+// hasn't published where it falls, so it must neither assume a loss nor undo one (PAY-068).
 export const outcomeOf = (status: string): OrderDisputeStatus =>
   status === "lost" ? "lost" : status === "won" || status === "warning_closed" || status === "prevented" ? "won" : "open";
 

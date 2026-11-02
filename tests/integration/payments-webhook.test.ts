@@ -34,7 +34,7 @@ afterEach(() => {
 });
 
 function deliver(type: string, object: unknown, id = unique("evt")) {
-  const body = JSON.stringify({ id, object: "event", type, livemode: false, created: Math.floor(Date.now() / 1000), api_version: "2026-09-30.endive", data: { object } });
+  const body = JSON.stringify({ id, object: "event", type, livemode: false, created: Math.floor(Date.now() / 1000), api_version: "2026-10-28.endive", data: { object } });
   const signature = new Stripe("sk_test_payments_route").webhooks.generateTestHeaderString({ payload: body, secret });
   return webhookRoute(new Request("http://localhost:3000/api/payments/webhook", { method: "POST", headers: { "stripe-signature": signature }, body }));
 }

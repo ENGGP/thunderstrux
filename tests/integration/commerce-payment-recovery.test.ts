@@ -124,6 +124,21 @@ const refundInput = (fixture: Fixture) => ({
 });
 
 describe("commerce disputes", () => {
+  // PAY-068: commerce reads an appeal as tickets do.
+  test("an appeal after a loss keeps refunds fenced and the membership ended, and losing it ends nothing twice", async () => {
+    const fixture = await paid("membership");
+    await disputeIs(fixture, "lost");
+    const ended = await grantOf(fixture);
+    expect(ended.revokedAt).not.toBeNull();
+    await disputeIs(fixture, "appeal_needs_response");
+    expect(await order(fixture.order.id)).toMatchObject({ disputeStatus: "open" });
+    expect((await grantOf(fixture)).revokedAt).toEqual(ended.revokedAt);
+    await expect(requestCommerceRefund(refundInput(fixture))).rejects.toMatchObject({ kind: "disputed" });
+    await disputeIs(fixture, "lost");
+    expect(await order(fixture.order.id)).toMatchObject({ disputeStatus: "lost" });
+    expect((await grantOf(fixture)).revokedAt).toEqual(ended.revokedAt);
+  });
+
   test("a membership's dispute pauses refunds and keeps the membership; replays change nothing; losing it ends the membership", async () => {
     const fixture = await paid("membership");
     await disputeIs(fixture, "needs_response", "charge.dispute.created");

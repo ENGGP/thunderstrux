@@ -199,19 +199,21 @@ describe("operations monitor (T42)", () => {
         return prisma.purchaseDispute.create({ data: { orderId: order.id, organisationId: organisation.id, stripeDisputeId: unique("dp"), stripeChargeId: unique("ch"), amount: 1000, currency: "aud", providerStatus, evidenceDueBy } });
       };
       const due = await dispute("needs_response", hoursFromNow(48));
+      const appeal = await dispute("appeal_needs_response", hoursFromNow(60));
       await dispute("needs_response", hoursFromNow(5 * 24));
       await dispute("under_review", hoursFromNow(24));
+      await dispute("appeal_under_review", hoursFromNow(24));
       await dispute("needs_response", hoursFromNow(-1));
 
       await run("monitor", () => runOperationsMonitor());
-      expect(receiver.received.map((alert) => alert.dedupeKey)).toEqual([`purchase_dispute_evidence_due:${due.stripeDisputeId}`]);
+      expect(receiver.received.map((alert) => alert.dedupeKey)).toEqual([`purchase_dispute_evidence_due:${due.stripeDisputeId}`, `purchase_dispute_evidence_due:${appeal.stripeDisputeId}`]);
       expect(receiver.received[0].details).toMatchObject({ disputeId: due.stripeDisputeId, orderId: due.orderId });
 
       // Answered in Stripe: the webhook moves its status and the alert stops.
-      await prisma.purchaseDispute.update({ where: { id: due.id }, data: { providerStatus: "under_review" } });
+      await prisma.purchaseDispute.updateMany({ where: { id: { in: [due.id, appeal.id] } }, data: { providerStatus: "under_review" } });
       await prisma.workerLease.update({ where: { name: "monitor" }, data: { alertState: {} } });
       await run("monitor", () => runOperationsMonitor());
-      expect(receiver.received).toHaveLength(1);
+      expect(receiver.received).toHaveLength(2);
     } finally {
       await receiver.close();
     }

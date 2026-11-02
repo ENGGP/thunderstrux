@@ -4,7 +4,7 @@ import { logWarn } from "@/lib/ops/logger";
 // The Stripe API version the app speaks (PAY-006): the one stripe 23 is typed for.
 // Hosted webhook endpoints are created on it, and the staging run checks that
 // every event the app received was shaped for it.
-export const stripeApiVersion = "2026-09-30.endive";
+export const stripeApiVersion = "2026-10-28.endive";
 
 // An endpoint created on another version sends events shaped for it. They are
 // still handled, but the endpoint needs replacing on this version; see the

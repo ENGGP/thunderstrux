@@ -52,7 +52,10 @@ export async function SocietyOverview({ organisation, timeZone }: { organisation
       ? { key: "first-event", icon: "calendar", setup: true, title: "Publish your first event", text: "Your draft goes on sale once you publish it. Its checklist says what's left.", href: "/dashboard/events?view=drafts", link: "Open drafts" }
       : { key: "first-event", icon: "calendar", setup: true, title: "Schedule your first event", text: "It stays a draft until you publish it.", href: "/dashboard/events/new", link: "New event" });
   }
-  if (overview.reviews) tasks.push({ key: "reviews", icon: "warning", warn: true, title: `${plural(overview.reviews, "payment")} in review`, text: "People paid but what they bought couldn't be issued. Decide on each one.", href: "/dashboard/orders", link: "Review payments" });
+  if (overview.reviews?.count) {
+    const { count, family } = overview.reviews;
+    tasks.push({ key: "reviews", icon: "warning", warn: true, title: `${plural(count, "order")} ${count === 1 ? "needs" : "need"} a decision`, text: "A payment that couldn't be issued, a dispute, or a refund made in Stripe. Decide on each one.", href: `/dashboard/orders?${family === "tickets" ? "" : `family=${family}&`}status=review`, link: "Review orders" });
+  }
   if (overview.pickups?.preparing) {
     const { preparing, oldest, ready } = overview.pickups;
     tasks.push({ key: "pickups", icon: "bag", title: `${plural(preparing, "merchandise order")} to prepare`, text: `${oldest ? `The oldest was paid on ${formatDate(oldest, timeZone)}.` : ""}${ready ? ` ${ready} more ${ready === 1 ? "is" : "are"} ready and waiting to be collected.` : ""}`.trim(), href: "/dashboard/merchandise/pickups", link: "Open Pickups" });
@@ -195,7 +198,7 @@ function RecentOrderRow({ row, timeZone }: { row: RecentOrder; timeZone: string 
     const [first, ...rest] = row.order.lines;
     title = row.family === "merchandise" ? `Order ${orderReference(row.order.id)}` : (first?.nameSnapshot ?? "Membership");
     detail = row.family === "merchandise" ? plural(row.order.lines.reduce((sum, line) => sum + line.quantity, 0), "item") : rest.length ? `${rest.length + 1} plans` : "Membership";
-    href = row.family === "merchandise" ? `/dashboard/merchandise/orders/${row.order.id}` : first?.membershipGrant ? `/dashboard/memberships/members/${first.membershipGrant.id}` : null;
+    href = row.family === "merchandise" ? `/dashboard/merchandise/orders/${row.order.id}` : first?.membershipGrant ? `/dashboard/memberships/members/${first.membershipGrant.id}` : `/dashboard/memberships/orders/${row.order.id}`;
   }
   const name = (
     <>

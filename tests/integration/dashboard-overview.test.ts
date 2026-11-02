@@ -76,7 +76,7 @@ describe("dashboards (T34)", () => {
     await busySociety();
     const html = await page();
     for (const text of [
-      "Needs your attention", "1 payment in review", "2 merchandise orders to prepare", "1 more is ready and waiting to be collected",
+      "Needs your attention", "1 order needs a decision", "status=review", "2 merchandise orders to prepare", "1 more is ready and waiting to be collected",
       "1 membership end in the next 7 days", "Your next membership isn&#x27;t on sale yet.", "Plan the next membership",
       "1 email couldn&#x27;t be delivered", "CAD workshop is still a draft", "Sales this month", "Members now", "Recent orders", "Merch", "Ticket", "Open calendar"
     ]) expect(html).toContain(text);
@@ -99,7 +99,7 @@ describe("dashboards (T34)", () => {
     const html = await page();
     expect(html).toContain("CAD workshop is still a draft");
     expect(html).toContain("Tickets issued this month");
-    for (const hidden of ["payment in review", "merchandise orders to prepare", "membership end", "couldn&#x27;t be delivered", "Sales this month", "Holding a membership today", "View all orders"]) expect(html).not.toContain(hidden);
+    for (const hidden of ["needs a decision", "merchandise orders to prepare", "membership end", "couldn&#x27;t be delivered", "Sales this month", "Holding a membership today", "View all orders"]) expect(html).not.toContain(hidden);
     expect(html).not.toMatch(/\$\d/);
   });
 

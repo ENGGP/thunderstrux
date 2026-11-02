@@ -11,6 +11,7 @@ import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/a
 import { formatMoneyInput, parseMoneyInput } from "@/lib/format";
 import type { StaffProduct } from "@/lib/merchandise/catalogue";
 import { isBelowPaidMinimum, paidPriceMinimum } from "@/lib/stripe/fees";
+import { FeeHint } from "@/components/purchases/fee-hint";
 
 const imageTypes = ["image/jpeg", "image/png", "image/webp"];
 const maxImageBytes = 5 * 1024 * 1024;
@@ -303,6 +304,8 @@ export function ProductForm({
             })}
           </ul>
           {errors.variants ? <p className="text-sm text-danger" role="alert">{errors.variants}</p> : null}
+          {/* The fee, said once, for the first option with a price. */}
+          <FeeHint price={form.options.find((option) => option.price.trim())?.price ?? ""} unit="item" />
           <p className="text-sm text-ink-soft">
             {product?.everPublished
               ? "This product has been on sale, so an option you take away stops selling instead of disappearing; receipts keep its details."
@@ -328,7 +331,7 @@ export function ProductForm({
           )}
           <p className="text-sm text-ink-soft">
             Your society&apos;s pickup details, shown with every product.{" "}
-            <Link className="font-semibold text-brand underline underline-offset-4" href="/dashboard/settings/profile">
+            <Link className="font-semibold text-brand underline underline-offset-4" href="/dashboard/settings/profile?step=operations">
               Change in Society profile
             </Link>
           </p>

@@ -58,7 +58,10 @@ test("society profile saves branding, keeps conflicting edits and remains public
   await expect(
     page.getByRole("status").filter({ hasText: "Profile saved." }),
   ).toBeVisible();
+  // The step is in the address, so the reload stays on Branding.
   await page.reload();
+  await expect(page).toHaveURL(/step=branding/);
+  await page.getByRole("button", { name: "1. Identity" }).click();
   await expect(page.getByLabel("Public contact email")).toHaveValue(
     "society-contact@example.com",
   );

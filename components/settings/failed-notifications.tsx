@@ -2,6 +2,7 @@
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { TextArea } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
@@ -24,6 +25,7 @@ export function FailedNotifications({ jobs }: { jobs: Job[] }) {
   const [reason, setReason] = useState("");
   const [result, setResult] = useState<Result | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const allSelected = remaining.length > 0 && remaining.every((job) => selected.has(job.id));
   const count = selected.size;
 
@@ -36,8 +38,13 @@ export function FailedNotifications({ jobs }: { jobs: Job[] }) {
     });
   }
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  // The form checks the reason; the dialog names what goes out before it does (as Mark ready does).
+  function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setConfirming(true);
+  }
+
+  async function send() {
     setResult(null);
     setBusy(true);
     try {
@@ -61,6 +68,7 @@ export function FailedNotifications({ jobs }: { jobs: Job[] }) {
       setResult({ ok: false, text: getClientErrorMessage(failure, "That didn't finish. Refresh the page to see which emails are still failed.") });
     } finally {
       setBusy(false);
+      setConfirming(false);
     }
   }
 
@@ -124,6 +132,16 @@ export function FailedNotifications({ jobs }: { jobs: Job[] }) {
       ) : result ? (
         <Notice className="mt-3" reveal role={result.ok ? "status" : "alert"} tone={result.ok ? "success" : "warning"}>{result.text}</Notice>
       ) : null}
+      <ConfirmDialog
+        busy={busy}
+        confirmLabel={`Send ${count === 1 ? "1 email" : `${count} emails`}`}
+        onCancel={() => setConfirming(false)}
+        onConfirm={() => void send()}
+        open={confirming}
+        title={`Send ${count === 1 ? "this email" : `these ${count} emails`} again?`}
+      >
+        Each goes to the person it was meant for, as it was written. One the provider already took, or one that has expired, is skipped and named.
+      </ConfirmDialog>
     </Card>
   );
 }

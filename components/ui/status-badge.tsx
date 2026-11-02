@@ -45,7 +45,11 @@ const statuses = {
   // Merchandise pickup (T28a), always a separate badge from payment.
   preparing: ["Preparing", "neutral"],
   "ready-to-collect": ["Ready to collect", "accent"],
-  collected: ["Collected", "success"]
+  collected: ["Collected", "success"],
+  // Pickup states the Orders tab shows when there is nothing to hand over.
+  "on-hold": ["On hold", "warning"],
+  "not-collected": ["Not collected", "neutral"],
+  "no-pickup": ["No pickup", "neutral"]
 } as const satisfies Record<string, readonly [string, keyof typeof tones]>;
 
 export type Status = keyof typeof statuses;

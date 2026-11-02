@@ -112,7 +112,7 @@ export default async function OrganisationOrderDetailPage({
         <Notice title="Payment received, tickets not issued" tone="warning">
           <p>Review this order in Stripe before contacting the buyer or taking manual action.</p>
           {order.compensationRefundJob ? (
-            <p className="mt-1">Refund workflow: {order.compensationRefundJob.state.replaceAll("_", " ")}</p>
+            <p className="mt-1">Refund: {refundSteps[order.compensationRefundJob.state]}</p>
           ) : null}
         </Notice>
       ) : null}
@@ -152,6 +152,16 @@ export default async function OrganisationOrderDetailPage({
             ) : null}
             <dt className="text-ink-soft">Total</dt>
             <dd className="font-semibold tabular-nums text-ink">{formatPrice(order.totalAmount)}</dd>
+            {/* The fee stored at purchase; older orders didn't record one. */}
+            {order.paymentKind === "stripe" && order.feeAmount !== null ? (
+              <>
+                <dt className="text-ink-soft">Thunderstrux fee</dt>
+                <dd className="tabular-nums text-ink">
+                  {formatMoney(order.feeAmount)}
+                  <span className="block text-sm text-ink-soft">Your society receives {formatMoney(order.totalAmount - order.feeAmount)} before any refunds.</span>
+                </dd>
+              </>
+            ) : null}
             {order.refundedAmount > 0 ? (
               <>
                 <dt className="text-ink-soft">Refunded</dt>
@@ -228,8 +238,7 @@ export default async function OrganisationOrderDetailPage({
           time: event.createdAt,
           meta: event.actorName ?? event.source.replaceAll("_", " "),
           details: [
-            event.fromOrderStatus !== event.toOrderStatus && event.toOrderStatus ? `Order: ${event.fromOrderStatus ?? "unknown"} to ${event.toOrderStatus}` : null,
-            event.fromReservationStatus !== event.toReservationStatus && event.toReservationStatus ? `Reservation: ${event.fromReservationStatus ?? "none"} to ${event.toReservationStatus}` : null,
+            event.fromOrderStatus !== event.toOrderStatus && event.toOrderStatus ? `Now ${orderStates[event.toOrderStatus]}` : null,
             // A code (stripe_error, operator_requeue) reads with spaces; a reason staff typed reads as typed.
             event.reason ? `Reason: ${/^[a-z0-9_]+$/.test(event.reason) ? event.reason.replaceAll("_", " ") : event.reason}` : null
           ].filter((detail): detail is string => detail !== null)
@@ -261,6 +270,20 @@ export default async function OrganisationOrderDetailPage({
     </DashboardShell>
   );
 }
+
+// The order's state after a change, in the words the badges use.
+const orderStates: Record<string, string> = { pending: "waiting for payment", paid: "paid", failed: "failed", expired: "expired" };
+
+// Where an automatic or reviewed refund of a payment that couldn't be issued has got to.
+const refundSteps: Record<string, string> = {
+  review_required: "waiting for a decision",
+  auto_queued: "queued to refund in full",
+  auto_processing: "sending to Stripe",
+  refund_pending: "Stripe is processing it",
+  refunded: "refunded in full",
+  refund_failed: "Stripe refused it; try again or refund in Stripe",
+  recovered: "settled in Stripe"
+};
 
 const refundFailures: Record<string, string> = {
   provider_refused: "Stripe refused the refund. Check the society's Stripe balance, then try again.",

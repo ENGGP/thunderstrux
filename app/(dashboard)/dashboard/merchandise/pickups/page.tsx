@@ -203,7 +203,7 @@ async function Pickups({ organisationId, orgSlug, stage, query, cursor, directio
             { header: "Items", cell: items },
             { header: "Payment", cell: (order) => <StatusBadge status={stage === "review" ? "review" : order.paymentKind === "free" ? "free" : "paid"} /> },
             { header: dateHeading[stage], className: "text-sm text-ink-soft", cell: dated },
-            { header: "Action", cell: (order) => <div className="flex justify-end">{action(order)}</div> }
+            { header: "Action", className: "whitespace-nowrap", cell: (order) => <div className="flex justify-end">{action(order)}</div> }
           ]}
           label={`${stageLabels[stage]} orders`}
           rowKey={(order) => order.id}

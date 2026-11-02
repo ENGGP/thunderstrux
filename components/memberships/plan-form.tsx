@@ -265,7 +265,7 @@ export function PlanForm({
           </div>
           {cents !== null && cents > 0 ? (
             <p className="text-sm text-ink-soft">
-              For one {formatMoney(cents)} membership: the buyer pays {formatMoney(cents)}; Thunderstrux keeps{" "}
+              For one {formatMoney(cents)} membership: the buyer pays {formatMoney(cents)}; the Thunderstrux fee is{" "}
               {formatMoney(calculatePlatformFee(cents))}; your society receives {formatMoney(cents - calculatePlatformFee(cents))}. The fee includes
               card processing.
             </p>
@@ -280,7 +280,7 @@ export function PlanForm({
             <label className="flex items-start gap-3" key={unlock.id}>
               <input
                 checked={form.entitlements.includes(unlock.id)}
-                className="mt-1 size-5 accent-brand"
+                className="mt-1 size-5 shrink-0 accent-brand"
                 onChange={(event) =>
                   update({
                     entitlements: event.target.checked

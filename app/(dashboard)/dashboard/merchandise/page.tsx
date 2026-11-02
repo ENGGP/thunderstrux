@@ -155,7 +155,7 @@ async function Products({ organisationId, orgSlug, page }: { organisationId: str
           <p className="whitespace-pre-wrap text-sm text-ink-soft [overflow-wrap:anywhere]">
             {pickupPolicy ? `Shown on every product, the basket and receipts: ${pickupPolicy}` : "None yet. Products can't go on sale until buyers know where to collect."}
           </p>
-          <Link className="w-fit text-sm font-semibold text-brand underline underline-offset-4" href="/dashboard/settings/profile">
+          <Link className="w-fit text-sm font-semibold text-brand underline underline-offset-4" href="/dashboard/settings/profile?step=operations">
             {pickupPolicy ? "Change in Society profile" : "Add them in Society profile"}
           </Link>
         </section>

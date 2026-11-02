@@ -19,7 +19,7 @@ const checks: Array<{ label: string; codes: Array<ProductBlocker["code"]> }> = [
 ];
 const fixLinks: Partial<Record<ProductBlocker["code"], { href: string; label: string }>> = {
   payments_unavailable: { href: "/dashboard/settings", label: "Go to Payments" },
-  pickup_missing: { href: "/dashboard/settings/profile", label: "Go to Society profile" }
+  pickup_missing: { href: "/dashboard/settings/profile?step=operations", label: "Go to Society profile" }
 };
 
 export function ProductChecklist({ blockers }: { blockers: ProductBlocker[] }) {

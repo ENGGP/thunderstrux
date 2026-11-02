@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
+import { profileSteps } from "@/components/settings/profile-steps";
 import { SocietyProfile } from "@/components/settings/society-profile";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { readChargeReadiness, readProfile } from "@/lib/organisations/profile";
@@ -10,7 +11,10 @@ import { notFound } from "next/navigation";
 
 export const metadata: Metadata = { title: "Society profile" };
 
-export default async function SocietyProfilePage() {
+export default async function SocietyProfilePage({ searchParams }: { searchParams: Promise<{ step?: string }> }) {
+  // A link can open a step, such as pickup details under Operations.
+  const { step: stepParam } = await searchParams;
+  const step = Math.max(0, profileSteps.findIndex((name) => name === stepParam));
   const organisation = await requireManagementPage(
     "organisation:settings",
     "/dashboard/settings/profile",
@@ -57,6 +61,7 @@ export default async function SocietyProfilePage() {
             pendingInvites: team ? team.invites.length : null,
             chargesReady,
           }}
+          initialStep={step}
           timeZones={timeZones}
         />
       </div>

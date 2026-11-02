@@ -344,7 +344,7 @@ export function StripeConnectSettings({ orgSlug, timeZone }: { orgSlug: string; 
         <div className="grid gap-1">
           <h2 className="text-xl font-semibold text-ink">Fees</h2>
           <p className="text-ui text-ink-soft">
-            Thunderstrux keeps 3.75% of each paid order plus $0.89 for each ticket, membership or merchandise order,
+            The Thunderstrux fee is 3.75% of each paid order plus $0.89 for each ticket, membership or merchandise order,
             rounded to the cent once per order. Buyers pay the price you set, with nothing added. Free sales have no fee.
           </p>
         </div>
@@ -353,7 +353,7 @@ export function StripeConnectSettings({ orgSlug, timeZone }: { orgSlug: string; 
           <dl className="grid grid-cols-[1fr_auto] gap-x-6 gap-y-1.5 text-ui tabular-nums">
             <dt>The buyer pays</dt>
             <dd className="text-right font-semibold">{formatMoney(2000)}</dd>
-            <dt>Thunderstrux keeps</dt>
+            <dt>Thunderstrux fee</dt>
             <dd className="text-right">{formatMoney(exampleFee)}</dd>
             <dt className="border-t border-line pt-1.5 font-semibold">Your society receives</dt>
             <dd className="border-t border-line pt-1.5 text-right font-semibold">{formatMoney(2000 - exampleFee)}</dd>
@@ -585,7 +585,7 @@ export function StripeConnectSettings({ orgSlug, timeZone }: { orgSlug: string; 
                 {openObligations} {openObligations === 1 ? "order is" : "orders are"} still being paid or reviewed,
                 and {openObligations === 1 ? "it needs" : "they need"} this account. Try again once they finish.
               </p>
-              <Link className="mt-1 inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4" href="/dashboard/orders">
+              <Link className="mt-1 inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4" href="/dashboard/orders?status=review">
                 View orders
               </Link>
             </Notice>

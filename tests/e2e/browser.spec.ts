@@ -298,6 +298,8 @@ test('private staff invitation email supports explicit acceptance, resend and re
   await page.getByRole('button', { name: 'Create invite', exact: true }).click();
   const pending = page.getByRole('listitem').filter({ hasText: data.manager.email });
   await expect(pending).toBeVisible(); await pending.getByRole('button', { name: 'Revoke invitation' }).click();
+  // It asks first: the emailed link stops working.
+  await page.getByRole('dialog').getByRole('button', { name: 'Revoke invitation', exact: true }).click();
   await expect(pending).toHaveCount(0);
 });
 

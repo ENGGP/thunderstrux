@@ -10,6 +10,8 @@ import {
 import OrganisationOrderDetailPage from "@/app/(dashboard)/dashboard/orders/[orderId]/page";
 import OrganisationOrdersPage from "@/app/(dashboard)/dashboard/orders/page";
 import { prisma } from "@/lib/db";
+import { getGroupedOrganisationOrdersWithContext, ticketReviewWhere } from "@/lib/orders/grouped-orders";
+import type { Prisma } from "@prisma/client";
 
 vi.mock("next/navigation", async importOriginal => ({
   ...await importOriginal<typeof import("next/navigation")>(),
@@ -165,7 +167,7 @@ describe("dashboard orders page", () => {
     expect(html).not.toContain("bad-cursor");
   });
 
-  test("failed filter shows compensation-required failed orders", async () => {
+  test("a paid order whose tickets couldn't be issued is under Needs review, not Expired", async () => {
     const { user, organisation } = await createOrganisationAccount();
     const member = await createMember();
     const event = await createEvent({ organisationId: organisation.id });
@@ -187,9 +189,61 @@ describe("dashboard orders page", () => {
 
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
     const html = await renderOrdersPage({
-      status: "failed"
+      status: "review"
     });
 
     expect(html).toContain("Payment received; fulfilment review required");
+    expect(html).toMatch(/Needs review<span[^>]*>1<\/span>/);
+    // "failed" is Expired's old name; a review isn't there.
+    expect(await renderOrdersPage({ status: "failed" })).not.toContain("Payment received; fulfilment review required");
+  });
+
+  // UI-065: each pill follows ticketOrderProjection, so every settled order is under
+  // exactly one, the one its badge names; a cancelled order is under All only.
+  test("every settled order is under exactly one status pill", async () => {
+    const { organisation } = await createOrganisationAccount();
+    const member = await createMember();
+    const event = await createEvent({ organisationId: organisation.id });
+    const ticketTypeId = event.ticketTypes[0].id;
+    const base = { organisationId: organisation.id, eventId: event.id, ticketTypeId, userId: member.id };
+    const paid = async (data: Prisma.OrderUpdateInput = {}) => {
+      const order = await createOrder({ ...base, status: "paid", paidAt: new Date() });
+      return prisma.order.update({ where: { id: order.id }, data });
+    };
+    const free = () => createOrder({ ...base, status: "paid", paidAt: new Date(), paymentKind: "free", unitPrice: 0, stripeSessionId: null });
+    const orders = {
+      paid: await paid(),
+      free: await free(),
+      refunded: await paid({ refundStatus: "refunded" }),
+      refundProcessing: await paid({ refundStatus: "processing" }),
+      refundedOutside: await paid({ isManuallyRefunded: true }),
+      compensation: await createOrder({ ...base, status: "failed", paidAt: new Date(), failedAt: new Date(), requiresCompensationReview: true }),
+      partialOutside: await paid({ externalRefundedAmount: 400 }),
+      partialReviewed: await paid({ externalRefundedAmount: 400, externalRefundReviewedAt: new Date() }),
+      disputeOpen: await paid({ disputeStatus: "open" }),
+      disputeWon: await paid({ disputeStatus: "won" }),
+      disputeLost: await paid({ disputeStatus: "lost" }),
+      expired: await createOrder({ ...base, status: "expired" }),
+      failed: await createOrder({ ...base, status: "failed", failedAt: new Date(), failureReason: "card_declined" })
+    };
+    const cancelled = await free();
+    await prisma.order.update({ where: { id: cancelled.id }, data: { cancelledAt: new Date(), cancellationReason: "Cancelled by the society" } });
+    const expected: Record<keyof typeof orders, string> = {
+      paid: "paid", free: "free", refunded: "refunded", refundProcessing: "refunded", refundedOutside: "refunded",
+      compensation: "review", partialOutside: "review", partialReviewed: "paid", disputeOpen: "review", disputeWon: "review",
+      disputeLost: "refunded", expired: "expired", failed: "expired"
+    };
+    const pills = ["paid", "free", "refunded", "review", "expired"] as const;
+    const under = new Map<string, string[]>();
+    for (const pill of pills) {
+      const result = await getGroupedOrganisationOrdersWithContext(organisation.id, pill, undefined, { limit: 100 });
+      for (const order of result.groups.flatMap((group) => group.orders)) under.set(order.id, [...(under.get(order.id) ?? []), pill]);
+    }
+    for (const [name, order] of Object.entries(orders)) expect([name, under.get(order.id)]).toEqual([name, [expected[name as keyof typeof orders]]]);
+    expect(under.get(cancelled.id)).toBeUndefined();
+    const all = await getGroupedOrganisationOrdersWithContext(organisation.id, "all", undefined, { limit: 100 });
+    expect(all.groups.flatMap((group) => group.orders).map((order) => order.id)).toContain(cancelled.id);
+    // The overview's count is the same Needs review.
+    expect(await prisma.order.count({ where: { event: { organisationId: organisation.id }, ...ticketReviewWhere } })).toBe(4);
   });
 });

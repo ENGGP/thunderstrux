@@ -67,6 +67,7 @@ export async function getOrganisationOrderDetail(
       quantity: true,
       unitPrice: true,
       totalAmount: true,
+      feeAmount: true,
       codeSnapshot: true,
       discountAmount: true,
       stripeSessionId: true,

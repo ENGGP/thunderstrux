@@ -37,7 +37,7 @@ export function StaffHandover({ orgSlug, orgName, targets }: { orgSlug: string; 
           authenticators stay with each person.
         </p>
       </div>
-      {error && <Notice role="alert" tone="danger">{error}</Notice>}
+      {/* What's needed comes first, so nobody fills the form to learn it can't work yet. */}
       {!targets.length && <Notice>Invite and verify another staff member first. They must meet the current MFA requirements.</Notice>}
       <div className="grid gap-4 md:grid-cols-2">
         <Select label="Incoming owner" value={incomingStaffId} onChange={event => setIncoming(event.target.value)} required disabled={busy}>
@@ -61,6 +61,8 @@ export function StaffHandover({ orgSlug, orgName, targets }: { orgSlug: string; 
       <div>
         <Button busy={busy} busyLabel="Handing over…" type="submit" variant="danger" disabled={!target || !currentPassword || acknowledgement !== handoverAcknowledgement}>Hand over ownership</Button>
       </div>
+      {/* Under the button, where the person submitting is looking. */}
+      {error && <Notice reveal role="alert" tone="danger">{error}</Notice>}
     </form>
   );
 }

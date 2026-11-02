@@ -401,8 +401,8 @@ test("an owner records a return and cancels a free order from the order page, an
   await expect(orders.getByText(`Order ${collected.reference}`)).toBeVisible();
   await expect(orders.getByText("Cancelled")).toBeVisible();
   await shoot(page, "orders-merchandise");
-  await page.getByRole("link", { name: "Payment review" }).click();
-  await expect(page.getByText("No payment review merchandise orders")).toBeVisible();
+  await page.getByRole("link", { name: "Needs review", exact: true }).click();
+  await expect(page.getByText("No merchandise orders under Needs review")).toBeVisible();
 
   await page.context().clearCookies();
   await login(page, data.member.email, `/merchandise/orders/${free.id}`);

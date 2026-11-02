@@ -13,16 +13,19 @@ type Outcome = { marked: Array<{ reference: string }>; skipped: Array<{ referenc
 // The row checkbox for the To prepare tab: the server table renders one in the
 // table row and one on the phone card, both tied to the form below by `form`.
 export function SelectPickup({ order }: { order: { id: string; version: number; reference: string } }) {
+  // A 44px label around the box, so the target is a fingertip, not 20px.
   return (
-    <input
-      aria-label={`Select order ${order.reference}`}
-      className="size-5 accent-brand"
-      data-reference={order.reference}
-      form="batch-ready"
-      name="order"
-      type="checkbox"
-      value={`${order.id}:${order.version}`}
-    />
+    <label className="-m-3 inline-flex size-11 cursor-pointer items-center justify-center">
+      <input
+        aria-label={`Select order ${order.reference}`}
+        className="size-5 accent-brand"
+        data-reference={order.reference}
+        form="batch-ready"
+        name="order"
+        type="checkbox"
+        value={`${order.id}:${order.version}`}
+      />
+    </label>
   );
 }
 

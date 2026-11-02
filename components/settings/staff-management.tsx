@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Select, TextInput } from "@/components/ui/input";
+import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/ui/notice";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
@@ -103,6 +104,8 @@ export function StaffManagement({
   const [inviting, setInviting] = useState(false);
   // Which card the last result belongs to: it shows at the end of that card, under the action.
   const [resultAt, setResultAt] = useState<"invite" | "staff" | "invites">("invite");
+  // Revoking an invitation kills its emailed link, so it asks first, like revoking staff.
+  const [revokingInvite, setRevokingInvite] = useState<{ id: string; email: string } | null>(null);
   const [pending, setPending] = useState<PendingChange | null>(null);
 
   async function refreshStaff() {
@@ -170,10 +173,10 @@ export function StaffManagement({
     setError(null); setNotice(null); setResultAt("invites"); setIsSubmitting(true);
     try {
       await fetchJson(`/api/orgs/${orgSlug}/staff/invites/${inviteId}/${action}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-      setNotice(action === "resend" ? "New invitation email queued. The previous link is now invalid." : "Invitation revoked.");
+      setNotice(action === "resend" ? "New invitation emailed. The link in the earlier email no longer works." : "Invitation revoked. Its link no longer works.");
       await refreshStaff();
     } catch (failure) { setError(getClientErrorMessage(failure, "Could not update invitation.")); }
-    finally { setIsSubmitting(false); }
+    finally { setIsSubmitting(false); setRevokingInvite(null); }
   }
 
   const results = (at: typeof resultAt) =>
@@ -218,6 +221,17 @@ export function StaffManagement({
             recipient signs in with a verified account using this address and
             accepts it themselves.
           </p>
+          <details className="group text-sm">
+            <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-1.5 font-semibold text-brand [&::-webkit-details-marker]:hidden">
+              What each role can do
+              <Icon className="group-open:rotate-180" name="chevronDown" size={16} />
+            </summary>
+            <ul className="mt-1 grid gap-1.5 text-ink-soft">
+              {roles.filter((item) => canManageOwners || item !== "owner").map((item) => (
+                <li key={item}>{roleHints[item]}.</li>
+              ))}
+            </ul>
+          </details>
         </form>
         {results("invite")}
         {/* The last pending invitation was revoked, so its card is gone: say so here. */}
@@ -245,7 +259,9 @@ export function StaffManagement({
                     {personName(row) ? <p className="font-semibold text-ink">{personName(row)}</p> : null}
                     <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">{row.user.email}</p>
                   </td>
-                  <td className="md:py-3 md:pr-4">
+                  <td className="grid gap-1 md:table-cell md:py-3 md:pr-4">
+                    {/* Phones show rows as cards, with no column header above the select. */}
+                    <span aria-hidden="true" className="text-xs font-semibold text-ink-soft md:hidden">Role</span>
                     <select
                       className="h-9 rounded-control border border-line-strong bg-surface px-2 text-sm text-ink disabled:cursor-not-allowed disabled:bg-surface-subtle"
                       aria-label={`Role for ${row.user.email}`}
@@ -313,7 +329,7 @@ export function StaffManagement({
                     <Button disabled={isSubmitting} onClick={() => manageInvite(invite.id, "resend")} size="sm" type="button" variant="secondary">
                       Resend invitation
                     </Button>
-                    <Button disabled={isSubmitting} onClick={() => manageInvite(invite.id, "revoke")} size="sm" type="button" variant="danger">
+                    <Button disabled={isSubmitting} onClick={() => setRevokingInvite({ id: invite.id, email: invite.email })} size="sm" type="button" variant="danger">
                       Revoke invitation
                     </Button>
                   </div>
@@ -375,6 +391,19 @@ export function StaffManagement({
           </div>
         </Card>
       ) : null}
+
+      <ConfirmDialog
+        busy={isSubmitting}
+        cancelLabel="Keep invitation"
+        confirmLabel="Revoke invitation"
+        destructive
+        onCancel={() => setRevokingInvite(null)}
+        onConfirm={() => revokingInvite && manageInvite(revokingInvite.id, "revoke")}
+        open={revokingInvite !== null}
+        title={`Revoke the invitation for ${revokingInvite?.email ?? "this person"}?`}
+      >
+        The link in their email stops working at once. You can invite them again later.
+      </ConfirmDialog>
 
       <ConfirmDialog
         busy={isSubmitting}

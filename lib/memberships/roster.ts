@@ -41,7 +41,7 @@ export async function listRoster(organisationId: string, { view, query = "", cur
         id: true, startsAt: true, endsAt: true, revokedAt: true, grantedAt: true,
         user: { select: { firstName: true, lastName: true, email: true } },
         product: { select: { name: true } },
-        line: { select: { order: { select: { id: true, paymentKind: true } } } }
+        line: { select: { order: { select: { id: true, paymentKind: true, refundStatus: true } } } }
       }
     }),
     ...rosterViews.map((name) => prisma.membershipGrant.count({ where: { organisationId, ...grantViewWhere(name, now) } })),
@@ -58,7 +58,9 @@ export async function listRoster(organisationId: string, { view, query = "", cur
       endsAt: grant.endsAt,
       state: grantState(grant, now),
       paid: grant.line.order.paymentKind === "stripe",
-      orderId: grant.line.order.id
+      orderId: grant.line.order.id,
+      // A refund ends the membership; say so rather than a bare Revoked.
+      endedByRefund: Boolean(grant.revokedAt) && grant.line.order.refundStatus === "refunded"
     })),
     counts: { ...Object.fromEntries(rosterViews.map((name, index) => [name, counts[index]])), joins: counts[rosterViews.length] } as Record<RosterView | "joins", number>,
     nextCursor: page.pageInfo.nextCursor,

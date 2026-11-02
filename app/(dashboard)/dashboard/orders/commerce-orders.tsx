@@ -4,13 +4,15 @@ import { Pager } from "@/components/ui/pager";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { DownloadCsv } from "@/components/orders/download-csv";
-import { pillBarClasses, pillClasses } from "@/components/ui/link-tabs";
+import { Count, pillBarClasses, pillClasses } from "@/components/ui/link-tabs";
 import { DateField } from "@/components/ui/date-field";
 import { Select, TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { commerceOrderFilters, commerceProductOptions, listOrganisationCommerceOrders, type CommerceOrderFilter } from "@/lib/commerce/orders";
+import { commerceOrderFilters, commerceProductOptions, commerceReviewWhere, listOrganisationCommerceOrders, parseCommerceOrderFilter } from "@/lib/commerce/orders";
+import { prisma } from "@/lib/db";
+import { orderFilterLabels as filterLabels } from "@/lib/orders/grouped-orders";
 import { formatDateTime, formatPrice, formatTerm } from "@/lib/format";
 import { PaginationError, type ParsedPaginationOptions } from "@/lib/pagination/cursor";
 import { readTimeZone } from "@/lib/organisations/profile";
@@ -18,7 +20,6 @@ import { dateFilterBound } from "@/lib/zoned-time";
 import { orderReference } from "@/lib/payments/order-refunds";
 import { ticketOrderProjection } from "@/lib/purchases/projection";
 
-const filterLabels: Record<CommerceOrderFilter, string> = { all: "All", paid: "Paid", free: "Free", refunded: "Refunded", review: "Payment review", expired: "Expired" };
 const pickupBadge = { pending: "preparing", ready: "ready-to-collect", collected: "collected" } as const;
 
 type Order = Awaited<ReturnType<typeof listOrganisationCommerceOrders>>["items"][number];
@@ -38,7 +39,7 @@ export async function CommerceOrders({
 }) {
   const timeZone = await readTimeZone(organisationId);
   const kind: CommerceKind = params.family === "memberships" ? "membership" : "merchandise";
-  const filter = commerceOrderFilters.find((name) => name === params.status) ?? "all";
+  const filter = parseCommerceOrderFilter(params.status);
   const search = params.search?.trim().slice(0, 200) || undefined;
   const date = (value: string | undefined, end: boolean) => {
     if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
@@ -55,7 +56,10 @@ export async function CommerceOrders({
     pagination = { limit: 25, direction: "next", invalid: true };
     result = await listOrganisationCommerceOrders(organisationId, kind, options, pagination);
   }
-  const products = await commerceProductOptions(organisationId, kind);
+  const [products, reviewCount] = await Promise.all([
+    commerceProductOptions(organisationId, kind),
+    prisma.commerceOrder.count({ where: { organisationId, kind, ...commerceReviewWhere } })
+  ]);
   const { items: orders, pageInfo } = result;
 
   const href = (changes: Record<string, string | undefined>) => {
@@ -67,13 +71,14 @@ export async function CommerceOrders({
     return `/dashboard/orders?${query}`;
   };
   const merchandise = kind === "merchandise";
-  // A merchandise order opens its staff page; a membership opens the member's page once granted.
+  // A merchandise order opens its staff page; a membership opens the member's page
+  // once granted, and its own order page when it never was (UI-067).
   const detail = (order: Order) =>
     merchandise
       ? `/dashboard/merchandise/orders/${order.id}`
       : order.lines[0]?.membershipGrant
         ? `/dashboard/memberships/members/${order.lines[0].membershipGrant.id}`
-        : null;
+        : `/dashboard/memberships/orders/${order.id}`;
   const buyer = (order: Order) => {
     const name = order.buyerNameSnapshot || order.buyerEmailSnapshot;
     const link = detail(order);
@@ -100,11 +105,11 @@ export async function CommerceOrders({
   const payment = (order: Order) => <StatusBadge status={ticketOrderProjection(order)} />;
   const pickup = (order: Order) =>
     order.requiresCompensationReview ? (
-      <span className="text-sm text-ink-soft">On hold</span>
+      <StatusBadge status="on-hold" />
     ) : order.pickupStatus && (order.pickupStatus === "collected" || !(order.refundStatus || order.cancelledAt)) ? (
       <StatusBadge status={pickupBadge[order.pickupStatus]} />
     ) : (
-      <span className="text-sm text-ink-soft">{order.pickupStatus ? "Not collected" : "No pickup"}</span>
+      <StatusBadge status={order.pickupStatus ? "not-collected" : "no-pickup"} />
     );
 
   return (
@@ -118,13 +123,14 @@ export async function CommerceOrders({
             key={name}
           >
             {filterLabels[name]}
+            {name === "review" && reviewCount ? <Count active={name === filter} value={reviewCount} /> : null}
           </Link>
         ))}
       </nav>
       <FilterBar action="/dashboard/orders" active={[search, params.productId, params.startDate, params.endDate].filter(Boolean).length} className="sm:grid-cols-2 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1.3fr)_minmax(11.5rem,1fr)_minmax(11.5rem,1fr)_auto]" label="Filter orders">
         <input name="family" type="hidden" value={params.family} />
         {filter !== "all" ? <input name="status" type="hidden" value={filter} /> : null}
-        <TextInput defaultValue={search ?? ""} label="Buyer email" name="search" placeholder="Contains…" type="search" />
+        <TextInput defaultValue={search ?? ""} label="Reference, name or email" name="search" type="search" />
         <Select defaultValue={params.productId ?? ""} label={merchandise ? "Product" : "Plan"} name="productId">
           <option value="">{merchandise ? "All products" : "All plans"}</option>
           {products.map((product) => (
@@ -146,10 +152,10 @@ export async function CommerceOrders({
             icon="search"
             title="No matching orders"
           >
-            Nothing matches these filters. Clear them to see every {filter === "all" ? "" : `${filterLabels[filter].toLowerCase()} `}order.
+            Nothing matches these filters. Clear them to see every order{filter === "all" ? "" : ` under ${filterLabels[filter]}`}.
           </EmptyState>
         ) : (
-          <EmptyState icon={merchandise ? "bag" : "receipt"} title={`No ${filter === "all" ? "" : `${filterLabels[filter].toLowerCase()} `}${merchandise ? "merchandise" : "membership"} orders`}>
+          <EmptyState icon={merchandise ? "bag" : "receipt"} title={`No ${merchandise ? "merchandise" : "membership"} orders${filter === "all" ? "" : ` under ${filterLabels[filter]}`}`}>
             {merchandise ? "Orders show here once buyers check out." : "Orders show here once members buy a membership or get a free one."}
           </EmptyState>
         )

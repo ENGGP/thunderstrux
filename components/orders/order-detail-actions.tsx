@@ -357,15 +357,15 @@ export function OrderDetailActions({
           busy={isBusy}
           cancelLabel="Go back"
           // A fixed label, so the button keeps its size as staff change the amount; the summary says what happens.
-          confirmLabel={byTicket ? "Confirm" : `Refund ${formatMoney(refund.left)}`}
+          confirmLabel={byTicket ? "Refund or cancel" : `Refund ${formatMoney(refund.left)}`}
           destructive
+          error={refundError}
           onCancel={() => setRefunding(false)}
           onConfirm={refundOrder}
           open={refunding}
           title={byTicket ? `Refund or cancel ${refund.buyer}’s tickets?` : `Refund ${formatMoney(refund.left)} to ${refund.buyer}?`}
         >
           <div className="grid gap-4">
-            {refundError ? <Notice role="alert" tone="danger">{refundError}</Notice> : null}
             {byTicket ? (
               <>
                 <fieldset className="grid gap-1">
@@ -425,13 +425,13 @@ export function OrderDetailActions({
           cancelLabel="Keep registration"
           confirmLabel="Cancel registration"
           destructive
+          error={refundError}
           onCancel={() => setCancelling(false)}
           onConfirm={cancelRegistration}
           open={cancelling}
           title={`Cancel ${cancelFree.buyer}'s free registration?`}
         >
           <div className="grid gap-3">
-            {refundError ? <Notice role="alert" tone="danger">{refundError}</Notice> : null}
             <ul className="grid list-disc gap-1 pl-5">
               <li>{cancelFree.ticketCount === 1 ? "The free ticket stops" : `All ${cancelFree.ticketCount} free tickets stop`} working straight away, and the buyer is emailed.</li>
               <li>Anyone already checked in stays in the attendance record.</li>
@@ -449,13 +449,13 @@ export function OrderDetailActions({
         busy={isBusy}
         confirmLabel="Mark as refunded"
         destructive
+        error={refundError}
         onCancel={() => setConfirmingRefund(false)}
         onConfirm={markRefunded}
         open={confirmingRefund}
         title="Mark this order as refunded?"
       >
         <div className="grid gap-3">
-          {refundError ? <Notice role="alert" tone="danger">{refundError}</Notice> : null}
           <p>
             Do this only after you have refunded the buyer yourself. The tickets stop working straight away, their
             places go back on sale unless the event is cancelled, and the buyer is emailed. This can&apos;t be

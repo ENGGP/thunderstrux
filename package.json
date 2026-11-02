@@ -61,7 +61,7 @@
     "seed": "node prisma/seed.mjs"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "3.1152.0",
+    "@aws-sdk/client-s3": "3.1160.0",
     "@prisma/client": "6.19.3",
     "@redis/client": "6.3.1",
     "@zxing/library": "0.21.3",

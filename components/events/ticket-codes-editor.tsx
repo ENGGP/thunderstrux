@@ -106,8 +106,16 @@ export function TicketCodesEditor({
   }
 
   async function copyLink(code: string) {
-    await navigator.clipboard?.writeText(`${window.location.origin}/events/${eventId}?code=${encodeURIComponent(code)}`);
-    setCopied(code);
+    const link = `${window.location.origin}/events/${eventId}?code=${encodeURIComponent(code)}`;
+    setCopied(null);
+    setErrors({});
+    setMessage(null);
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(code);
+    } catch {
+      setMessage(`Couldn't copy it. Copy this link yourself: ${link}`);
+    }
   }
 
   return (

@@ -15,7 +15,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 
 ## Current state
 
-**2026-11-02, after #253.** Dated entries below run oldest first, from the 2026-10-30 audit on. Everything earlier is in [[Project Handover 2026-11-02]].
+**2026-11-02, after #257.** Dated entries below run oldest first, from the 2026-10-30 audit on. Everything earlier is in [[Project Handover 2026-11-02]].
 - T01 to T46 are delivered and locally qualified, apart from the assistant (T35 to T37), which the founder deferred. [[Pre-hosting Candidate]] is the candidate record.
 - 2026-10-30: #234 starts the fixes from the 2026-10-30 audit, the first of seven PRs. No migration.
   - The stale-order and refunds jobs get `EMAIL_FROM`, the notification key and the app URL from one shared settings block in each compose file, and the config check refuses them without these (DEF-065).
@@ -47,6 +47,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 - 2026-11-02: #251 settles comp codes (PAY-065: a code that makes the standard price free ignores the member price), refuses commerce totals under $2.00 (PAY-066), and fixes what the opening review of #230 to #232 found: the door card after a failed re-read (DEF-085), cancelled events admitting (EVT-013), and smaller items. It also closes the named test gaps. No migration.
 - 2026-11-02: #252 is the audit's proof. A browser journey runs a code, a member price, one refund, a cancellation and the held figure. Staging gained `compensation-dispute-won` and `commerce-compensation-dispute-lost`, and all 14 scenarios passed on real Stripe test mode for the first time since accounts became unique to a society (DEF-093, DEF-094). The four journeys passed on dev with real Checkout pages, including a lost webhook settled by the sweep in 168 seconds. No app code changed.
 - 2026-11-02: the preview was deployed at `75e3109` (#252; backup `ops-preview-2026-11-01T23-21-22-232Z.dump` first; 73 migrations, none new), so it now has every fix of the audit's plan. Readiness answers 200 on port 3090, the six workers ran on the release's ops image with exit 0, and `MFA_ENFORCEMENT_MODE` is still `off`. The public URL was already down, because the tunnel service had stopped.
+- 2026-11-02: #257 adds `pnpm lint` to the baseline: floating and misused promises and the rules of hooks, with no style rules. It found no dropped database or Stripe call in `lib` or `scripts`, and no money or data bug. Reading its findings turned up one small defect, a code's Copy link failing silently (UI-031). Dev needs `pnpm docker:rebuild` before `pnpm lint` works there. No migration.
 
 **Snapshot after #252.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.

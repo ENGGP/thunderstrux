@@ -93,6 +93,19 @@ test("organisers build an event in the society's time zone with a dollar price a
   expect(await prisma.event.findUniqueOrThrow({ where: { id: data.event.id } })).toMatchObject({ status: "published", saleState: "closed" });
 });
 
+test("a code link the browser won't copy says so and shows the link", async ({ page, data }) => {
+  await prisma.ticketCode.create({ data: { eventId: data.event.id, code: "SPONSOR", percentOff: 25 } });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", { value: { writeText: () => Promise.reject(new DOMException("Refused", "NotAllowedError")) } });
+  });
+  await login(page, data.owner.email, `/dashboard/events/${data.event.id}/edit`);
+
+  await page.getByRole("button", { name: "Copy link" }).click();
+
+  await expect(page.getByRole("alert").filter({ hasText: "Couldn't copy it" })).toContainText(`/events/${data.event.id}?code=SPONSOR`);
+  await expect(page.getByRole("button", { name: "Link copied" })).toHaveCount(0);
+});
+
 // T30: a new place for an event with a sold ticket reaches the holder once,
 // through the worker and Docker mail capture; the member can turn the one
 // optional email off in Account settings.

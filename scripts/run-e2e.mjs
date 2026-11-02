@@ -157,7 +157,7 @@ try {
       await compose('up', '-d', 'app');
       await ready();
       if (mode === 'baseline') {
-        await step('checks', 'sh', '-c', 'pnpm test:e2e:guards && pnpm typecheck && pnpm test && pnpm security:audit');
+        await step('checks', 'sh', '-c', 'pnpm test:e2e:guards && pnpm typecheck && pnpm lint && pnpm test && pnpm security:audit');
       } else {
         await step('mfa', 'pnpm', 'exec', 'playwright', 'test', 'mfa-enforced.spec.ts', 'permission-matrix.spec.ts', '--project=desktop');
         await compose('stop', 'app');

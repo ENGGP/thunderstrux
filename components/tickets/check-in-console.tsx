@@ -254,7 +254,8 @@ function Camera({ onCode }: { onCode: (text: string) => boolean }) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let last = { text: "", at: 0 };
     const stop = () => stream?.getTracks().forEach((track) => track.stop());
-    (async () => {
+    // Each step that can fail handles it here, and nothing waits on the scanner starting.
+    void (async () => {
       let read: Awaited<ReturnType<typeof qrReader>>;
       try {
         read = await qrReader();
@@ -280,7 +281,8 @@ function Camera({ onCode }: { onCode: (text: string) => boolean }) {
         const now = Date.now();
         if (text && text === last.text && now - last.at < 3000) last.at = now;
         else if (text && handler.current(text)) last = { text, at: now };
-        timer = setTimeout(tick, 150);
+        // A failed read is caught above, so each tick only has to start the next.
+        timer = setTimeout(() => void tick(), 150);
       };
       void tick();
     })();
@@ -409,7 +411,7 @@ export function CheckInConsole({ eventId, timeZone, initialTickets, footer }: { 
       return;
     }
     const request = ++latest.current;
-    const timer = setTimeout(async () => {
+    const search = async () => {
       try {
         const response = await fetch(`/api/events/${eventId}/tickets?q=${encodeURIComponent(query.trim())}&limit=${searchLimit}`, { cache: "no-store", signal: AbortSignal.timeout(requestTimeoutMs) });
         if (!response.ok) throw new Error(String(response.status));
@@ -422,7 +424,9 @@ export function CheckInConsole({ eventId, timeZone, initialTickets, footer }: { 
       } catch {
         if (request === latest.current) setFailed(true);
       }
-    }, 250);
+    };
+    // A failed search shows in the list, so the timer has nothing to wait for.
+    const timer = setTimeout(() => void search(), 250);
     return () => clearTimeout(timer);
   }, [eventId, query, searching]);
 

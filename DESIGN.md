@@ -216,7 +216,7 @@ Tables use tabular figures.
 
 ## Layout
 
-Named containers set every page width: auth 440px, read 760px, checkout 1060px, personal 1160px, page 1248px, admin 1420px. The fixed header is 60px (72px from `md`) and the layout offsets content by the same amount. Public pages stack sections 32–64px apart; the home page 56px on phones and 80px from `md`, under a hero with 56–80px vertical padding. The organiser shell is a two-column grid from `lg` (244px column plus the page); below `lg` the column collapses to the society name and a `Society menu` disclosure. Wide tables become cards below 768px (`ResponsiveTable`); tab bars scroll sideways instead of wrapping. The public event page is two columns from `lg` with the ticket box on the right, and a phone buy bar slides up when the box is off screen.
+Named containers set every page width: auth 440px, read 760px, checkout 1060px, personal 1160px, page 1248px, admin 1420px. The fixed header is 60px (72px from `md`) and the layout offsets content by the same amount. Public pages stack sections 32–64px apart; the home page 56px on phones and 80px from `md`, under a hero with 56–80px vertical padding. The organiser shell is a two-column grid from `lg` (244px column plus the page); below `lg` the column collapses to one row, the society name beside a `Society menu` disclosure. Wide tables become cards below 768px (`ResponsiveTable`); tab bars scroll sideways instead of wrapping, and fade at the edge while more is hidden. The public event page is two columns from `lg` with the ticket box on the right, and a phone buy bar slides up when the box is off screen.
 
 ## Elevation & Depth
 

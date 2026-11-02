@@ -49,7 +49,7 @@ The public preview at `https://thunderstrux.mistayu.com` runs the production bui
 ## Tests and delivery
 
 - Every change goes through a PR to protected `main`, with local validation chosen by risk: [Engineering Delivery Workflow](docs/obsidian/Engineering%20Delivery%20Workflow.md).
-- The isolated runner covers the production build, typecheck, integration tests, the browser campaign and real Stripe test mode: [E2E and Staging Payments](docs/obsidian/E2E%20and%20Staging%20Payments.md).
+- The isolated runner covers the production build, typecheck, lint, integration tests, the browser campaign and real Stripe test mode: [E2E and Staging Payments](docs/obsidian/E2E%20and%20Staging%20Payments.md).
 - `pnpm docs:check` keeps the documentation linked and matched to the code.
 
 ## Project structure

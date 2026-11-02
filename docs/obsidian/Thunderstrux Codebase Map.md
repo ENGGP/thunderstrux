@@ -42,7 +42,7 @@ Thunderstrux is a Docker-first Next.js App Router app for student societies: eve
 | `docker-compose.schedules.yml`, `docker-compose.hosted.yml`, `docker-compose.hardened.yml`, `docker-compose.assets.hosted.yml`, `docker-compose.operations.yml`, `docker-compose.e2e.yml` | Schedules, hosted secrets, hardening, hosted asset storage, operations rehearsals, browser campaign stack |
 | `package.json` | Scripts and exact dependency pins (Node and pnpm versions too) |
 | `.env.example`, `.env.hosted.example`, `.env.db.example` | Env templates ([[Environment Variables]]) |
-| `tsconfig.json`, `vitest.config.ts`, `playwright.config.ts`, `tailwind.config.js`, `postcss.config.mjs`, `renovate.json`, `next-auth.d.ts` | Tool configuration and Auth.js type augmentation |
+| `tsconfig.json`, `eslint.config.mjs`, `vitest.config.ts`, `playwright.config.ts`, `tailwind.config.js`, `postcss.config.mjs`, `renovate.json`, `next-auth.d.ts` | Tool configuration and Auth.js type augmentation |
 
 ## lib
 

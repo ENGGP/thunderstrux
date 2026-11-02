@@ -77,6 +77,9 @@
         "@playwright/test",
         "vite",
         "typescript",
+        "typescript-eslint",
+        "eslint",
+        "eslint-plugin-react-hooks",
         "jiti",
         "@types/node"
       ],

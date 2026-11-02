@@ -207,7 +207,8 @@ export function StripeConnectSettings({ orgSlug, timeZone }: { orgSlug: string; 
       }
     }
 
-    loadOrganisationAndStatus();
+    // A failure shows in the page, and an effect can't wait for the load.
+    void loadOrganisationAndStatus();
 
     return () => {
       isActive = false;

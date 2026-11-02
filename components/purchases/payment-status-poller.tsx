@@ -33,6 +33,7 @@ export function PaymentStatusPoller({
     let checks = 0;
     let timer: ReturnType<typeof setTimeout>;
     let stopped = false;
+    // Catches its own failures and schedules the next check, so its timers wait on nothing.
     async function check() {
       checks += 1;
       try {
@@ -48,10 +49,10 @@ export function PaymentStatusPoller({
       }
       if (stopped) return;
       if (checks >= maxChecks) setSlow(true);
-      if (checks < maxChecks + maxSlowChecks) timer = setTimeout(check, checks < maxChecks ? intervalMs : slowIntervalMs);
+      if (checks < maxChecks + maxSlowChecks) timer = setTimeout(() => void check(), checks < maxChecks ? intervalMs : slowIntervalMs);
       else setStoppedChecking(true);
     }
-    timer = setTimeout(check, intervalMs);
+    timer = setTimeout(() => void check(), intervalMs);
     return () => {
       stopped = true;
       clearTimeout(timer);

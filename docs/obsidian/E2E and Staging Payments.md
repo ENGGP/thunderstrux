@@ -34,7 +34,7 @@ sources: [scripts/run-e2e.mjs, scripts/e2e-guards.mjs, scripts/staging-payments.
 | Command | Mode | Run id |
 | --- | --- | --- |
 | `pnpm test:e2e:guards` | runner safety tests on the host (Node only) | — |
-| `node scripts/run-e2e.mjs baseline` | typecheck, integration suite, audit inside the stack | `baseline-<24 hex>` |
+| `node scripts/run-e2e.mjs baseline` | typecheck, lint, integration suite, audit inside the stack | `baseline-<24 hex>` |
 | `pnpm test:e2e` | browser campaign | `browser-<24 hex>` |
 | `pnpm test:payments:staging [-- --scenario=<name>] [-- --use-local-test-key] [-- --answers-in-files]` | real Stripe test mode. `--answers-in-files` is for whoever pays but can't type in the terminal: write `confirmed` to `tmp/e2e/<run-id>/answer-<scenario>` | `staging-<24 hex>` |
 | `pnpm test:e2e:cleanup -- <run-id>` | finish an interrupted run's cleanup | the run's id |
@@ -75,7 +75,7 @@ No origin is passed at build time: the web image reads `NEXT_PUBLIC_APP_URL` at 
 
 Webhook specs sign payloads with the run's synthetic secrets: raw-body signatures, tampering, expiry, duplicate and concurrent delivery, business mismatches, Connect's separate secret; fulfilment checks inventory, reservations, tickets and the email outbox. Paid checkouts seed the Session as the app would create it. Public pages, including `/events/[eventId]`, are anonymous; `/dashboard` and `/account` need sign-in. A new spec file must be added to a step's list in `scripts/run-e2e.mjs` or it never runs.
 
-The baseline step `checks` runs `pnpm test:e2e:guards && pnpm typecheck && pnpm test && pnpm security:audit` inside the `tests` container against the disposable database. It describes the validation mode, not a claim the source is unchanged.
+The baseline step `checks` runs `pnpm test:e2e:guards && pnpm typecheck && pnpm lint && pnpm test && pnpm security:audit` inside the `tests` container against the disposable database. It describes the validation mode, not a claim the source is unchanged.
 
 ## Staging payments
 

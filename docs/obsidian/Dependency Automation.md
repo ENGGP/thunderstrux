@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-26
+last-reviewed: 2026-11-02
 owner: engineering
 related: ["[[Engineering Delivery Workflow]]", "[[Production Operations Hosting]]", "[[Development Workflow]]", "[[Troubleshooting]]"]
 sources: [package.json, pnpm-lock.yaml, renovate.json, .github/workflows/dependency-validation.yml, .github/workflows/security-audit.yml, .github/workflows/release.yml]
@@ -47,7 +47,7 @@ sources: [package.json, pnpm-lock.yaml, renovate.json, .github/workflows/depende
 | Dashboard | on |
 | Security fixes (`vulnerabilityAlerts`) | labelled `security`, created immediately, no schedule, no release age, no automerge |
 | Docker digests | grouped as "container image digests", no release age: a digest rebuild has no release timestamp, and the default `timestamp-required` behaviour would leave `renovate/stability-days` pending forever |
-| Groups (non-major) | Prisma; Next and React; Tailwind and PostCSS; Auth.js; Stripe; test and build tooling (Vitest, Playwright, Vite, TypeScript, jiti, `@types/node`) |
+| Groups (non-major) | Prisma; Next and React; Tailwind and PostCSS; Auth.js; Stripe; test and build tooling (Vitest, Playwright, Vite, TypeScript, ESLint and its plugins, jiti, `@types/node`) |
 
 Action references are pinned to commit SHAs and kept current by Renovate. Dependabot update PRs stay off; Renovate is the only update bot. GitHub vulnerability alerts are on.
 
@@ -84,7 +84,7 @@ Pick checks from the diff ([[Engineering Delivery Workflow]]; dependencies are H
 
 | Change | Local validation |
 | --- | --- |
-| Runtime or toolchain package | `node scripts/run-e2e.mjs baseline` (frozen install, build, typecheck, integration, audit) plus the package's regression |
+| Runtime or toolchain package | `node scripts/run-e2e.mjs baseline` (frozen install, build, typecheck, lint, integration, audit) plus the package's regression |
 | Browser test tool (Playwright, axe) | a full `pnpm test:e2e`, because it changes what the browser campaign checks |
 | Dockerfile or base image | hadolint the changed Dockerfile, build the pair, check budgets, Trivy scan |
 | Compose file | `docker compose ... config` for affected stacks, `pnpm docker:hosted:check -- --env-file <file>` for hosted ones |
@@ -97,6 +97,8 @@ Never build inside the running app container; use the isolated runner or rebuild
 - A Renovate Docker digest PR can change a base image under every image at once: build and scan the pair, not just one Dockerfile.
 - `pnpm.overrides` keyed by a parent version (`@prisma/config@<version>>`) silently stops applying after that parent updates; check the audit after any Prisma bump.
 - `@zxing/library` (the check-in scanner's fallback decoder) is imported by its QR module paths under `esm/core/`, not its index, which carries every format at four times the size; a bump must keep those paths (`tests/e2e/check-in.spec.ts` runs that decoder). From 0.22 it declares Node 24 or later for its build tools only, so it stays on 0.21.x while the project runs Node 22.
+- `eslint-plugin-react-hooks` stays on 5.x, so close Renovate's major PR for it. From 6 it depends on `@babel/core`, which pnpm links as `styled-jsx`'s optional peer, so `next` resolves differently and Babel joins the production install behind the ops image, all for one lint rule. 5.x declares peers only up to ESLint 9, so `pnpm add` warns, but `react-hooks/rules-of-hooks` works on ESLint 10.
+- `typescript-eslint` caps the TypeScript versions it accepts, so the two update in one group, and a TypeScript major waits for it.
 - `integration-tests` and `redis-runtime.test.ts` need a disposable Redis; never point `INTEGRATION_REDIS_URL` at a development or production Redis.
 
 ## Related

@@ -8,7 +8,7 @@ sources: [package.json, prisma/schema.prisma]
 
 # Project Handover 2026-11-02
 
-**Archived 2026-11-02, when [[Project Handover]] ran out of room under the note limit.** It covers the session that began on 2026-10-25 at `1bc34ef`, up to the 2026-10-30 audit. The content below is as it stood. The audit's fixes (#234 on) stay in [[Project Handover]], which is the current handover.
+**Archived 2026-11-02, when [[Project Handover]] ran out of room under the note limit.** It covers the session that began on 2026-10-25 at `1bc34ef`, up to the 2026-10-30 audit. The content below is as it stood. The audit's fixes (#234 on) are in [[Project Handover 2026-11-02 Audit Fixes]]; [[Project Handover]] is the current handover.
 
 ## Dated entries
 

@@ -169,6 +169,14 @@ describe("general notification outbox", () => {
       expect(await prisma.notificationOutbox.count({ where: { status: "pending", processingToken: null } })).toBe(2);
     });
 
+    test("a claim takes its limit and no more on statistics from an emptied table (DEF-096)", async () => {
+      await queueMany(3);
+      await prisma.notificationOutbox.deleteMany();
+      await prisma.$executeRawUnsafe(`ANALYZE "NotificationOutbox"`);
+      await queueMany(3);
+      expect(await claimNotificationJobs(new Date(Date.now() + 1000), 2)).toHaveLength(2);
+    });
+
     test("sign-in and guest links are claimed ahead of an older bulk email", async () => {
       const user = await createMember();
       const now = new Date();

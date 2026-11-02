@@ -142,7 +142,7 @@ Each test starts from an empty `_test` database (`tests/helpers/db-reset.ts`). T
 
 - A baseline takes 5 to 9 minutes: about 3 for the integration suite, and the rest is the build, guards and typecheck, which depend on Docker's cache.
 - The original mode's table list is maintained by hand: a new model must be added, or `tests/integration/test-database-safety.test.ts` fails, because it runs both modes in every run. The fast path reads tables from the database.
-- Fast-path limits: no sequence reset (ids are cuids); the plan is computed once per test file; a trigger that blocks `DELETE` makes the reset fail loudly; fixture users share one hash; `DELETE` doesn't wait out open transactions as `TRUNCATE`'s table lock does, so work a test leaves running can reach the next test.
+- Fast-path limits: no sequence reset (ids are cuids); the plan is computed once per test file; a trigger that blocks `DELETE` makes the reset fail loudly; fixture users share one hash; `DELETE` doesn't wait out open transactions as `TRUNCATE`'s table lock does, so work a test leaves running can reach the next test; `DELETE` also keeps a table's planner statistics, which `TRUNCATE` clears, so a query's plan can change partway through a run (that is how DEF-096 surfaced).
 - For a focused run, pass `THUNDERSTRUX_FAST_TEST_RESET=1` with `-e`.
 
 ## Stripe on the dev app

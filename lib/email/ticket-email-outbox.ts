@@ -268,6 +268,8 @@ export async function claimTicketEmailOutboxJobs({
 } = {}) {
   const staleBefore = new Date(now.getTime() - processingTimeoutSeconds * 1000);
 
+  // ARRAY() runs the subquery once. Under `IN`, a nested-loop plan reruns it and
+  // each run locks rows past the LIMIT, so a batch can take every due job (DEF-096).
   return prisma.$queryRaw<ClaimedEmailJob[]>`
     UPDATE "EmailOutbox"
     SET
@@ -275,7 +277,7 @@ export async function claimTicketEmailOutboxJobs({
       "processingStartedAt" = ${now},
       "processingToken" = gen_random_uuid()::text,
       "updatedAt" = ${now}
-    WHERE "id" IN (
+    WHERE "id" = ANY(ARRAY(
       SELECT "id"
       FROM "EmailOutbox"
       WHERE
@@ -290,7 +292,7 @@ export async function claimTicketEmailOutboxJobs({
       ORDER BY "nextAttemptAt" ASC, "createdAt" ASC
       FOR UPDATE SKIP LOCKED
       LIMIT ${limit}
-    )
+    ))
     RETURNING "id", "orderId", "mode", "status", "attempts", "processingToken"
   `;
 }

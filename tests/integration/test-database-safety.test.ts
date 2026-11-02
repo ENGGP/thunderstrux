@@ -26,7 +26,10 @@ test("reset refuses unsafe configuration before SQL and does not expose credenti
   expect(execute).not.toHaveBeenCalled();
 });
 
-test("reset clears every current model including dependent and unlinked recovery records", async () => {
+// Docker runs use the fast reset and focused runs the TRUNCATE list, so both must
+// empty every model: a model missing from the hand-kept list fails the second case.
+test.each(["1", ""])("reset clears every current model including dependent and unlinked recovery records (fast reset '%s')", async (fastReset) => {
+  vi.stubEnv("THUNDERSTRUX_FAST_TEST_RESET", fastReset);
   const { user: owner, organisation } = await createOrganisationAccount();
   const member = await createMember();
   const photo = await prisma.asset.create({ data: { organisationId: organisation.id, uploadedByUserId: owner.id, storageKey: unique("assets/reset"), kind: "product", byteSize: 10, width: 1, height: 1, sha256: "0".repeat(64) } });

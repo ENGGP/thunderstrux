@@ -29,8 +29,8 @@ export function futureDate(days = 7, hour = 10) {
 }
 
 // By default every fixture user gets its own bcrypt hash of the test password,
-// as before PR #93. With THUNDERSTRUX_FAST_TEST_RESET=1 (switched off by
-// default) one real hash is made per run and shared, saving about 60ms a user.
+// as before PR #93. With THUNDERSTRUX_FAST_TEST_RESET=1 (docker-compose.e2e.yml sets it)
+// one real hash is made per test file and shared, saving about 60ms a user.
 let testPasswordHash: Promise<string> | null = null;
 const testPassword = () =>
   process.env.THUNDERSTRUX_FAST_TEST_RESET === "1" ? (testPasswordHash ??= hash("password123", 10)) : hash("password123", 10);

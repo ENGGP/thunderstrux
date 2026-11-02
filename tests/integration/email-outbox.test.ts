@@ -5,6 +5,7 @@ import { jsonRequest } from "@/tests/helpers/http";
 import { POST as requeueEmailRoute } from "@/app/api/orders/[orderId]/email-jobs/[jobId]/requeue/route";
 import { emailRunBudgetMs } from "@/lib/email/ticket-delivery";
 import {
+  claimTicketEmailOutboxJobs,
   enqueueTicketEmail,
   processTicketEmailOutboxBatch,
   requeueFailedTicketEmail
@@ -598,6 +599,25 @@ describe("ticket email outbox", () => {
       } finally {
         restoreEnv();
       }
+    });
+
+    test("a claim takes its limit and no more on statistics from an emptied table (DEF-096)", async () => {
+      const orders = await dueOrders(3);
+      await prisma.emailOutbox.deleteMany();
+      await prisma.$executeRawUnsafe(`ANALYZE "EmailOutbox"`);
+      for (const order of orders) {
+        await enqueueTicketEmail({ orderId: order.id, mode: "automatic" });
+        await makeOutboxJobsDue(order.id, new Date(Date.now() - 1000));
+      }
+      await expect(claimTicketEmailOutboxJobs({ limit: 2 })).resolves.toHaveLength(2);
+    });
+
+    test("two workers claiming at once never take the same job", async () => {
+      await dueOrders(3);
+      const claims = await Promise.all([claimTicketEmailOutboxJobs({ limit: 2 }), claimTicketEmailOutboxJobs({ limit: 2 })]);
+      const ids = claims.flat().map(job => job.id);
+      expect(ids).toHaveLength(3);
+      expect(new Set(ids).size).toBe(3);
     });
 
     test("a run stops claiming once its budget is spent; what it didn't claim stays pending for the next run", async () => {

@@ -109,6 +109,7 @@ services:
       DATABASE_URL: postgresql://e2e:e2e-disposable-only@db:5432/thunderstrux_e2e_test
       INTEGRATION_DATABASE_URL: postgresql://e2e:e2e-disposable-only@db:5432/thunderstrux_e2e_test
       INTEGRATION_REDIS_URL: redis://redis:6379
+      THUNDERSTRUX_FAST_TEST_RESET: "1"
       ASSET_STORAGE_ENDPOINT: http://object-store:8333
       ASSET_STORAGE_BUCKET: test-assets
       ASSET_STORAGE_PATH_STYLE: "true"

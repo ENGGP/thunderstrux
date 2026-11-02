@@ -69,13 +69,15 @@ export async function enqueueNotification(tx: Prisma.TransactionClient, input: {
 export async function claimNotificationJobs(now = new Date(), limit = 25): Promise<Claim[]> {
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error("Invalid notification batch size");
   const stale = new Date(now.getTime() - 600000);
+  // ARRAY() runs the subquery once. Under `IN`, a nested-loop plan reruns it and
+  // each run locks rows past the LIMIT, so a batch can take every due job (DEF-096).
   return prisma.$queryRaw<Claim[]>`
     UPDATE "NotificationOutbox" SET "status" = 'processing', "processingStartedAt" = ${now},
       "processingToken" = gen_random_uuid()::text, "updatedAt" = ${now}
-    WHERE "id" IN (SELECT "id" FROM "NotificationOutbox"
+    WHERE "id" = ANY(ARRAY(SELECT "id" FROM "NotificationOutbox"
       WHERE ("status" = 'pending' AND "nextAttemptAt" <= ${now})
          OR ("status" = 'processing' AND "processingStartedAt" < ${stale})
-      ORDER BY ("authTokenId" IS NULL AND "guestAccessGrantId" IS NULL), "nextAttemptAt", "createdAt", "id" FOR UPDATE SKIP LOCKED LIMIT ${limit})
+      ORDER BY ("authTokenId" IS NULL AND "guestAccessGrantId" IS NULL), "nextAttemptAt", "createdAt", "id" FOR UPDATE SKIP LOCKED LIMIT ${limit}))
     RETURNING "id", "processingToken"
   `;
 }

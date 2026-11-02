@@ -58,9 +58,9 @@ async function planReset() {
   return [...breaks, ...deletes];
 }
 
-// The fast children-first reset (PR #93) is kept but switched off: set
-// THUNDERSTRUX_FAST_TEST_RESET=1 to use it. By default the suite uses the
-// original TRUNCATE reset below. See Development Workflow, "Integration test speed".
+// The fast children-first reset (PR #93) runs when THUNDERSTRUX_FAST_TEST_RESET=1,
+// which docker-compose.e2e.yml sets. Otherwise, as in a focused run, the suite uses
+// the original TRUNCATE reset below. See Development Workflow, "Integration test speed".
 export const fastTestReset = () => process.env.THUNDERSTRUX_FAST_TEST_RESET === "1";
 
 // Empties the disposable test database before each test.

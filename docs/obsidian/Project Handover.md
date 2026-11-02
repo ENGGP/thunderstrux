@@ -54,7 +54,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 **Snapshot after #265.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.9, Next.js 16.4.3, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.
 - Migrations: 73, ending in `20261124010000_ticket_codes`. Models: 40.
-- Latest full baseline: `baseline-4b717b82e409775a9d976a7e` (#262), 1041 integration tests in 118 files.
+- Latest full baseline: `baseline-5691e0bf612f5cde65cab6d6` (#265). #262's run counted 1041 integration tests in 118 files, and no test has changed since.
 
 **Local development**
 - The dev app runs all migrations. It serves this folder's working tree, so keep the folder on main or a branch built from it.

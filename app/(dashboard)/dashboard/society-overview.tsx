@@ -2,10 +2,12 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { formatDay, formatTime, localDay } from "@/components/calendar/layout";
 import { DateRail } from "@/components/events/date-rail";
+import { SaleBadge } from "@/components/events/event-tabs";
 import { buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Icon, type IconName } from "@/components/ui/icon";
+import { rowLinkClasses } from "@/components/ui/link-tabs";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { analyticsAccess, societySales, ticketMetrics } from "@/lib/analytics/metrics";
 import { analyticsRange, localToday } from "@/lib/analytics/range";
@@ -24,7 +26,7 @@ type Society = { id: string; name: string; staffRole: OrganisationStaffRole };
 type Task = { key: string; icon: IconName; warn?: boolean; title: string; text: string; href: string; link: string; setup?: boolean };
 
 const moreLink = "text-sm font-semibold text-brand underline underline-offset-4";
-const titleLink = "font-semibold text-ink underline-offset-4 hover:underline [overflow-wrap:anywhere]";
+const titleLink = rowLinkClasses;
 const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
 
 export async function SocietyOverview({ organisation, timeZone }: { organisation: Society; timeZone: string }) {
@@ -44,7 +46,12 @@ export async function SocietyOverview({ organisation, timeZone }: { organisation
   const tasks: Task[] = [];
   if (!overview.chargesReady && can("stripe:manage")) tasks.push({ key: "payments", icon: "warning", warn: true, setup: true, title: "Set up payments", text: "Needed for paid tickets, memberships and merchandise. Free events can be published now.", href: "/dashboard/settings", link: "Set up payments" });
   if (!overview.profileComplete && can("organisation:settings")) tasks.push({ key: "profile", icon: "profile", setup: true, title: "Finish your society profile", text: "Add a description and a contact email so students know who you are.", href: "/dashboard/settings/profile", link: "Edit society profile" });
-  if (!overview.hasEvents && can("events:manage")) tasks.push({ key: "first-event", icon: "calendar", setup: true, title: "Schedule your first event", text: "It stays a draft until you publish it.", href: "/dashboard/events/new", link: "New event" });
+  // Setting up ends at the first published event, so a draft three weeks out still has its next step here.
+  if (!overview.hasPublished && can("events:manage")) {
+    tasks.push(overview.hasEvents
+      ? { key: "first-event", icon: "calendar", setup: true, title: "Publish your first event", text: "Your draft goes on sale once you publish it. Its checklist says what's left.", href: "/dashboard/events?view=drafts", link: "Open drafts" }
+      : { key: "first-event", icon: "calendar", setup: true, title: "Schedule your first event", text: "It stays a draft until you publish it.", href: "/dashboard/events/new", link: "New event" });
+  }
   if (overview.reviews) tasks.push({ key: "reviews", icon: "warning", warn: true, title: `${plural(overview.reviews, "payment")} in review`, text: "People paid but what they bought couldn't be issued. Decide on each one.", href: "/dashboard/orders", link: "Review payments" });
   if (overview.pickups?.preparing) {
     const { preparing, oldest, ready } = overview.pickups;
@@ -59,6 +66,8 @@ export async function SocietyOverview({ organisation, timeZone }: { organisation
   const moreDrafts = overview.draftsSoon - overview.drafts.length;
   if (moreDrafts > 0) tasks.push({ key: "more-drafts", icon: "calendar", title: `And ${plural(moreDrafts, "more draft")} starting in the next 7 days`, text: "Publish them or move their dates.", href: "/dashboard/events?view=drafts", link: "See all drafts" });
   const settingUp = tasks.length > 0 && tasks.every((task) => task.setup);
+  // While setting up, payments is a step like the others, not a warning (ORG-01): free events don't need it.
+  if (settingUp) for (const task of tasks) task.warn = false;
 
   const tiles: Array<{ label: string; value: string; note: ReactNode }> = [
     {
@@ -100,6 +109,9 @@ export async function SocietyOverview({ organisation, timeZone }: { organisation
         )}
       </Card>
 
+      {/* Before anything is published the numbers are all zero and the lists empty: the checklist is the page. */}
+      {settingUp && !overview.hasPublished ? null : (
+      <>
       <div className={`order-2 grid gap-6 sm:grid-cols-2 lg:order-none lg:col-span-2 ${tiles.length === 3 ? "lg:grid-cols-3" : ""}`}>
         {tiles.map((tile) => (
           <Card key={tile.label}>
@@ -126,10 +138,17 @@ export async function SocietyOverview({ organisation, timeZone }: { organisation
                   <Link className={titleLink} href={eventHref(event.id)}>{event.title}</Link>
                   <span className="text-sm text-ink-soft">
                     {formatDay(localDay(event.startTime, timeZone)).split(" ")[0]} {formatTime(event.startTime, timeZone)}
-                    {event.status === "draft" ? " · not on sale yet" : event.sold !== null ? ` · ${event.sold} sold · ${event.remaining} left` : ""}
+                    {event.status === "draft" ? " · not on sale yet" : event.cancelledAt ? "" : event.sold !== null ? ` · ${event.sold} sold · ${event.remaining} left` : ""}
                   </span>
+                  {/* On the day, the door is one tap from here. */}
+                  {can("tickets:check_in") && event.status === "published" && !event.cancelledAt && localDay(event.startTime, timeZone) <= today ? (
+                    <Link className={`inline-flex min-h-11 w-fit items-center ${moreLink}`} href={`/dashboard/events/${event.id}/tickets`}>
+                      Open check-in<span className="sr-only"> for {event.title}</span>
+                    </Link>
+                  ) : null}
                 </div>
-                <StatusBadge status={event.status} />
+                {/* A published event shows how it's selling (a cancelled one says so), not just Published. */}
+                {event.status === "published" ? <SaleBadge event={event} /> : <StatusBadge status={event.status} />}
               </li>
             ))}
           </ul>
@@ -151,10 +170,12 @@ export async function SocietyOverview({ organisation, timeZone }: { organisation
           )}
         </Card>
       ) : null}
-
+      {/* Explains the tiles and lists, so it goes with them. */}
       <p className="order-4 text-sm text-ink-muted lg:order-none lg:col-span-2">
         Money, recent orders and payment reviews show to owners, admins and finance managers. Members now shows to staff who can see members. Times are in the society&apos;s zone.
       </p>
+      </>
+      )}
     </div>
   );
 }
@@ -221,7 +242,11 @@ export async function DoorOverview({ organisation, timeZone }: { organisation: S
           </ul>
         </Card>
       ) : (
-        <EmptyState icon="calendar" title="No events today">
+        <EmptyState
+          action={later[0] ? <Link className={buttonClasses({ variant: "secondary" })} href={`/dashboard/events/${later[0].id}/tickets`}>Open {later[0].title}</Link> : undefined}
+          icon="calendar"
+          title="No events today"
+        >
           {later[0] ? `Next: ${later[0].title}, ${formatDay(localDay(later[0].startTime, timeZone))}, ${formatTime(later[0].startTime, timeZone)}.` : "Nothing is scheduled for the next seven days."}
         </EmptyState>
       )}

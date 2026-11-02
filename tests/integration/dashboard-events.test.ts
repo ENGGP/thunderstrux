@@ -141,6 +141,10 @@ describe("dashboard events read", () => {
     expect(managed).toContain("Drafts");
     expect(managed).toContain(`More actions for ${live.title}`);
     expect(managed).toContain(`href="/dashboard/events/${live.id}"`);
+    // On the day, the door is one tap from the list.
+    expect(managed).not.toContain("Open check-in");
+    await prisma.event.update({ where: { id: live.id }, data: { startTime: new Date(Date.now() - 3600000) } });
+    expect(await render()).toContain(`Open check-in<span class="sr-only"> for ${live.title}</span>`);
 
     await prisma.organisationStaff.updateMany({
       where: { userId: staff.id },

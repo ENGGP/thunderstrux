@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
 import type { ContextChoices } from "@/lib/auth/context";
-import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
+import { getClientErrorMessage } from "@/lib/client/api";
+import { switchContext } from "@/lib/client/context";
 
 const roleLabels = {
   owner: "Owner",
@@ -38,15 +40,7 @@ export function ContextSelector({
     setError(null);
 
     try {
-      await fetchJson("/api/me/context", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          value === "personal"
-            ? { mode: "personal" }
-            : { mode: "staff", organisationId: value }
-        )
-      });
+      await switchContext(value);
       router.push("/dashboard");
       router.refresh();
     } catch (failure) {
@@ -99,5 +93,61 @@ export function ContextSelector({
         </p>
       ) : null}
     </div>
+  );
+}
+
+// The personal overview's shortcut for staff: one tap into a society, because a
+// new sign-in always starts personal (the workspace is a per-sign-in preference).
+// Check-in staff land on their door; everyone else on the society overview.
+export function SocietyShortcuts({ contexts }: { contexts: ContextChoices }) {
+  const router = useRouter();
+  const [opening, setOpening] = useState<string | null>(null);
+  const [failed, setFailed] = useState<{ id: string; text: string } | null>(null);
+  if (contexts.organisations.length === 0) return null;
+
+  async function open(id: string) {
+    setOpening(id);
+    setFailed(null);
+    try {
+      await switchContext(id);
+      router.push("/dashboard");
+      router.refresh();
+    } catch (failure) {
+      setFailed({ id, text: getClientErrorMessage(failure, "Could not open that society. Try again.") });
+      setOpening(null);
+    }
+  }
+
+  return (
+    <section aria-labelledby="society-shortcuts" className="grid gap-3 rounded-card border border-line bg-surface p-5 sm:p-6">
+      <h2 className="text-xl font-semibold text-ink" id="society-shortcuts">Societies you help run</h2>
+      <ul className="grid">
+        {contexts.organisations.map((organisation) => (
+          <li className="grid gap-2 border-t border-line py-3 first:border-0 first:pt-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center" key={organisation.id}>
+            <span className="grid min-w-0">
+              <span className="font-semibold text-ink [overflow-wrap:anywhere]">{organisation.name}</span>
+              <span className="text-sm text-ink-soft">
+                Your role: {roleLabels[organisation.staffRole]}
+                {organisation.staffRole === "check_in_staff" ? " · today's door" : ""}
+              </span>
+            </span>
+            <Button busy={opening === organisation.id} busyLabel="Opening…" disabled={opening !== null} onClick={() => void open(organisation.id)} type="button" variant="secondary">
+              Open<span className="sr-only"> {organisation.name}</span>
+            </Button>
+            {failed?.id === organisation.id ? (
+              <p className="text-sm text-danger sm:col-span-2" role="alert">
+                {failed.text}
+                {/authenticator|MFA/i.test(failed.text) ? (
+                  <>
+                    {" "}
+                    <a className="font-semibold underline" href="/mfa?callbackUrl=/dashboard">Verify staff authenticator</a>
+                  </>
+                ) : null}
+              </p>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

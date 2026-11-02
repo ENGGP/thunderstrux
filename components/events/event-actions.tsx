@@ -26,6 +26,15 @@ type ActionEvent = {
 
 type CancelResult = { status: "cancelled" | "already_cancelled"; refundsQueued: number; freeCancelled: number; skipped: unknown[]; releasedEarly: { amount: number; orders: number } };
 
+// Publish with the version the page shows, so a stale page can't publish an older event (here and from Edit).
+export function publishEvent(eventId: string, version: number) {
+  return fetchJson(`/api/events/${eventId}/publish`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ targetStatus: "published", version })
+  });
+}
+
 const menuWidth = 288;
 const menuItem =
   "flex min-h-11 w-full flex-col items-start justify-center gap-0.5 rounded-control px-3 py-2 text-left text-ui font-medium hover:bg-brand-tint disabled:cursor-not-allowed disabled:text-ink-muted disabled:hover:bg-transparent";
@@ -92,18 +101,20 @@ export function EventActions({
     });
 
     try {
-      await fetchJson(
-        action === "delete"
-          ? `/api/events/${event.id}`
-          : action === "close" || action === "reopen"
-            ? `/api/events/${event.id}/sales`
-            : `/api/events/${event.id}/publish`,
-        action === "delete"
-          ? { method: "DELETE" }
-          : action === "close" || action === "reopen"
-            ? patch({ saleState: action === "close" ? "closed" : "open" })
-            : patch({ targetStatus: action === "publish" ? "published" : "draft" })
-      );
+      await (action === "publish"
+        ? publishEvent(event.id, event.version)
+        : fetchJson(
+            action === "delete"
+              ? `/api/events/${event.id}`
+              : action === "close" || action === "reopen"
+                ? `/api/events/${event.id}/sales`
+                : `/api/events/${event.id}/publish`,
+            action === "delete"
+              ? { method: "DELETE" }
+              : action === "close" || action === "reopen"
+                ? patch({ saleState: action === "close" ? "closed" : "open" })
+                : patch({ targetStatus: "draft" })
+          ));
       setMessage({
         ok: true,
         text:

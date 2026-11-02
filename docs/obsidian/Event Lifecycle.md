@@ -81,8 +81,8 @@ An event has four independent settings ([[Database and Multi Tenancy#Models]]):
 - **Access** offers Public, Link only and Members only, with a warning while no published plan unlocks members-only events. Each ticket type has an optional Member price, with a warning while no published plan unlocks member prices.
 - **Capacity** hint names tickets already issued or held. Each existing type shows sold (valid tickets) and held (live holds); a type with orders or tickets can't be removed.
 - **Event image:** optional 16:9, uploaded as an `event` asset (`POST /api/orgs/[orgSlug]/assets?kind=event`), previewed privately; Replace and Remove apply on save.
-- **If tickets cannot be issued:** "Refund the buyer automatically in full" (`automatic_full`, the default) or "Review it manually" (`manual_review`).
-- Saving an edit stays on the page ("Event saved"). A stale version or moved stock keeps the edits on screen with the server's message. Leaving with unsaved changes asks first, whether by closing the tab or by following any link in the app (Cancel, the sidebar, "set up payments"), because in-app links never unload the page. A draft's Edit page shows the readiness checklist.
+- **Advanced options** (closed unless changed or in error) hold the checkout hold and **If tickets cannot be issued:** "Refund the buyer automatically in full" (`automatic_full`, the default) or "Review it manually" (`manual_review`).
+- Saving an edit stays on the page ("Event saved"). A stale version or moved stock keeps the edits on screen with the server's message. Leaving with unsaved changes asks first, whether by closing the tab or by following any link in the app (Cancel, the sidebar, "set up payments"), because in-app links never unload the page. A draft's Edit page shows the readiness checklist with Publish, disabled while edits are unsaved or a check fails ([[UI Page Patterns#Event workspace]]).
 
 ### Publish and unpublish
 
@@ -167,7 +167,7 @@ Rules:
 
 `Event.compensationRefundMode` decides what happens to a payment that arrives when tickets can't be issued (sold out meanwhile, or paid after the hold lapsed). `createEventSchema` defaults it to `automatic_full`; the schema column defaults to `manual_review`, so events created outside the API (seed, tests, scripts) review manually. Checkout copies it to `Order.compensationRefundModeSnapshot`, and the order keeps that choice. Behaviour: [[Payment Lifecycle]].
 
-`Event.checkoutHoldMinutes` (PAY-009, as Humanitix hosts choose) is how long a checkout holds its tickets while the buyer pays: 5 to 59 minutes (`Event_checkoutHoldMinutes_chk`), 20 by default, set on the form's Access card ("Checkout hold (minutes)"; blank means 20). An edit that leaves it out keeps it; a change applies to new checkouts only, as each order keeps its own end, and is noted in History ("Checkout hold"). Shorter suits events that sell out. How the hold runs: [[Payment Lifecycle#Holds]].
+`Event.checkoutHoldMinutes` (PAY-009, as Humanitix hosts choose) is how long a checkout holds its tickets while the buyer pays: 5 to 59 minutes (`Event_checkoutHoldMinutes_chk`), 20 by default, set under the form's Advanced options ("Checkout hold (minutes)"; blank means 20). An edit that leaves it out keeps it; a change applies to new checkouts only, as each order keeps its own end, and is noted in History ("Checkout hold"). Shorter suits events that sell out. How the hold runs: [[Payment Lifecycle#Holds]].
 
 ### Hero image
 

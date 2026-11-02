@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TextInput } from "@/components/ui/input";
-import { Count, LinkTabs, pillClasses } from "@/components/ui/link-tabs";
+import { Count, LinkTabs, pillClasses, rowLinkClasses } from "@/components/ui/link-tabs";
 import { Pager } from "@/components/ui/pager";
 import { ListSkeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -83,7 +83,7 @@ async function Roster({ organisationId, view, query, cursor, direction }: { orga
   const { nextCursor, previousCursor } = joins ?? roster;
   const rows = joins ? joins.joins.length : roster.members.length;
   const runs = (startsAt: Date, endsAt: Date) => formatTerm(startsAt, endsAt, timeZone);
-  const nameLink = "font-semibold text-ink underline-offset-4 hover:underline [overflow-wrap:anywhere]";
+  const nameLink = rowLinkClasses;
 
   return (
     <>

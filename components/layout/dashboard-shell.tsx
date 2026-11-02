@@ -114,22 +114,31 @@ export function DashboardShell({
     <div className="min-h-screen bg-paper lg:grid lg:grid-cols-[244px_minmax(0,1fr)]">
       {/* Stretches with the page; the inner column sticks under the fixed header. */}
       <aside className="bg-brand-ink text-white">
-        <div className="px-4 py-3 [scrollbar-color:rgb(255_255_255/0.3)_transparent] [scrollbar-width:thin] lg:sticky lg:top-[72px] lg:max-h-[calc(100dvh-72px)] lg:overflow-y-auto lg:py-4">
-          <p className="text-xs font-semibold text-white/75">Current society</p>
-          <p className="font-semibold [overflow-wrap:anywhere]">{orgName}</p>
-          <div className="mt-4 hidden lg:block">{menu}</div>
-          <details className="group mt-3 lg:hidden">
-            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-control border border-white/50 px-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
-              Society menu
-              <Icon className="group-open:rotate-180" name="chevronDown" size={16} />
+        <div className="px-4 py-2 [scrollbar-color:rgb(255_255_255/0.3)_transparent] [scrollbar-width:thin] lg:sticky lg:top-[72px] lg:max-h-[calc(100dvh-72px)] lg:overflow-y-auto lg:py-4">
+          {/* Phones: the society and its menu share one row, so pages start near the top (the door especially). */}
+          <details className="group lg:hidden">
+            <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
+              <span className="grid min-w-0">
+                <span className="text-xs font-semibold text-white/75">Current society</span>
+                <span className="truncate font-semibold">{orgName}</span>
+              </span>
+              <span className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-control border border-white/50 px-3 text-sm font-semibold">
+                Society menu
+                <Icon className="group-open:rotate-180" name="chevronDown" size={16} />
+              </span>
             </summary>
-            <div className="mt-4 pb-2">{menu}</div>
+            <div className="mt-3 pb-2">{menu}</div>
           </details>
+          <div className="hidden lg:block">
+            <p className="text-xs font-semibold text-white/75">Current society</p>
+            <p className="font-semibold [overflow-wrap:anywhere]">{orgName}</p>
+            <div className="mt-4">{menu}</div>
+          </div>
         </div>
       </aside>
       <main id="main" tabIndex={-1} className="min-w-0">
         {/* One content width for every society page. */}
-        <div className="mx-auto grid max-w-admin grid-cols-1 gap-6 px-4 py-8 sm:px-8">{children}</div>
+        <div className="mx-auto grid max-w-admin grid-cols-1 gap-6 px-4 py-5 sm:px-8 sm:py-8">{children}</div>
       </main>
     </div>
   );

@@ -59,7 +59,9 @@ test("an overnight event stays on the day it starts in the month and in the week
   await page.setViewportSize({ width: 1280, height: 1000 });
 
   const chip = page.getByRole("link", { name: /Overnight Draft Workshop/ }).first();
-  await expect(chip).toContainText("1:00 am Overnight Draft Workshop");
+  // A month chip shows the title; the time is in its name and tooltip.
+  await expect(chip).toContainText("Draft Overnight Draft Workshop");
+  await expect(chip).toHaveAttribute("title", /1:00 am/);
   // One column: Wednesday's, never Thursday's.
   expect(await chip.evaluate((element) => (element as HTMLElement).style.gridColumn)).toBe("3 / span 1");
   await page.screenshot({ path: "test-results/calendar-overnight-month-1280.png", fullPage: true });

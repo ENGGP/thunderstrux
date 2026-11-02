@@ -141,7 +141,8 @@ describe("society calendar (T33)", () => {
     await prisma.event.update({ where: { id: lateNight.id }, data: { cancelledAt: new Date("2026-10-20T00:00:00Z") } });
     const month = await page({ date: "2026-10-15" });
     expect(month).toContain("Halloween Social, cancelled");
-    expect(month).toMatch(/<b class="font-semibold">Cancelled <\/b><b class="font-semibold">8:00 pm<\/b> Halloween Social/);
+    // A month chip is the title; its dates follow for screen readers.
+    expect(month).toMatch(/<b class="font-semibold">Cancelled <\/b>Halloween Social<span class="sr-only">, /);
     expect(month).toContain(">Cancelled</span>"); // the legend, and the Agenda's badge
     expect(month).not.toContain("Engineering Camp, cancelled");
     expect(await page({ view: "week", date: "2026-10-31" })).toContain("Cancelled · Halloween Social");
@@ -162,7 +163,9 @@ describe("society calendar (T33)", () => {
   test("the page shows a manager drafts and New event, and check-in staff published events that open Attendees", async () => {
     const { draft, lateNight, staff } = await society();
     const month = await page({ date: "2026-10-15" });
-    for (const text of ["Calendar", "October 2026", "Brisbane time (AEST)", "Engineering Camp", "Wed 4:00 pm to Fri 2:00 pm", "Ongoing", "CAD workshop", "Draft", "membership ends", "Membership ends", "Halloween Social", "/dashboard/events/new"]) expect(month).toContain(text);
+    // Month chips are titles; the week shows the camp's times.
+    expect(await page({ view: "week", date: "2026-09-30" })).toContain("Wed 4:00 pm to Fri 2:00 pm");
+    for (const text of ["Calendar", "October 2026", "Brisbane time (AEST)", "Engineering Camp", "Ongoing", "CAD workshop", "Draft", "membership ends", "Membership ends", "Halloween Social", "/dashboard/events/new"]) expect(month).toContain(text);
     expect(month).not.toContain("Another society");
     expect(month).toContain(`/dashboard/events/${draft.id}`);
     expect(await page({ view: "week", date: "2026-10-31" })).toContain("8:00 pm to 1:00 am Sun");

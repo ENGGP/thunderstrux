@@ -59,13 +59,16 @@ function itemLabel(item: CalendarItem, timeZone: string) {
 }
 const members = (count: number) => `${count} ${count === 1 ? "member" : "members"}`;
 
-function chipText(segment: Segment, timeZone: string): ReactNode {
+// A month cell is too narrow for a time and a title, so it shows the title; the time
+// stays in the tooltip, the accessible name, the week and the agenda.
+function chipText(segment: Segment, timeZone: string, month: boolean): ReactNode {
   const { item, before, after } = segment;
   if (item.kind === "clock") return item.label;
   if (item.kind === "term") return `${membershipLabel(item.end.name)} ends`;
   const { event } = item;
   const status = mark(event);
   const word = status ? <b className="font-semibold">{statusLabel(status)} </b> : null;
+  if (month) return <>{word}{event.title}</>;
   const start = formatTime(event.startTime, timeZone);
   if (!item.multiDay) return <>{word}<b className="font-semibold">{start}</b> {event.title}</>;
   const end = `${shortWeekday(item.lastDay)} ${formatTime(event.endTime, timeZone)}`;
@@ -75,13 +78,13 @@ function chipText(segment: Segment, timeZone: string): ReactNode {
     : <>{word}<b className="font-semibold">{shortWeekday(item.firstDay)} {start} to {end}</b> {event.title}</>;
 }
 
-function Chip({ segment, timeZone, eventHref, style }: { segment: Segment; timeZone: string; eventHref: ViewProps["eventHref"]; style: CSSProperties }) {
+function Chip({ segment, timeZone, eventHref, style, month = false }: { segment: Segment; timeZone: string; eventHref: ViewProps["eventHref"]; style: CSSProperties; month?: boolean }) {
   const { item, before, after } = segment;
   const className = `${chipBase} ${tone(item)} ${before ? "ml-0" : "ml-1.5 rounded-l-md border-l"} ${after ? "mr-0" : "mr-1.5 rounded-r-md border-r"}`;
   if (item.kind === "clock") return <span className={className} style={style}>{item.label}</span>;
   return (
     <Link className={className} href={item.kind === "term" ? termHref : eventHref(item.event.id)} style={style} title={itemLabel(item, timeZone)}>
-      {chipText(segment, timeZone)}
+      {chipText(segment, timeZone, month)}
       <span className="sr-only">{item.kind === "term" ? termDetail(item.end) : eventDates(item.event, timeZone)}</span>
     </Link>
   );
@@ -125,7 +128,7 @@ export function MonthGrid({ days, month, ...props }: ViewProps & { days: string[
               </span>
             ))}
             {segments.filter((segment) => segment.lane < visibleLanes).map((segment) => (
-              <Chip eventHref={props.eventHref} key={segment.item.key} segment={segment} style={{ gridColumn: `${segment.start + 1} / span ${segment.end - segment.start + 1}`, gridRow: segment.lane + 2 }} timeZone={props.timeZone} />
+              <Chip eventHref={props.eventHref} key={segment.item.key} month segment={segment} style={{ gridColumn: `${segment.start + 1} / span ${segment.end - segment.start + 1}`, gridRow: segment.lane + 2 }} timeZone={props.timeZone} />
             ))}
             {hidden.map((count, column) =>
               count ? (

@@ -8,7 +8,8 @@ export function PageHeader({
   description,
   breadcrumbs = [],
   badge,
-  actions
+  actions,
+  actionsClassName
 }: {
   title: ReactNode;
   description?: ReactNode;
@@ -16,6 +17,8 @@ export function PageHeader({
   // Sits beside the h1, outside it, so the heading's name stays the title.
   badge?: ReactNode;
   actions?: ReactNode;
+  // Hides the actions row, not just its contents, so an empty row adds no gap (the door on phones).
+  actionsClassName?: string;
 }) {
   return (
     <div className="grid gap-2">
@@ -39,7 +42,7 @@ export function PageHeader({
           </div>
           {description ? <p className="text-ink-soft">{description}</p> : null}
         </div>
-        {actions ? <div className="flex flex-wrap items-center gap-3">{actions}</div> : null}
+        {actions ? <div className={`flex flex-wrap items-center gap-3 ${actionsClassName ?? ""}`}>{actions}</div> : null}
       </div>
     </div>
   );

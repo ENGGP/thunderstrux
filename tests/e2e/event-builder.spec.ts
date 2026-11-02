@@ -36,7 +36,9 @@ test("organisers build an event in the society's time zone with a dollar price a
   await page.getByLabel("Name", { exact: true }).fill("General");
   await page.getByLabel("Price", { exact: true }).fill("15.5");
   await page.getByLabel("Quantity", { exact: true }).fill("40");
-  // PAY-009: a busy event holds tickets for less than the 20-minute default.
+  // PAY-009: a busy event holds tickets for less than the 20-minute default, under Advanced options.
+  await expect(page.getByLabel("Checkout hold (minutes)")).toBeHidden();
+  await page.getByText("Advanced options", { exact: true }).click();
   await expect(page.getByLabel("Checkout hold (minutes)")).toHaveValue("20");
   await page.getByLabel("Checkout hold (minutes)").fill("10");
   // Rounded with the same fee function checkout uses; the seeded society has no Stripe yet.
@@ -83,6 +85,22 @@ test("organisers build an event in the society's time zone with a dollar price a
   await expect(when("Starts").getByLabel("Date", { exact: true })).toHaveValue(formatDayInput(day));
   await expect(when("Starts").getByLabel("Time")).toHaveValue("18:00");
   await expect(page.getByText("No sales yet")).toBeVisible();
+  await expect(page.getByRole("group", { name: "Ticket 1 · General" })).toBeVisible();
+
+  // Publish from Edit: only what was saved and passes the checks. Paid tickets wait for payments.
+  const publish = page.getByRole("button", { name: "Publish", exact: true });
+  await expect(publish).toBeDisabled();
+  await expect(async () => {
+    await page.getByLabel("Price", { exact: true }).fill("0");
+    await expect(page.getByRole("status").filter({ hasText: "Unsaved changes" })).toBeVisible({ timeout: 1000 });
+  }).toPass();
+  await expect(page.getByText("Save your changes first.")).toBeVisible();
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Event saved" })).toBeVisible();
+  await expect(publish).toBeEnabled();
+  await publish.click();
+  await page.waitForURL(`**/dashboard/events/${event.id}`);
+  expect(await prisma.event.findUniqueOrThrow({ where: { id: event.id } })).toMatchObject({ status: "published" });
 
   // A published event closes sales from More and keeps its public page.
   await page.goto(`/dashboard/events/${data.event.id}`);

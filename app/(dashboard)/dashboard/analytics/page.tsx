@@ -4,7 +4,9 @@ import { Suspense } from "react";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { FilterBar } from "@/components/ui/filter-bar";
+import { buttonClasses } from "@/components/ui/button";
 import { DateField } from "@/components/ui/date-field";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Select } from "@/components/ui/input";
 import { LinkTabs } from "@/components/ui/link-tabs";
 import { Notice } from "@/components/ui/notice";
@@ -51,6 +53,8 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const events = tab === "tickets" ? await listEventOptions(organisation.id, params.eventId) : [];
   // Only this society's events can filter; anything else is ignored.
   const event = events.find((option) => option.id === params.eventId);
+  // A society with no events yet gets one next step, not a range form and a page of zeros.
+  const noEvents = tab === "tickets" && events.length === 0;
 
   const href = (changes: Partial<Record<keyof Params, string | undefined>>) => {
     const values = { tab: tab === "tickets" ? undefined : tab, from: range.from, to: range.to, bucket: range.bucket, eventId: event?.id, ...changes };
@@ -69,13 +73,27 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   return (
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
       <PageHeader
-        description={`${day(range.from)} to ${day(range.to)}, by ${range.bucket}, in ${zoneCity(timeZone)}. Updated ${formatDateTime(new Date(), { timeZone })}.`}
+        description={noEvents ? undefined : `${day(range.from)} to ${day(range.to)}, by ${range.bucket}, in ${zoneCity(timeZone)}. Updated ${formatDateTime(new Date(), { timeZone })}.`}
         title="Analytics"
       />
       <LinkTabs
         label="Analytics sections"
         tabs={tabs.map((name) => ({ href: href({ tab: name === "tickets" ? undefined : name, eventId: name === "tickets" ? event?.id : undefined }), label: tabNames[name], active: name === tab }))}
       />
+      {noEvents ? (
+        <EmptyState
+          action={
+            hasOrganisationPermission(organisation.staffRole, "events:manage") ? (
+              <Link className={buttonClasses({})} href="/dashboard/events/new">Create an event</Link>
+            ) : undefined
+          }
+          icon="chart"
+          title="No events yet"
+        >
+          Ticket sales, attendance and refunds show here once your society runs an event.
+        </EmptyState>
+      ) : (
+      <>
       <section aria-label="Range" className="grid gap-3.5 rounded-card border border-line bg-surface p-4">
         <nav aria-label="Quick ranges" className="flex flex-wrap gap-2">
           {quick.map((option) => {
@@ -139,6 +157,8 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
         {tab === "merchandise" ? <MerchandiseTab access={access} canFulfil={hasOrganisationPermission(organisation.staffRole, "merchandise:fulfil")} organisationId={organisation.id} range={range} /> : null}
         {tab === "engagement" ? <EngagementTab asOf={asOf} organisationId={organisation.id} range={range} /> : null}
       </Suspense>
+      </>
+      )}
       <p className="text-sm text-ink-muted">Money shows to owners, admins and finance managers. Event managers see tickets, attendance and engagement.</p>
     </DashboardShell>
   );

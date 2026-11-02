@@ -60,9 +60,12 @@ export function EventWorkspaceHeader({
   );
   const editing = active === "edit";
   const canManage = hasOrganisationPermission(staffRole, "events:manage");
+  // At the door on a phone the header is one title and one line, so the search field is near the top.
+  const door = active === "attendees" ? "max-md:hidden" : "";
+  const cancelled = Boolean(event.cancelledAt);
 
   return (
-    <div className="grid gap-6">
+    <div className={`grid ${door ? "gap-4 md:gap-6" : "gap-6"}`}>
       <PageHeader
         actions={
           editing ? null : canManage ? (
@@ -78,9 +81,11 @@ export function EventWorkspaceHeader({
             </Link>
           ) : null
         }
+        actionsClassName={door}
         badge={
-          <span className="flex flex-wrap gap-2">
-            <StatusBadge status={event.status} />
+          // A cancelled event reads as cancelled, not as Published beside it.
+          <span className={`flex flex-wrap gap-2 ${door}`}>
+            {cancelled ? null : <StatusBadge status={event.status} />}
             {editing ? null : <SaleBadge event={event} />}
           </span>
         }
@@ -99,7 +104,7 @@ export function EventWorkspaceHeader({
                 <Icon name="pin" />
                 {event.location}
               </span>
-              <span>Sales close {formatDateTime(event.salesCloseAt, { timeZone: event.timeZone })}</span>
+              <span className={door}>Sales close {formatDateTime(event.salesCloseAt, { timeZone: event.timeZone })}</span>
             </span>
           )
         }

@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-31
+last-reviewed: 2026-11-02
 owner: engineering
 related: ["[[Environment Variables]]", "[[Stripe Payments and Connect]]", "[[Payment Lifecycle]]", "[[Database and Multi Tenancy]]", "[[Pre-hosting Candidate]]", "[[Troubleshooting]]"]
 sources: [docker/Dockerfile, docker/entrypoint.sh, docker-compose.hosted.yml, docker-compose.schedules.yml, deploy/droplet/docker-compose.droplet.yml, scripts/droplet.mjs, scripts/operations.mjs, scripts/release-pair.mjs, lib/ops/worker.ts, lib/ops/readiness.ts]
@@ -80,7 +80,7 @@ Staff enrol an authenticator on first sign-in.
 
 ## Stripe webhook endpoints and keys
 
-Create both in Stripe Workbench (live for production, test for staging) as **snapshot** endpoints on the app's pinned version, `stripeApiVersion` in `lib/stripe/version.ts` (PAY-006). An endpoint left on the account default sends events shaped for another version and raises `stripe_webhook_version_mismatch`. An endpoint's version can't change: a version move means new endpoints, moving the signing secrets, then retiring the old ones. Before deploying a version change, wait until the checkout-recovery queue is empty: a stored Session request replayed under the new version can be refused (recovery then releases the hold).
+Create both in Stripe Workbench (live for production, test for staging) as **snapshot** endpoints on the app's pinned version, `stripeApiVersion` in `lib/stripe/version.ts` (PAY-006). An endpoint left on the account default sends events shaped for another version and raises `stripe_webhook_version_mismatch`. An endpoint's version can't change: a version move means new snapshot endpoints, moving the signing secrets, then retiring the old ones. The thin Accounts v2 destination has no version and stays. Each route checks one secret, so keep old and new enabled through the move: every event reaches both, and the one whose secret isn't loaded answers 400 and alerts `stripe_webhook_signature_failure`. Retire the old one once a test-mode payment has settled on the new one. Before deploying a version change, wait until the checkout-recovery queue is empty: a stored Session request replayed under the new version can be refused (recovery then releases the hold).
 
 | Endpoint | Listens to | Events | Secret |
 | --- | --- | --- | --- |
@@ -96,6 +96,7 @@ Subscribe only these; the Connect endpoint no longer needs `account.updated`. If
 1. `purchase_dispute_opened` names the dispute and its due date. Open it in Stripe's Dashboard (the staff order page links to it).
 2. Review the staged draft, add anything the society tells you (for example messages with the buyer), and submit before the due date. Thunderstrux keeps only the current refund policy, so remove it if the society changed it after the sale. A buyer refunded and disputing anyway: submit with the refund lines.
 3. `dispute_evidence_not_staged`: nothing was staged (often a key without Disputes write). Fill the same facts in from the staff order page.
+4. `purchase_dispute_evidence_due` on a dispute in `appeal_needs_response` is an appeal: nothing is staged, because Stripe takes no ordinary evidence then. Decide in Stripe whether to file one (PAY-068).
 Optionally the edge may accept webhook requests only from Stripe's published IP ranges; signatures stay the real protection.
 
 ## Workers and schedules

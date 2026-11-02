@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-31
+last-reviewed: 2026-11-02
 owner: engineering
 related: ["[[Payment Lifecycle]]", "[[Stripe Payments and Connect]]", "[[Memberships and Merchandise]]", "[[Audit Coverage]]"]
 sources: [lib/payments/order-refunds.ts, lib/payments/compensation-refunds.ts, lib/payments/purchase-disputes.ts, lib/payments/dispute-evidence.ts, lib/payments/fraud-warnings.ts, lib/payments/dispute-reversals.ts, lib/commerce/payment-recovery.ts, lib/orders/order-detail.ts]
@@ -125,6 +125,7 @@ A payment Stripe took that the order couldn't honour ([[Payment Lifecycle#Fulfil
 
 - Verification: the dispute's PaymentIntent resolves to the order as above, and the dispute is on that payment's charge, in its currency and no larger than the order. Otherwise nothing changes; log `stripe.dispute.unmatched` and alert `purchase_dispute_unmatched`.
 - Stripe's status maps to `OrderDisputeStatus`: `lost` → `lost`; `won` and `prevented` → `won`; anything else `open`. An inquiry (`warning_*`, a bank's question before any chargeback) doesn't count: it sets no `disputeStatus`, puts no ticket under review and blocks no refund; its alert and draft answer stay, and payouts hold the sale while it is open (PAY-037). A chargeback that follows puts the tickets under review then.
+- An appeal (`appeal_needs_response`, `appeal_under_review`) reads as `open`, so it neither assumes a loss nor undoes one: nothing a lost dispute did runs again, and refunds and the payout stay fenced until Stripe says `won` or `lost` (PAY-068).
 - **Worst of:** a charge can carry several disputes. The order's `disputeStatus` is the worst one: `lost`, then `open`, then `won` (SEC-024). One won dispute can't release another's fence or payout hold.
 
 | | Ticket order | Commerce order |
@@ -139,7 +140,7 @@ A payment Stripe took that the order couldn't honour ([[Payment Lifecycle#Fulfil
   - Tickets: buyer name and email (`retainedBuyerIdentity`), what was bought, the event date, each ticket's door scan time (or that none was scanned, or that none was issued), the society's refund policy as checkout shows it today, and a summary: paid time, when the tickets were emailed, and every refund already made (Thunderstrux refunds with their Stripe ids and dates, a compensation refund, refunds made outside Thunderstrux). The policy is today's wording, since it isn't kept per sale. The refund lines answer a buyer who was refunded and disputed anyway.
   - Commerce: buyer, the lines bought, the refund policy, paid time, a collected merchandise pickup, and refunds already made.
   - Any failure (for example a key without Disputes write) logs `stripe.dispute.evidence_not_staged` and alerts `dispute_evidence_not_staged`; it never fails the webhook, because the event is already journalled.
-- **Reminder:** the monitor alerts `purchase_dispute_evidence_due` for each dispute still `needs_response` or `warning_needs_response` whose `evidenceDueBy` is within 72 hours, every 6 hours, until a submitted answer moves Stripe's status and its `charge.dispute.updated` event updates `providerStatus`.
+- **Reminder:** the monitor alerts `purchase_dispute_evidence_due` for each dispute still `needs_response`, `warning_needs_response` or `appeal_needs_response` whose `evidenceDueBy` is within 72 hours, every 6 hours, until a submitted answer moves Stripe's status and its `charge.dispute.updated` event updates `providerStatus`.
 
 **Restore** (`restore_tickets`, reason 8 to 500): allowed only when `disputeStatus = won` and every unresolved dispute is won. It resolves them all together, puts `disputed` tickets back to `active`, clears `disputeStatus` and appends `dispute_resolved`. Later events for a resolved dispute are history only. A dispute is not a refund.
 

@@ -108,6 +108,48 @@ describe("disputes", () => {
     expect(chargeback.tickets.every((ticket) => ticket.validity === "refund_review")).toBe(true);
   });
 
+  // PAY-068: Stripe hasn't published where an appeal falls, so both orders must be safe.
+  describe("an appeal", () => {
+    const deliver = async (fixture: Fixture, status: string) => {
+      disputeNow(fixture, status);
+      expect((await postSigned(signedEvent("charge.dispute.updated", disputeObject(fixture, status)))).status).toBe(200);
+    };
+    const disputeRow = (fixture: Fixture) => prisma.purchaseDispute.findUniqueOrThrow({ where: { stripeDisputeId: `dp_${fixture.order.id}` } });
+
+    test("before any loss assumes none: tickets stay under review, nothing is taken back, and no ordinary evidence goes to Stripe", async () => {
+      const fixture = await paidOrder();
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      await deliver(fixture, "needs_response");
+      stripe.disputeUpdate.mockClear();
+      await deliver(fixture, "appeal_needs_response");
+      const appealed = await orderState(fixture.order.id);
+      expect(appealed.disputeStatus).toBe("open");
+      expect(appealed.tickets.every((ticket) => ticket.validity === "refund_review")).toBe(true);
+      expect(await disputeRow(fixture)).toMatchObject({ providerStatus: "appeal_needs_response", reversalStatus: null, closedAt: null });
+      expect(stripe.disputeUpdate).not.toHaveBeenCalled();
+    });
+
+    test("after a loss undoes nothing and keeps refunds fenced, and losing it repeats nothing", async () => {
+      const fixture = await paidOrder();
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const stock = async () => (await prisma.ticketType.findUniqueOrThrow({ where: { id: fixture.event.ticketTypes[0].id }, select: { quantity: true } })).quantity;
+      await deliver(fixture, "lost");
+      const onSale = await stock();
+      await deliver(fixture, "appeal_needs_response");
+      await deliver(fixture, "appeal_under_review");
+      const appealed = await orderState(fixture.order.id);
+      expect(appealed.disputeStatus).toBe("open");
+      expect(appealed.tickets).toEqual([{ validity: "void", validityReason: "dispute_lost" }, { validity: "void", validityReason: "dispute_lost" }]);
+      expect((await disputeRow(fixture)).reversalStatus).toBe("pending");
+      await expect(requestOrderRefund(refundInput(fixture))).rejects.toMatchObject({ kind: "disputed" });
+
+      await deliver(fixture, "lost");
+      expect((await orderState(fixture.order.id)).disputeStatus).toBe("lost");
+      expect(await stock()).toBe(onSale);
+      expect((await disputeRow(fixture)).reversalStatus).toBe("pending");
+    });
+  });
+
   // PAY-036: the society kept a won dispute's money, so the order can still be refunded.
   test("a won dispute doesn't block a refund", async () => {
     const fixture = await paidOrder();

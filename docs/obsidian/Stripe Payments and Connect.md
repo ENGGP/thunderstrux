@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-27
+last-reviewed: 2026-11-02
 owner: engineering
 related: ["[[Payment Lifecycle]]", "[[E2E and Staging Payments]]", "[[Production Operations]]", "[[Troubleshooting]]"]
 sources: [components/settings/stripe-connect-settings.tsx, lib/stripe/index.ts, lib/stripe/version.ts, lib/stripe/connect.ts, lib/stripe/fees.ts, lib/stripe/http.ts, lib/payouts/payouts.ts, lib/payouts/release.ts, lib/payments/checkout-creation.ts, lib/commerce/checkout.ts, app/api/payments/webhook/route.ts, app/api/stripe/connect/webhook/route.ts, app/api/stripe/accounts/webhook/route.ts]
@@ -128,7 +128,7 @@ Both flows build the request, store it on `CheckoutAttempt.providerRequest`, the
 | `custom_text.submit.message` | "We're holding your tickets until {time} {zone}. After that they go back on sale." | "We're holding your order until … After that it's released." |
 
 - URLs use the trusted origin the buyer bought from, else `getAppUrl()`. A guest's order page opens only with their session cookie, and the cancel page names the order only to its buyer.
-- **Card only:** a completed Session is then paid at once, so fulfilment needs no async payment events. API version `2026-09-30.endive` removed `payment_method_types`.
+- **Card only:** a completed Session is then paid at once, so fulfilment needs no async payment events. The `endive` release removed `payment_method_types`.
 - **Expiry:** Stripe refuses an `expires_at` under 30 minutes after creation, so a shorter hold (PAY-009) is ended by the stale-order job closing the page (`checkout.sessions.expire`). The 60-second margin covers the trip to Stripe and stays under the 2-minute recovery delay, so replaying a request Stripe never saw is refused, or closed by the job, and the hold is released.
 - **Errors:** a definite Stripe refusal (`isDefiniteProviderFailure`: card, invalid request, authentication or permission error; a 429 is uncertain and retried, PAY-035) fails the order. Any other error leaves the attempt `provider_uncertain`, alerts `checkout_session_creation_failure` and answers 202. A Session without a `url` fails the order (`missing_redirect_url`). Ticket checkout also logs `checkout.session.create_started`, `checkout.session.created` and `checkout.session.create_failed`, with metric `checkout_session_create_failures_total`.
 

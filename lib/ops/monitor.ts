@@ -90,7 +90,7 @@ export async function readWorkers(now = new Date()) {
 // answer moves Stripe's status on, and its webhook updates providerStatus, which clears the alert.
 export function readDisputesDue(now = new Date()) {
   return prisma.purchaseDispute.findMany({
-    where: { providerStatus: { in: ["needs_response", "warning_needs_response"] }, evidenceDueBy: { gt: now, lte: new Date(now.getTime() + DISPUTE_DUE_WITHIN_SECONDS * 1000) } },
+    where: { providerStatus: { in: ["needs_response", "warning_needs_response", "appeal_needs_response"] }, evidenceDueBy: { gt: now, lte: new Date(now.getTime() + DISPUTE_DUE_WITHIN_SECONDS * 1000) } },
     orderBy: { evidenceDueBy: "asc" },
     select: { stripeDisputeId: true, orderId: true, commerceOrderId: true, evidenceDueBy: true }
   });

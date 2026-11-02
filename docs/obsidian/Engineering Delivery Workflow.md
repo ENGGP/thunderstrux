@@ -88,7 +88,7 @@ After applicable local validation and review are complete and the PR is ready to
 6. Merge only the reviewed head covered by the recorded local evidence. Switch to local `main`, fetch `origin`, and fast-forward with `git merge --ff-only origin/main`. Then remove the completed branch as step 7 describes.
 7. **Branch and worktree hygiene.** PRs are squash-merged, so a merged branch's commits are never ancestors of `main`, and `git branch --merged` can't tell merged work from unmerged work.
    - Delete a local branch only when `gh pr view <number> --json state,headRefOid` shows `MERGED` and the PR's head equals the branch tip. Check it in the same command as the delete, so a PR that is still open is never closed by removing its branch. A branch with no PR, or whose tip moved after the PR, is unmerged work: keep it, or ask its owner.
-   - GitHub deletes a PR's branch when it merges; after `git fetch --prune`, delete a remaining remote branch only under the same check. Leave bot branches (Renovate) with open PRs alone.
+   - GitHub keeps a PR's branch after it merges, so after `git fetch --prune`, delete the remote branch under the same check. Leave bot branches (Renovate) with open PRs alone.
    - Never delete a branch that is checked out, and never switch another session's checkout or the folder the dev app serves from. Switching the dev folder to newer code can load features ahead of their migrations.
    - Remove a worktree you made with `git worktree remove` once it is clean, never with `--force` over changes. Worktrees the desktop app made for sessions are closed under section 6, with the owner's yes.
 

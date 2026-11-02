@@ -138,9 +138,9 @@ Each test starts from an empty `_test` database (`tests/helpers/db-reset.ts`). T
 | Mode | Reset | Fixture password hash |
 | --- | --- | --- |
 | Original (flag unset, as in a focused run) | One `TRUNCATE ... RESTART IDENTITY CASCADE` of a hand-kept table list | `password123` hashed per user (`tests/helpers/test-data.ts`) |
-| Fast (`THUNDERSTRUX_FAST_TEST_RESET=1`; `docker-compose.e2e.yml` sets it, so every baseline, browser and staging run uses it) | Children-first `DELETE`, ordered once per test file from the database's foreign keys, so no `ON DELETE` action or update-guarding trigger fires; the organisation logo/cover ↔ asset cycle is broken by nulling those columns; a cycle with nothing nullable falls back to `TRUNCATE` | One shared bcrypt hash per test file |
+| Fast (`THUNDERSTRUX_FAST_TEST_RESET=1`; `docker-compose.e2e.yml` sets it, so the baseline uses both columns; browser and staging runs never reset, so they use only the hash) | Children-first `DELETE`, ordered once per test file from the database's foreign keys, so no `ON DELETE` action or update-guarding trigger fires; the organisation logo/cover ↔ asset cycle is broken by nulling those columns; a cycle with nothing nullable falls back to `TRUNCATE` | One shared bcrypt hash per test file |
 
-- A baseline takes 5 to 9 minutes: about 3 for the integration suite, and the rest is the build, guards and typecheck, which depend on Docker's cache.
+- A baseline takes 5 to 9 minutes: about 3 for the integration suite, and the rest is the build, guards, typecheck and lint, which depend on Docker's cache.
 - The original mode's table list is maintained by hand: a new model must be added, or `tests/integration/test-database-safety.test.ts` fails, because it runs both modes in every run. The fast path reads tables from the database.
 - Fast-path limits: no sequence reset (ids are cuids); the plan is computed once per test file; a trigger that blocks `DELETE` makes the reset fail loudly; fixture users share one hash; `DELETE` doesn't wait out open transactions as `TRUNCATE`'s table lock does, so work a test leaves running can reach the next test; `DELETE` also keeps a table's planner statistics, which `TRUNCATE` clears, so a query's plan can change partway through a run (that is how DEF-096 surfaced).
 - For a focused run, pass `THUNDERSTRUX_FAST_TEST_RESET=1` with `-e`.

@@ -117,6 +117,7 @@ State lives in [[Issue and Defect Register]]; H01–H06 are defined in `docs/MVP
 | H06 real-user testing and release decision | pilot societies |
 | OPS-005 storage | Spaces test values set and the staging storage smoke passing |
 | LEGAL-001 | terms and a reviewed privacy policy |
+| Independent review | someone other than the author reviews the authentication, tenancy, payment, migration, security and operations changes, as [[Engineering Delivery Workflow]] requires before production. `/code-review` doesn't count |
 | Support address and owner | founder decision |
 | Live money | founder approval after the critical gates pass |
 

@@ -136,12 +136,13 @@ Each test starts from an empty `_test` database (`tests/helpers/db-reset.ts`). T
 
 | Mode | Reset | Fixture password hash |
 | --- | --- | --- |
-| Default (on) | One `TRUNCATE ... RESTART IDENTITY CASCADE` of a hand-kept table list | `password123` hashed per user (`tests/helpers/test-data.ts`) |
-| Fast (`THUNDERSTRUX_FAST_TEST_RESET=1`; nothing sets it) | Children-first `DELETE`, ordered once per run from the database's foreign keys, so no `ON DELETE` action or update-guarding trigger fires; the organisation logo/cover ↔ asset cycle is broken by nulling those columns; a cycle with nothing nullable falls back to `TRUNCATE` | One shared bcrypt hash per run |
+| Original (flag unset, as in a focused run) | One `TRUNCATE ... RESTART IDENTITY CASCADE` of a hand-kept table list | `password123` hashed per user (`tests/helpers/test-data.ts`) |
+| Fast (`THUNDERSTRUX_FAST_TEST_RESET=1`; `docker-compose.e2e.yml` sets it, so every baseline, browser and staging run uses it) | Children-first `DELETE`, ordered once per test file from the database's foreign keys, so no `ON DELETE` action or update-guarding trigger fires; the organisation logo/cover ↔ asset cycle is broken by nulling those columns; a cycle with nothing nullable falls back to `TRUNCATE` | One shared bcrypt hash per test file |
 
-- The default's table list is maintained by hand: a new model must be added, or `tests/integration/test-database-safety.test.ts` fails. The fast path reads tables from the database.
-- Fast-path limits: no sequence reset (ids are cuids); the plan is computed once per run; a trigger that blocks `DELETE` makes the reset fail loudly; fixture users share one hash.
-- To use it in the baseline, add `THUNDERSTRUX_FAST_TEST_RESET: "1"` to the `tests` service environment in `docker-compose.e2e.yml`; for a focused run, pass it with `-e`.
+- A baseline takes about 9 minutes: 5 before the integration suite starts, then about 3 for the suite.
+- The original mode's table list is maintained by hand: a new model must be added, or `tests/integration/test-database-safety.test.ts` fails, because it runs both modes in every run. The fast path reads tables from the database.
+- Fast-path limits: no sequence reset (ids are cuids); the plan is computed once per test file; a trigger that blocks `DELETE` makes the reset fail loudly; fixture users share one hash; `DELETE` doesn't wait out open transactions as `TRUNCATE`'s table lock does, so work a test leaves running can reach the next test.
+- For a focused run, pass `THUNDERSTRUX_FAST_TEST_RESET=1` with `-e`.
 
 ## Stripe on the dev app
 

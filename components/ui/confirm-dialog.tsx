@@ -78,7 +78,12 @@ export function ConfirmDialog({
             <Button
               busy={busy}
               busyLabel="Working…"
-              onClick={onConfirm}
+              // A refusal the same as the last one doesn't change `error`, so the effect
+              // won't run; focus it after the press too.
+              onClick={() => {
+                onConfirm();
+                requestAnimationFrame(() => errorRef.current?.focus());
+              }}
               type="button"
               variant={destructive ? "dangerSolid" : "primary"}
             >

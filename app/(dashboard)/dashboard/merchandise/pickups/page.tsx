@@ -120,7 +120,7 @@ async function Pickups({ organisationId, orgSlug, stage, query, cursor, directio
     stage === "review" ? "Don't hand this over yet." : stage !== "prepare" && order.step ? `${when(order.step.at)}${stage === "collected" ? ` by ${order.step.by}` : ""}` : when(order.createdAt);
   const action = (order: PickupRow, wide = false) =>
     working ? (
-      <PickupAction after={href(stage, query, cursor, direction, order.id)} order={order} orgSlug={orgSlug} stage={stage} step={stage === "prepare" ? "ready" : "collected"} wide={wide} />
+      <PickupAction after={href(stage, query, cursor, direction, order.id)} order={order} orgSlug={orgSlug} stage={stage} row={!wide} step={stage === "prepare" ? "ready" : "collected"} wide={wide} />
     ) : stage === "collected" ? (
       <StatusBadge status="collected" />
     ) : null;

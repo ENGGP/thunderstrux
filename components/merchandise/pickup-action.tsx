@@ -12,7 +12,8 @@ type Order = { id: string; reference: string; buyer: string; version: number; li
 // Mark ready or Mark collected for one pickup (T28a), confirmed first. The
 // result is shown by the page from the server (?done=); a step someone else
 // took first is a warning here and nothing changes.
-export function PickupAction({ orgSlug, order, step, stage, wide = false, after }: { orgSlug: string; order: Order; step: "ready" | "collected"; stage: string; wide?: boolean; after?: string }) {
+// `row`: one of many in the Pickups table, so secondary; elsewhere it is the page's main action.
+export function PickupAction({ orgSlug, order, step, stage, wide = false, row = false, after }: { orgSlug: string; order: Order; step: "ready" | "collected"; stage: string; wide?: boolean; row?: boolean; after?: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -43,8 +44,7 @@ export function PickupAction({ orgSlug, order, step, stage, wide = false, after 
     <div className={`grid gap-2 ${wide ? "" : "justify-items-end"}`}>
       {/* The spoken name starts with the visible words, so voice control finds it (WCAG 2.5.3). */}
       {/* relative keeps the hidden words inside the button, so they can't widen a scrolling table. */}
-      {/* Secondary in the table, so a page of rows isn't a wall of primaries. */}
-      <Button className={wide ? "relative w-full" : "relative"} onClick={() => setOpen(true)} size={wide ? "lg" : "sm"} type="button" variant={wide ? "primary" : "secondary"}>
+      <Button className={wide ? "relative w-full" : "relative"} onClick={() => setOpen(true)} size={wide ? "lg" : "sm"} type="button" variant={row ? "secondary" : "primary"}>
         {ready ? "Mark ready" : "Mark collected"}<span className="sr-only"> for order {order.reference}</span>
       </Button>
       {error ? (

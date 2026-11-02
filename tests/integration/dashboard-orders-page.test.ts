@@ -243,6 +243,11 @@ describe("dashboard orders page", () => {
     expect(under.get(cancelled.id)).toBeUndefined();
     const all = await getGroupedOrganisationOrdersWithContext(organisation.id, "all", undefined, { limit: 100 });
     expect(all.groups.flatMap((group) => group.orders).map((order) => order.id)).toContain(cancelled.id);
+    // A full name finds the buyer, word by word.
+    await prisma.user.update({ where: { id: member.id }, data: { firstName: "Samira", lastName: "Haddad" } });
+    const named = await getGroupedOrganisationOrdersWithContext(organisation.id, "paid", undefined, { limit: 100, search: "samira haddad" });
+    expect(named.groups.flatMap((group) => group.orders).map((order) => order.id)).toContain(orders.paid.id);
+    expect((await getGroupedOrganisationOrdersWithContext(organisation.id, "paid", undefined, { limit: 100, search: "samira nobody" })).groups).toEqual([]);
     // The overview's count is the same Needs review.
     expect(await prisma.order.count({ where: { event: { organisationId: organisation.id }, ...ticketReviewWhere } })).toBe(4);
   });

@@ -82,16 +82,24 @@ const statusWhere: Record<Exclude<OrderStatusFilter, "all">, Prisma.OrderWhereIn
   pending: { status: "pending" }
 };
 
-// Buyer name, email or the six-character order reference (UI-066).
+// Buyer name, email or the six-character order reference (UI-066). Each word of a
+// full name ("Sam Lee") must match some name field, as check-in search does.
 function orderSearchWhere(search: string): Prisma.OrderWhereInput {
-  const contains = { contains: search, mode: "insensitive" as const };
-  return {
-    OR: [
+  const buyerMatches = (text: string): Prisma.OrderWhereInput[] => {
+    const contains = { contains: text, mode: "insensitive" as const };
+    return [
       { buyerEmailSnapshot: contains },
       { buyerFirstNameSnapshot: contains },
       { buyerLastNameSnapshot: contains },
       { buyerDisplayNameSnapshot: contains },
-      { buyerIdentityCapturedAt: null, user: { OR: [{ email: contains }, { firstName: contains }, { lastName: contains }, { displayName: contains }] } },
+      { buyerIdentityCapturedAt: null, user: { OR: [{ email: contains }, { firstName: contains }, { lastName: contains }, { displayName: contains }] } }
+    ];
+  };
+  const words = search.split(/\s+/).filter(Boolean);
+  return {
+    OR: [
+      ...buyerMatches(search),
+      ...(words.length > 1 ? [{ AND: words.map((word) => ({ OR: buyerMatches(word) })) }] : []),
       ...(/^[a-z0-9]{6}$/i.test(search) ? [{ id: { endsWith: search.toLowerCase() } }] : [])
     ]
   };
@@ -283,7 +291,7 @@ export async function getGroupedOrganisationOrdersWithContext(
       isManuallyRefunded: order.isManuallyRefunded,
       disputeStatus: order.disputeStatus,
       buyerEmail: buyer?.email ?? null,
-      buyerName: buyer ? buyer.displayName ?? ([buyer.firstName, buyer.lastName].filter(Boolean).join(" ") || null) : null
+      buyerName: buyer ? buyer.displayName || [buyer.firstName, buyer.lastName].filter(Boolean).join(" ") || null : null
     });
 
     groups.set(order.eventId, group);

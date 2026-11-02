@@ -131,10 +131,13 @@ export default async function OrganisationOrdersPage({
     }
   }
 
-  const eventOptions = await listEventOptions(organisation.id, event?.id);
-  const reviewCount = family === "tickets"
-    ? await prisma.order.count({ where: { event: { organisationId: organisation.id }, ...(event ? { eventId: event.id } : {}), ...ticketReviewWhere } })
-    : 0;
+  // The count follows the event asked for, so another society's id counts nothing, as its list shows.
+  const [eventOptions, reviewCount] = await Promise.all([
+    listEventOptions(organisation.id, event?.id),
+    family === "tickets"
+      ? prisma.order.count({ where: { event: { organisationId: organisation.id }, ...(eventId ? { eventId } : {}), ...ticketReviewWhere } })
+      : 0
+  ]);
 
   // Every filter link keeps the other filters.
   function ordersHref(changes: Record<string, string | undefined>) {

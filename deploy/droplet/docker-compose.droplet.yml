@@ -15,7 +15,7 @@ services:
   # The only public entry: HTTPS (Let's Encrypt), request limits and the one
   # client address the app trusts for rate limiting (SEC-002).
   caddy:
-    image: caddy:2.11.7@sha256:504a44d7d74bd2bc28a66afc4774912fc21223ca8a67734af1c54ab2f999b489
+    image: caddy:2.11.7@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
     restart: unless-stopped
     read_only: true
     cap_drop: ["ALL"]
@@ -52,7 +52,7 @@ services:
   # matches the managed cluster's PostgreSQL 16. Prisma's "schema" URL
   # parameter is dropped because pg_dump rejects it.
   backup:
-    image: postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
+    image: postgres:16@sha256:5db6dac2ef5dcff512f4f00a009c3c332b9f2f28f24277175bf3e4a3d02ef83a
     profiles: ["tools"]
     restart: "no"
     read_only: true

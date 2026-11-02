@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/button";
 import { PhoneActionBar, useActionBelow, useResetOnRestore } from "@/components/purchases/phone-action-bar";
 import { TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
+import { QuantityStepper } from "@/components/ui/quantity-stepper";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { defaultHoldMinutes } from "@/lib/checkout-hold";
-import { formatPrice, membershipLabel } from "@/lib/format";
+import { formatPrice, listingPriceLabel, membershipLabel } from "@/lib/format";
 import { maxTicketsPerOrder } from "@/lib/validators/payments";
 
 type TicketType = {
@@ -45,9 +46,10 @@ function isUnavailable(ticketType: TicketType) {
 
 const orderLimit = (ticketType?: TicketType) => (ticketType?.memberPriced ? 1 : maxTicketsPerOrder);
 
+// The box is #tickets: the phone bar scrolls to it, and checkout sends a buyer back to it.
 function Box({ badge, children }: { badge?: ReactNode; children: ReactNode }) {
   return (
-    <section aria-labelledby="tickets-heading" className="grid gap-4 rounded-card border border-line bg-surface p-5">
+    <section aria-labelledby="tickets-heading" className="grid gap-4 rounded-card border border-line bg-surface p-5" id="tickets">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-xl font-semibold text-ink" id="tickets-heading">Tickets</h2>
         {badge ?? <span className="text-caption text-ink-soft">Prices in AUD</span>}
@@ -67,6 +69,7 @@ export function PublicTicketPurchase({
   viewer = "member",
   salesOpen = true,
   cancelled = false,
+  ended = false,
   salesCloseLabel,
   memberPlan = null,
   societySlug,
@@ -84,6 +87,8 @@ export function PublicTicketPurchase({
   salesOpen?: boolean;
   // The society cancelled the event (EVT-004).
   cancelled?: boolean;
+  // The event is over, worked out on the server so the page and the box agree.
+  ended?: boolean;
   salesCloseLabel?: string;
   // The organiser's draft preview: the same box with buying turned off.
   preview?: boolean;
@@ -98,9 +103,17 @@ export function PublicTicketPurchase({
   const [selectedId, setSelectedId] = useState(
     kept?.id ?? ticketTypes.find((ticketType) => !isUnavailable(ticketType))?.id ?? ""
   );
-  const [quantity, setQuantity] = useState(() =>
-    kept && Number.isInteger(initial?.quantity) ? Math.max(1, Math.min(initial?.quantity ?? 1, kept.availableQuantity, orderLimit(kept))) : 1
-  );
+  const asked = kept && Number.isInteger(initial?.quantity) ? (initial?.quantity ?? 1) : null;
+  const [quantity, setQuantityState] = useState(() => (kept && asked !== null ? Math.max(1, Math.min(asked, kept.availableQuantity, orderLimit(kept))) : 1));
+  // A buyer sent back with more than they can have is told why the number dropped, until they change it.
+  const [lowered, setLowered] = useState(() => (kept && asked !== null && asked > Math.min(kept.availableQuantity, orderLimit(kept)) ? asked : null));
+  // Until the buyer chooses, the phone bar offers the event's prices, not the default ticket (PUB-03).
+  const [touched, setTouched] = useState(Boolean(kept));
+  const setQuantity = (next: number) => {
+    setQuantityState(next);
+    setTouched(true);
+    setLowered(null);
+  };
   const [leaving, setLeaving] = useState(false);
   const [codeOpen, setCodeOpen] = useState(Boolean(code?.message));
   const [codeText, setCodeText] = useState(code?.message ? code.text : "");
@@ -195,20 +208,20 @@ export function PublicTicketPurchase({
 
   if (cancelled) {
     return (
-      <Box badge={<StatusBadge label="Event cancelled" status="cancelled" />}>
+      <Box badge={<StatusBadge status="event-cancelled" />}>
         <p className="text-ui text-ink">{society} cancelled this event, so tickets aren&apos;t on sale.</p>
-        <p className="text-sm text-ink-soft">Had a ticket? Paid orders are refunded in full and free registrations cancelled; we&apos;ve emailed every ticket holder.</p>
+        {preview ? null : <p className="text-sm text-ink-soft">Had a ticket? Your order is in <Link className="font-semibold text-brand underline underline-offset-4" href="/purchases">Purchases</Link>.</p>}
       </Box>
     );
   }
 
   if (!salesOpen) {
     return (
-      <Box badge={<StatusBadge status="sales-closed" />}>
-        <p className="text-ui text-ink">{salesCloseLabel ? `Ticket sales closed on ${salesCloseLabel}.` : "Ticket sales have closed."}</p>
+      <Box badge={<StatusBadge status={ended ? "ended" : "sales-closed"} />}>
+        <p className="text-ui text-ink">{ended ? "This event has ended." : salesCloseLabel ? `Ticket sales closed on ${salesCloseLabel}.` : "Ticket sales have closed."}</p>
         <p className="text-sm text-ink-soft">
-          Already have a ticket? It&apos;s in{" "}
-          <Link className="font-semibold text-brand underline underline-offset-4" href="/tickets">
+          {ended ? "Had a ticket? It's under Past in " : "Already have a ticket? It's in "}
+          <Link className="font-semibold text-brand underline underline-offset-4" href={ended ? "/tickets?view=past" : "/tickets"}>
             My tickets
           </Link>
           .
@@ -222,6 +235,15 @@ export function PublicTicketPurchase({
     if (!checkoutHref) return;
     setLeaving(true);
     router.push(href);
+  };
+  // Distinct and lowest first, as the event's card shows them.
+  const openPrices = [...new Set(ticketTypes.filter((ticketType) => !isUnavailable(ticketType)).map((ticketType) => ticketType.price))].sort((a, b) => a - b);
+  // The untouched bar takes the buyer to the choice, so nobody checks out a ticket they never picked.
+  const showTickets = () => {
+    setTouched(true);
+    const box = document.getElementById("tickets");
+    box?.scrollIntoView({ block: "start" });
+    (box?.querySelector<HTMLInputElement>("input:checked:not(:disabled)") ?? box?.querySelector<HTMLInputElement>("input:not(:disabled)"))?.focus({ preventScroll: true });
   };
   const primaryLabel = viewer === "anonymous" ? "Continue as guest" : free ? "Get free tickets" : "Get tickets";
   const primaryHref = viewer === "anonymous" ? `${checkoutHref}&guest=1` : checkoutHref;
@@ -393,20 +415,25 @@ export function PublicTicketPurchase({
 
       {selected ? (
         <>
-          <div className="w-40">
-            <TextInput
-              disabled={leaving}
-              error={validQuantity ? undefined : selected.memberPriced ? "Choose 1 at the member price." : `Choose 1 to ${Math.max(maxQuantity, 1)}.`}
-              hint={selected.memberPriced ? "1 at the member price" : `Up to ${Math.max(Math.min(maxQuantity, maxTicketsPerOrder), 1)} per order`}
-              inputMode="numeric"
-              label="Quantity"
-              max={Math.max(maxQuantity, 1)}
-              min={1}
-              onChange={(event) => setQuantity(Number(event.target.value))}
-              type="number"
-              value={quantity}
-            />
-          </div>
+          {lowered ? (
+            <Notice tone="info">
+              <p>
+                {selected.memberPriced
+                  ? `Your member price covers one ticket for this event, so we changed ${lowered} to 1. Get more at the standard price in a second checkout.`
+                  : lowered > selected.availableQuantity
+                    ? `Only ${selected.availableQuantity} left, so we changed ${lowered} to ${selected.availableQuantity}.`
+                    : `One order holds up to ${maxTicketsPerOrder}, so we changed ${lowered} to ${maxTicketsPerOrder}.`}
+              </p>
+            </Notice>
+          ) : null}
+          <QuantityStepper
+            disabled={leaving}
+            error={validQuantity ? undefined : selected.memberPriced ? "Choose 1 at the member price." : `Choose 1 to ${Math.max(maxQuantity, 1)}.`}
+            hint={selected.memberPriced ? "1 at the member price" : `Up to ${Math.max(Math.min(maxQuantity, maxTicketsPerOrder), 1)} per order`}
+            max={Math.max(maxQuantity, 1)}
+            onChange={setQuantity}
+            value={quantity}
+          />
           <p className="flex justify-between gap-3 border-t border-line pt-4 text-sm text-ink-soft">
             <span>{validQuantity ? `${quantity} × ${selected.name}` : selected.name}</span>
             <span className="font-semibold tabular-nums text-ink">{validQuantity ? formatPrice(selected.price * quantity) : "–"}</span>
@@ -419,15 +446,28 @@ export function PublicTicketPurchase({
         <PhoneActionBar
           show={actionBelow}
           summary={
-            <>
-              <span className="truncate text-caption text-ink-soft">{quantity} × {selected.name}</span>
-              <span className="truncate text-lg font-semibold tabular-nums text-ink">{formatPrice(selected.price * quantity)}</span>
-            </>
+            touched ? (
+              <>
+                <span className="truncate text-caption text-ink-soft">{quantity} × {selected.name}</span>
+                <span className="truncate text-lg font-semibold tabular-nums text-ink">{formatPrice(selected.price * quantity)}</span>
+              </>
+            ) : (
+              <>
+                <span className="truncate text-caption text-ink-soft">Tickets</span>
+                <span className="truncate text-lg font-semibold tabular-nums text-ink">{listingPriceLabel(openPrices)}</span>
+              </>
+            )
           }
         >
-          <Button busy={leaving} busyLabel="Opening…" onClick={() => go(primaryHref)} size="lg" type="button">
-            {primaryLabel}
-          </Button>
+          {touched ? (
+            <Button busy={leaving} busyLabel="Opening…" onClick={() => go(primaryHref)} size="lg" type="button">
+              {primaryLabel}
+            </Button>
+          ) : (
+            <Button onClick={showTickets} size="lg" type="button">
+              {openPrices.every((price) => price === 0) ? "Get free tickets" : "Get tickets"}
+            </Button>
+          )}
         </PhoneActionBar>
       ) : null}
     </Box>

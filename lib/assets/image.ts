@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import sharp from "sharp";
 
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+export const maxStoredEdge = 2048;
 export class AssetError extends Error {
   constructor(readonly status: 400 | 404 | 409 | 413 | 429 | 503, message: string) { super(message); }
 }
@@ -56,7 +57,13 @@ export async function sanitiseImage(bytes: Buffer, declaredType: string) {
     const metadata = await image.metadata();
     if (!metadata.width || !metadata.height || metadata.width > 4096 || metadata.height > 4096 || (metadata.pages ?? 1) !== 1)
       throw new AssetError(400, "Images must be static and no larger than 4096 by 4096 pixels");
-    const { data, info } = await image.rotate().webp({ quality: 85 }).toBuffer({ resolveWithObject: true });
+    // Stored at most 2048px on the longest side: every page shows the stored image (next/image is off), and
+    // a phone at 3x needs no more for a full-width hero (PERF-004 tracks sized copies for lists).
+    const { data, info } = await image
+      .rotate()
+      .resize({ width: maxStoredEdge, height: maxStoredEdge, fit: "inside", withoutEnlargement: true })
+      .webp({ quality: 85 })
+      .toBuffer({ resolveWithObject: true });
     if (data.length > MAX_IMAGE_BYTES) throw new AssetError(413, "Processed image is too large");
     return { bytes: data, width: info.width, height: info.height, byteSize: data.length, sha256: createHash("sha256").update(data).digest("hex") };
   } catch (error) {

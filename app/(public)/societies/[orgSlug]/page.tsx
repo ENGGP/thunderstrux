@@ -6,7 +6,10 @@ import { EventCard } from "@/components/events/event-card";
 import { ProductTile } from "@/components/merchandise/product-tile";
 import { SocietyHeader } from "@/components/organisations/society-header";
 import { SocietyJoinCard } from "@/components/organisations/society-join-card";
+import { buttonClasses } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { appUrl } from "@/lib/app-url";
 import { listingAvailability } from "@/lib/events/public-events";
 import { formatPrice, formatTerm } from "@/lib/format";
 import { membershipOffers } from "@/lib/memberships/offers";
@@ -14,9 +17,21 @@ import { shopProducts } from "@/lib/merchandise/shop";
 import { zoneCity } from "@/lib/zoned-time";
 import { societyViewer } from "./viewer";
 export const dynamic = "force-dynamic";
+// Societies put this link in their Instagram bio: the preview names them, says what they do and shows their cover.
 export async function generateMetadata({ params }: { params: Promise<{ orgSlug: string }> }): Promise<Metadata> {
   const organisation = await publicOrganisation((await params).orgSlug);
-  return organisation ? { title: organisation.name } : {};
+  if (!organisation) return {};
+  const origin = appUrl();
+  const description = (organisation.description || `Events, memberships and merchandise from ${organisation.name}.`).slice(0, 200);
+  const image = organisation.coverAssetId ?? organisation.logoAssetId;
+  const images = image ? [`/api/public/assets/${image}`] : undefined;
+  return {
+    title: organisation.name,
+    description,
+    ...(origin ? { metadataBase: new URL(origin) } : {}),
+    openGraph: { title: organisation.name, description, type: "website", siteName: "Thunderstrux", images },
+    twitter: { card: organisation.coverAssetId ? "summary_large_image" : "summary", title: organisation.name, description, images }
+  };
 }
 export default async function OrganisationDetailsPage({
   params,
@@ -47,15 +62,16 @@ export default async function OrganisationDetailsPage({
           organisation={organisation}
         />
 
-        <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-          <section className="grid content-start gap-5" id="overview">
-            <h2 className="text-2xl font-semibold text-ink">About this society</h2>
-            <p className="max-w-[70ch] whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">
-              {organisation.description || "This society hasn't added a description yet."}
-            </p>
-          </section>
+        {/* No description: no empty About to read, just the join card. */}
+        <div className={`mt-8 grid gap-8 ${organisation.description ? "lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]" : "max-w-read"}`}>
+          {organisation.description ? (
+            <section className="grid content-start gap-5" id="overview">
+              <h2 className="text-2xl font-semibold text-ink">About this society</h2>
+              <p className="max-w-[70ch] whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">{organisation.description}</p>
+            </section>
+          ) : null}
 
-          <SocietyJoinCard joinState={joinState} organisation={organisation} />
+          <SocietyJoinCard hasMemberships={offers.length > 0} joinState={joinState} organisation={organisation} />
         </div>
 
         <section aria-labelledby="events-heading" className="mt-12 grid gap-5" id="events">
@@ -68,9 +84,15 @@ export default async function OrganisationDetailsPage({
             ) : null}
           </div>
           {!organisation.events.length ? (
-            <p className="text-ink-soft">No upcoming events.</p>
+            <EmptyState
+              action={<Link className={buttonClasses({ variant: "secondary" })} href="/events">See what&apos;s on</Link>}
+              icon="calendar"
+              title="No upcoming events"
+            >
+              {organisation.name} hasn&apos;t published its next event yet. Other societies have events coming up.
+            </EmptyState>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {organisation.events.map((event) => (
                 <EventCard
                   availability={availability.get(event.id)}

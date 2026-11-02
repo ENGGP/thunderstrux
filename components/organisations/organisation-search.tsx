@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import { Button, buttonClasses } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
@@ -17,13 +17,15 @@ type SearchOrganisation = {
   joined: boolean;
 };
 
-export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
+// Joining needs a verified email; an unverified member gets the way to verify in place of Join.
+export function OrganisationSearch({ joinedIds, verified = true }: { joinedIds: string[]; verified?: boolean }) {
   const router = useRouter();
   const revision = useRef(0);
   const joinedRevision = useRef(joinedIds);
   const [query, setQuery] = useState("");
   const [organisations, setOrganisations] = useState<SearchOrganisation[]>([]);
-  const [message, setMessage] = useState<string | null>(null);
+  // A join's result shows under the row that was pressed, not at the top of a long list.
+  const [joined, setJoined] = useState<{ slug: string; tone: "success" | "danger"; text: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [joiningSlug, setJoiningSlug] = useState<string | null>(null);
   // A new search shows the skeleton; paging keeps the list until the next page arrives (UI-025).
@@ -89,7 +91,7 @@ export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
     setLoading(null);
     setJoiningSlug(organisation.slug);
     setError(null);
-    setMessage(null);
+    setJoined(null);
 
     try {
       await fetchJson(`/api/orgs/${organisation.slug}/join`, {
@@ -100,12 +102,10 @@ export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
           item.id === organisation.id ? { ...item, joined: true } : item,
         ),
       );
-      setMessage(`Joined ${organisation.name}.`);
+      setJoined({ slug: organisation.slug, tone: "success", text: `Joined ${organisation.name}.` });
       router.refresh();
     } catch (joinError) {
-      setError(
-        getClientErrorMessage(joinError, "Unable to join organisation."),
-      );
+      setJoined({ slug: organisation.slug, tone: "danger", text: getClientErrorMessage(joinError, `Couldn't join ${organisation.name}. Try again.`) });
     } finally {
       setJoiningSlug(null);
     }
@@ -135,11 +135,6 @@ export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
           {error}
         </Notice>
       ) : null}
-      {message ? (
-        <Notice reveal role="status" tone="success">
-          {message}
-        </Notice>
-      ) : null}
 
       {loading === "search" ? (
         <ListSkeleton label="Loading societies" rows={3} />
@@ -151,34 +146,40 @@ export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
         <div className="grid gap-3">
           {organisations.map((organisation) => (
             <article
-              className="flex flex-wrap items-center justify-between gap-4 rounded-card border border-line bg-surface p-5"
+              className="grid gap-3 rounded-card border border-line bg-surface p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
               key={organisation.id}
             >
-              <div>
-                <h2 className="font-medium text-ink">
-                  <Link
-                    className="underline"
-                    href={`/societies/${organisation.slug}`}
-                  >
-                    {organisation.name}
-                  </Link>
-                </h2>
-                <p className="mt-1 text-sm text-ink-muted">
-                  {organisation.slug}
-                </p>
-              </div>
-              <Button
-                busy={joiningSlug === organisation.slug}
-                busyLabel="Joining…"
-                disabled={organisation.joined}
-                onClick={() => {
-                  if (joiningSlug === null) void joinOrganisation(organisation);
-                }}
-                type="button"
-                variant={organisation.joined ? "secondary" : "primary"}
-              >
-                {organisation.joined ? "Joined" : "Join society"}
-              </Button>
+              <h2 className="font-semibold text-ink [overflow-wrap:anywhere]">
+                <Link className="text-brand underline underline-offset-4" href={`/societies/${organisation.slug}`}>
+                  {organisation.name}
+                </Link>
+              </h2>
+              {organisation.joined ? (
+                <Button disabled type="button" variant="secondary">
+                  Joined
+                </Button>
+              ) : verified ? (
+                <Button
+                  busy={joiningSlug === organisation.slug}
+                  busyLabel="Joining…"
+                  onClick={() => {
+                    if (joiningSlug === null) void joinOrganisation(organisation);
+                  }}
+                  type="button"
+                  variant="secondary"
+                >
+                  Join society
+                </Button>
+              ) : (
+                <Link className={buttonClasses({ variant: "secondary" })} href="/verify-email?callbackUrl=%2Fdashboard%2Forganisations">
+                  Verify email to join
+                </Link>
+              )}
+              {joined?.slug === organisation.slug ? (
+                <Notice className="sm:col-span-2" reveal role={joined.tone === "danger" ? "alert" : "status"} tone={joined.tone}>
+                  {joined.text}
+                </Notice>
+              ) : null}
             </article>
           ))}
         </div>

@@ -11,6 +11,7 @@ import {
   requireAccountRole,
   getAccessibleOrganisationsForCurrentAccount,
 } from "@/lib/auth/access";
+import { societiesSellingMemberships } from "@/lib/memberships/offers";
 
 export const metadata: Metadata = { title: "Societies" };
 
@@ -29,14 +30,18 @@ function joinedPage<Row extends { id: string }>(rows: Row[], cursor: string | un
 
 export default async function MemberOrganisationsPage({ searchParams }: { searchParams: Promise<{ cursor?: string; direction?: string }> }) {
   const params = await searchParams;
+  let verified = false;
   try {
-    await requireAccountRole("member");
+    verified = Boolean((await requireAccountRole("member")).emailVerifiedAt);
   } catch (error) {
     if (error instanceof OrganisationAccessError) redirect("/dashboard");
     throw error;
   }
   const organisations = await getAccessibleOrganisationsForCurrentAccount();
-  const { page, previous, next } = joinedPage(organisations, params.cursor, params.direction);
+  const joined = joinedPage(organisations, params.cursor, params.direction);
+  const selling = await societiesSellingMemberships(joined.page.map((organisation) => organisation.id));
+  const { previous, next } = joined;
+  const page = joined.page.map((organisation) => ({ ...organisation, sellsMemberships: selling.has(organisation.id) }));
   const pageHref = (cursor: string, direction: "next" | "prev") => `/dashboard/organisations?${new URLSearchParams({ cursor, direction })}`;
   return (
     <PersonalShell>
@@ -64,6 +69,7 @@ export default async function MemberOrganisationsPage({ searchParams }: { search
       <Card>
         <OrganisationSearch
           joinedIds={organisations.map((organisation) => organisation.id)}
+          verified={verified}
         />
       </Card>
     </PersonalShell>

@@ -209,7 +209,7 @@ test('member staff choose a tenant, retain it during this login and see role-awa
   const second = await createOrganisationAccount();
   await createOrganisationStaff({ organisationId: second.organisation.id, userId: data.manager.id, role: 'finance_manager' });
   await login(page, data.manager.email);
-  await expect(page.getByRole('heading', { name: "Societies you've joined" })).toBeVisible();
+  await expect(page.getByRole('heading', { name: "Overview", exact: true })).toBeVisible();
   const chooser = page.getByLabel('Workspace');
   await chooser.selectOption(data.organisation.id);
   await expect(page.getByText('Current society', { exact: true })).toBeVisible();
@@ -235,11 +235,15 @@ test('member staff choose a tenant, retain it during this login and see role-awa
   await expect(mobile.getByRole('link', { name: 'Orders', exact: true })).toBeVisible();
   await prisma.organisationStaff.updateMany({ where: { userId: data.manager.id, organisationId: second.organisation.id }, data: { status: 'revoked' } });
   await page.reload();
-  await expect(page.getByRole('heading', { name: "Societies you've joined" })).toBeVisible();
+  await expect(page.getByRole('heading', { name: "Overview", exact: true })).toBeVisible();
   await expect(page.getByLabel('Workspace')).toHaveValue('personal');
   await page.goto('/tickets');
   await expect(page.getByRole('heading', { name: 'My tickets', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Sign out' }).click();
+  // On a phone Sign out is inside the Menu, and My tickets stays outside it.
+  // The personal nav names it too, so look in the header.
+  await expect(page.getByRole('banner').getByRole('link', { name: 'My tickets', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Menu', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Menu' }).getByRole('button', { name: 'Sign out' }).click();
   await expect(page).toHaveURL('http://localhost:3100/');
   await login(page, data.manager.email);
   await expect(page.getByLabel('Workspace')).toHaveValue('personal');

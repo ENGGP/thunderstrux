@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { expect, onTestFinished, test, vi } from "vitest";
 import sharp from "sharp";
 import { prisma } from "@/lib/db";
@@ -43,6 +44,13 @@ test("images are structurally checked, oriented/re-encoded and stripped of metad
   await expect(sanitiseImage(Buffer.alloc(5 * 1024 * 1024 + 1), "image/png")).rejects.toThrow();
   const oversized = await sharp({ create: { width: 4097, height: 1, channels: 3, background: "red" } }).png().toBuffer();
   await expect(sanitiseImage(oversized, "image/png")).rejects.toThrow();
+});
+test("a large photo is stored at most 2048px on its longest side, and the stored hash is of what's stored (PERF-004)", async () => {
+  const photo = await sharp({ create: { width: 3000, height: 1000, channels: 3, background: "blue" } }).jpeg().toBuffer();
+  const result = await sanitiseImage(photo, "image/jpeg");
+  expect(await sharp(result.bytes).metadata()).toMatchObject({ width: 2048, height: 683 });
+  expect({ width: result.width, height: result.height, byteSize: result.byteSize }).toEqual({ width: 2048, height: 683, byteSize: result.bytes.length });
+  expect(result.sha256).toBe(createHash("sha256").update(result.bytes).digest("hex"));
 });
 test("multipart reader bounds streamed bytes and accepts one file only", async () => {
   const form = new FormData(); form.set("file", new File([new Uint8Array(await png())], "test.png", { type: "image/png" }));

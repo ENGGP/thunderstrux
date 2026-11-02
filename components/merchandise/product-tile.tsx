@@ -8,7 +8,7 @@ export function ProductTile({ product, society }: { product: ShopProduct; societ
   return (
     <Link className="group grid gap-1.5 text-ink" href={`/societies/${society}/merchandise/${product.id}`}>
       {product.coverAssetId ? (
-        <img alt="" className={`aspect-[4/5] w-full rounded-control border border-line bg-surface-subtle object-cover ${product.soldOut ? "opacity-70" : ""}`} src={`/api/public/assets/${product.coverAssetId}`} />
+        <img alt="" className={`aspect-[4/5] w-full rounded-control border border-line bg-surface-subtle object-cover ${product.soldOut ? "opacity-70" : ""}`} decoding="async" loading="lazy" src={`/api/public/assets/${product.coverAssetId}`} />
       ) : (
         <span aria-hidden="true" className="aspect-[4/5] w-full rounded-control border border-line bg-surface-subtle" />
       )}

@@ -6,10 +6,13 @@ import { SocietyJoin, type JoinState } from "@/components/organisations/society-
 // what joining means, the action, then contact (artboard SocietyPage).
 export function SocietyJoinCard({
   organisation,
-  joinState
+  joinState,
+  hasMemberships = true
 }: {
   organisation: { name: string; slug: string; supportEmail: string | null };
   joinState: JoinState;
+  // Mention paid memberships only when the society sells one.
+  hasMemberships?: boolean;
 }) {
   return (
     <aside className="grid content-start gap-3.5 self-start rounded-card border border-line bg-surface p-5 sm:p-6">
@@ -19,7 +22,7 @@ export function SocietyJoinCard({
           <div role="status">
             <h2 className="text-xl font-semibold text-ink [overflow-wrap:anywhere]">You&apos;ve joined {organisation.name}</h2>
           </div>
-          <p className="text-sm text-ink-soft">You follow its events from your dashboard. A paid membership is separate, and leaving doesn&apos;t cancel one.</p>
+          <p className="text-sm text-ink-soft">Its events show in My societies.{hasMemberships ? " A paid membership is separate, and leaving doesn't cancel one." : ""}</p>
           <Link className="w-fit text-sm font-semibold text-brand underline underline-offset-4" href="/dashboard/organisations">
             Manage in My societies
           </Link>
@@ -27,7 +30,7 @@ export function SocietyJoinCard({
       ) : (
         <>
           <h2 className="text-xl font-semibold text-ink [overflow-wrap:anywhere]">Join {organisation.name}</h2>
-          <p className="text-sm text-ink-soft">Free to join. Follow the society from your dashboard. Memberships with member prices are sold separately.</p>
+          <p className="text-sm text-ink-soft">Free to join, and its events then show in My societies.{hasMemberships ? " Memberships with member prices are sold separately." : ""}</p>
           <SocietyJoin slug={organisation.slug} state={joinState} />
         </>
       )}

@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { prisma } from "@/lib/db";
 
 export const publicProfileSelect = {
@@ -16,7 +17,8 @@ export const publicProfileSelect = {
 // Explore) and counts the rest for "See all", which opens Explore filtered to
 // the society (UI-019).
 export const societyEventsShown = 6;
-export async function publicOrganisation(slug: string) {
+// Once per request: a society page and its metadata both read it before the page decides its 404.
+export const publicOrganisation = cache(async (slug: string) => {
   const upcoming = { status: "published" as const, visibility: "public" as const, cancelledAt: null, endTime: { gt: new Date() } };
   return prisma.organisation.findUnique({
     where: { slug },
@@ -31,4 +33,4 @@ export async function publicOrganisation(slug: string) {
       _count: { select: { events: { where: upcoming } } },
     },
   });
-}
+});

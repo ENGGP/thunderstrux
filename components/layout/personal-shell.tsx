@@ -35,13 +35,14 @@ export function PersonalShell({
   return (
     <div className="min-h-screen bg-paper">
       <div className="mx-auto grid max-w-personal gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-10 lg:py-10">
-        <aside className="grid content-start gap-4 lg:sticky lg:top-24 lg:self-start">
-          <p className="w-fit rounded-tag bg-brand-tint px-2 py-1 text-xs font-semibold text-brand-ink">
+        <aside className="grid min-w-0 content-start gap-4 lg:sticky lg:top-24 lg:self-start">
+          <p className="hidden w-fit rounded-tag bg-brand-tint px-2 py-1 text-xs font-semibold text-brand-ink lg:block">
             Personal
           </p>
+          {/* One row on phones, scrolling sideways like every tab bar, so the page starts near the top. */}
           <nav
             aria-label="Personal navigation"
-            className="flex flex-wrap gap-1 lg:grid"
+            className="-mx-4 flex gap-1 overflow-x-auto px-4 sm:-mx-6 sm:px-6 lg:mx-0 lg:grid lg:overflow-visible lg:px-0"
           >
             {items.map((item) => {
               // A purchase's own page sits under Purchases.

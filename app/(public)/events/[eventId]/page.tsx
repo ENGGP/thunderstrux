@@ -91,6 +91,7 @@ export default async function PublicEventPage({ params, searchParams }: PublicEv
     <main id="main" tabIndex={-1} className="bg-paper">
       <PublicEventView
         code={buyerCode && { text: buyerCode.text, gives: code ? describeCode(code, unlocked?.name) : null, message: buyerCode.message }}
+        ended={event.endTime.getTime() <= Date.now()}
         event={{ ...event, ticketTypes: priceWithTicketCode(priceForViewer(event.ticketTypes, memberPriced), code) }}
         memberPlan={memberPlan}
         selection={{ ticketTypeId: query.ticketTypeId ?? unlocked?.id, quantity: Number(query.quantity) }}

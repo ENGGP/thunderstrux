@@ -7,6 +7,7 @@ import { toZonedInput, zonedCandidates } from "@/lib/zoned-time";
 export const whenOptions = [
   { value: "upcoming", label: "Upcoming" },
   { value: "week", label: "This week" },
+  { value: "weekend", label: "This weekend" },
   { value: "month", label: "This month" },
   { value: "custom", label: "Choose dates" }
 ] as const;
@@ -55,12 +56,17 @@ export function parseExploreFilters(params: Record<string, string | undefined>, 
   const range: ExploreRange = {};
   const today = toZonedInput(now, defaultTimeZone).slice(0, 10);
 
-  if (params.when && filters.when !== params.when) errors.when = "Choose when from the list.";
+  // An old or mistyped link still shows what's on: Upcoming, with a note, never an empty error page.
+  const unknownWhen = Boolean(params.when) && filters.when !== params.when;
   if (filters.q.length > maxSearchLength) errors.q = `Search for up to ${maxSearchLength} characters.`;
 
+  const weekday = new Date(`${today}T00:00Z`).getUTCDay();
   if (filters.when === "week") {
     // The coming Sunday, inclusive: up to the start of next Monday.
-    const weekday = new Date(`${today}T00:00Z`).getUTCDay();
+    range.startBefore = startOfDay(addDays(today, (8 - weekday) % 7 || 7));
+  } else if (filters.when === "weekend") {
+    // Saturday and Sunday: from Saturday's start (or now, during the weekend) to the start of Monday.
+    if (weekday >= 1 && weekday <= 5) range.startFrom = startOfDay(addDays(today, 6 - weekday));
     range.startBefore = startOfDay(addDays(today, (8 - weekday) % 7 || 7));
   } else if (filters.when === "month") {
     const [year, month] = today.split("-").map(Number);
@@ -79,5 +85,5 @@ export function parseExploreFilters(params: Record<string, string | undefined>, 
     }
   }
 
-  return { filters, errors, range };
+  return { filters, errors, range, unknownWhen };
 }

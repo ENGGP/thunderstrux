@@ -8,6 +8,7 @@ import { Button, buttonClasses } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/ui/notice";
+import { Stepper } from "@/components/ui/quantity-stepper";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
 import { formatPrice } from "@/lib/format";
@@ -134,7 +135,7 @@ export function ProductPicker({ society, societyName, product }: { society: stri
                 onClick={() => setPhoto(index)}
                 type="button"
               >
-                <img alt="" className="aspect-[4/5] w-full object-cover" src={`/api/public/assets/${id}`} />
+                <img alt="" className="aspect-[4/5] w-full object-cover" decoding="async" loading="lazy" src={`/api/public/assets/${id}`} />
               </button>
             ))}
           </div>
@@ -206,17 +207,7 @@ export function ProductPicker({ society, societyName, product }: { society: stri
             <span className="text-ui font-semibold text-ink" id="quantity-label">
               Quantity
             </span>
-            <div aria-labelledby="quantity-label" className="flex w-fit items-center rounded-control border border-line-strong bg-surface" role="group">
-              <button aria-label="One fewer" className="size-11 text-lg font-semibold text-ink disabled:text-ink-muted" disabled={quantity <= 1} onClick={() => setQuantity(quantity - 1)} type="button">
-                −
-              </button>
-              <span aria-live="polite" className="min-w-9 text-center font-semibold tabular-nums">
-                {quantity}
-              </span>
-              <button aria-label="One more" className="size-11 text-lg font-semibold text-ink disabled:text-ink-muted" disabled={quantity >= maxQuantity} onClick={() => setQuantity(quantity + 1)} type="button">
-                +
-              </button>
-            </div>
+            <Stepper labelledBy="quantity-label" max={maxQuantity} onChange={setQuantity} value={quantity} />
           </div>
         ) : null}
 
@@ -366,7 +357,7 @@ export function BasketView({ society }: { society: string }) {
               return (
                 <li className="grid grid-cols-[64px_minmax(0,1fr)] gap-4 border-t border-line py-5 first:border-t-0 sm:grid-cols-[88px_minmax(0,1fr)_auto]" key={line.variantId}>
                   {line.coverAssetId ? (
-                    <img alt="" className="aspect-[4/5] w-16 rounded-control border border-line bg-surface-subtle object-cover sm:w-[88px]" src={`/api/public/assets/${line.coverAssetId}`} />
+                    <img alt="" className="aspect-[4/5] w-16 rounded-control border border-line bg-surface-subtle object-cover sm:w-[88px]" decoding="async" loading="lazy" src={`/api/public/assets/${line.coverAssetId}`} />
                   ) : (
                     <span aria-hidden="true" className="aspect-[4/5] w-16 rounded-control border border-line bg-surface-subtle sm:w-[88px]" />
                   )}
@@ -385,21 +376,7 @@ export function BasketView({ society }: { society: string }) {
                     ) : null}
                     <div className="mt-2 flex flex-wrap items-center gap-3">
                       {problem === "sold_out" ? null : (
-                        <div aria-label={`Quantity of ${label}`} className="flex items-center rounded-control border border-line-strong bg-surface" role="group">
-                          <button aria-label="One fewer" className="h-10 w-11 text-lg font-semibold text-ink disabled:text-ink-muted" disabled={count <= 1} onClick={() => setQuantity(line.variantId, count - 1)} type="button">
-                            −
-                          </button>
-                          <span className="min-w-8 text-center font-semibold tabular-nums">{count}</span>
-                          <button
-                            aria-label="One more"
-                            className="h-10 w-11 text-lg font-semibold text-ink disabled:text-ink-muted"
-                            disabled={count >= Math.min(MAX_LINE_QUANTITY, line.available)}
-                            onClick={() => setQuantity(line.variantId, count + 1)}
-                            type="button"
-                          >
-                            +
-                          </button>
-                        </div>
+                        <Stepper label={`Quantity of ${label}`} max={Math.min(MAX_LINE_QUANTITY, line.available)} onChange={(next) => setQuantity(line.variantId, next)} value={count} />
                       )}
                       <Button aria-label={`Remove ${label}`} onClick={() => setQuantity(line.variantId, 0)} size="sm" variant="tertiary">
                         Remove

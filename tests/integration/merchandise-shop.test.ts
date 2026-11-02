@@ -1,7 +1,8 @@
 import { describe, expect, onTestFinished, test, vi } from "vitest";
 import { POST as quoteRoute } from "@/app/api/merchandise/quote/route";
 import { prisma } from "@/lib/db";
-import { addToBasket, BASKET_EVENT, basketCount, MAX_BASKET_LINES, MAX_LINE_QUANTITY, readBasket, writeBasket } from "@/lib/merchandise/basket";
+import { addToBasket, BASKET_EVENT, basketCount, basketFromParam, basketToParam, MAX_BASKET_LINES, MAX_LINE_QUANTITY, readBasket, writeBasket } from "@/lib/merchandise/basket";
+import { safeReturnPath } from "@/lib/security/safe-return-path";
 import { hasShop, shopProduct, shopProducts } from "@/lib/merchandise/shop";
 import { jsonRequest, parseJsonResponse } from "@/tests/helpers/http";
 import { createOrganisationAccount, unique } from "@/tests/helpers/test-data";
@@ -185,5 +186,23 @@ describe("the basket on this device", () => {
     device({ blocked: true });
     expect(readBasket()).toBeNull();
     expect(() => writeBasket({ society: "engsoc", lines: [{ variantId: "v1", quantity: 1 }] })).not.toThrow();
+  });
+
+  // A guest's email link carries the basket (UI-034), so it may open in a browser that never had it.
+  test("the basket survives the guest's email link and refuses anything it couldn't have written", () => {
+    const lines = [{ variantId: "cmv1abc", quantity: 2 }, { variantId: "cmv2def", quantity: 10 }];
+    const param = basketToParam(lines);
+    // Unreserved characters only: safeReturnPath refuses an encoded slash anywhere in a return path.
+    expect(param).toBe("cmv1abc.2_cmv2def.10");
+    expect(encodeURIComponent(param)).toBe(param);
+    expect(safeReturnPath(`/societies/engsoc/merchandise/checkout?basket=${param}`)).toBe(`/societies/engsoc/merchandise/checkout?basket=${param}`);
+    expect(basketFromParam(param, "engsoc")).toEqual({ society: "engsoc", lines });
+    // Repeats merge up to ten.
+    expect(basketFromParam("cmv1abc.6_cmv1abc.7", "engsoc")).toEqual({ society: "engsoc", lines: [{ variantId: "cmv1abc", quantity: 10 }] });
+    // Anything malformed, empty, over ten of one option or over ten options is no basket at all.
+    for (const bad of ["", "cmv1abc", "cmv1abc.0", "cmv1abc.11", "CMV1ABC.1", "cmv1/abc.1", "cmv1abc.1__cmv2def.1", Array.from({ length: MAX_BASKET_LINES + 1 }, (_, i) => `cmv${i}.1`).join("_")]) {
+      expect(basketFromParam(bad, "engsoc")).toBeNull();
+    }
+    expect(basketFromParam(null, "engsoc")).toBeNull();
   });
 });

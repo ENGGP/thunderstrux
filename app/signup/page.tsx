@@ -21,13 +21,14 @@ export default async function SignupPage({
     redirect(safeCallbackUrl);
   }
 
+  const society = accountFor === "society";
   return (
     <AuthShell
-      description="Create an account with your email and password."
-      title="Create account"
+      description={society ? "A shared committee login for running your society's events and sales." : "Create an account with your email and password."}
+      title={society ? "Create a society account" : "Create account"}
     >
       <Card>
-        <SignupForm callbackUrl={safeCallbackUrl} initialRole={accountFor === "society" ? "organisation" : "member"} />
+        <SignupForm callbackUrl={safeCallbackUrl} initialRole={society ? "organisation" : "member"} />
       </Card>
     </AuthShell>
   );

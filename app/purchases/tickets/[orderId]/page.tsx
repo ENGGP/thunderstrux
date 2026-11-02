@@ -50,6 +50,8 @@ export default async function PurchasePage({ params }: { params: Promise<{ order
   // A free registration can be released until the event starts (EVT-005).
   const activeTickets = order.tickets.filter((ticket) => ticket.validity === "active").length;
   const canRelease = projection === "free" && activeTickets > 0 && event.startTime > new Date() && !event.cancelledAt;
+  // Once the event is over its tickets are under Past, and unused ones read Event ended.
+  const ended = event.endTime <= new Date();
 
   return (
     <PersonalShell>
@@ -86,7 +88,7 @@ export default async function PurchasePage({ params }: { params: Promise<{ order
           ) : (
             <ul className={`mt-3 grid gap-2 ${(projection === "paid" || projection === "free") && justIssued(order.fulfilledAt) ? "issued-stagger" : ""}`}>
               {order.tickets.map((ticket) => {
-                const state = ticketState(ticket, organisation.timeZone);
+                const state = ended && ticket.validity === "active" && !ticket.checkedInAt ? { status: "ended" as const, label: "Event ended" } : ticketState(ticket, organisation.timeZone);
                 return (
                   <li className="flex flex-wrap items-center justify-between gap-2" key={ticket.id}>
                     <span className="text-ink">{ticketType}</span>
@@ -105,7 +107,7 @@ export default async function PurchasePage({ params }: { params: Promise<{ order
           </div>
           <p className="mt-1 text-caption text-ink-muted">Order {order.id.slice(-6).toUpperCase()}</p>
           {activeTickets > 0 ? (
-            <Link className="mt-3 inline-block font-semibold text-brand underline underline-offset-4" href="/tickets">Show tickets in My tickets</Link>
+            <Link className="mt-3 inline-block font-semibold text-brand underline underline-offset-4" href={ended ? "/tickets?view=past" : "/tickets"}>Show tickets in My tickets</Link>
           ) : null}
           {canRelease ? (
             <div className="mt-4 border-t border-line pt-3">

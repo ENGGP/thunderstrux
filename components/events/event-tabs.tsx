@@ -19,7 +19,7 @@ export type EventTab = "summary" | "attendees" | "orders" | "edit" | "preview";
 // Selling state of a published event, beside its Published badge.
 export function SaleBadge({ event }: { event: Pick<DashboardEvent, "status" | "salesOpen" | "soldOut" | "cancelledAt"> }) {
   if (event.status !== "published") return null;
-  if (event.cancelledAt) return <StatusBadge label="Event cancelled" status="cancelled" />;
+  if (event.cancelledAt) return <StatusBadge status="event-cancelled" />;
   return <StatusBadge status={!event.salesOpen ? "sales-closed" : event.soldOut ? "sold-out" : "sales-open"} />;
 }
 

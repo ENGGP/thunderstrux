@@ -2,6 +2,7 @@ import Link from "next/link";
 import { PublicTicketPurchase, type BuyBoxCode, type BuyBoxViewer } from "@/components/events/public-ticket-purchase";
 import { ContactSocietyLink } from "@/components/organisations/contact-society-link";
 import { Icon } from "@/components/ui/icon";
+import { Notice } from "@/components/ui/notice";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { PublicEventDetail } from "@/lib/events/public-events";
 import { formatDateRange, formatDateTime } from "@/lib/format";
@@ -31,9 +32,12 @@ export function PublicEventView({
   viewer,
   memberPlan = null,
   preview = false,
+  ended = false,
   selection,
   code = null
 }: {
+  // Over by the time the page rendered (endTime has passed).
+  ended?: boolean;
   // The viewer's membership plan giving member prices, if any (T24b).
   memberPlan?: string | null;
   event: PublicEventDetail;
@@ -49,23 +53,23 @@ export function PublicEventView({
 
   return (
     <div className="mx-auto grid max-w-page gap-8 px-4 py-10 md:px-8">
-      {event.heroAssetId ? (
-        <img
-          // The society's description when it gave one; otherwise decoration, as the title names the event.
-          alt={event.heroAlt ?? ""}
-          className="aspect-video max-h-[460px] w-full rounded-card border border-line object-cover"
-          src={preview ? `/api/orgs/${organisation.slug}/assets/${event.heroAssetId}` : `/api/public/assets/${event.heroAssetId}`}
-        />
-      ) : null}
-
+      {/* The image sits in the left column, so the ticket panel starts at the top on desktop (PUB-03, 8 + 4). */}
       <div className="grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:grid-rows-[auto_1fr] lg:items-start">
         <article className="grid gap-6">
+          {event.heroAssetId ? (
+            <img
+              // The society's description when it gave one; otherwise decoration, as the title names the event.
+              alt={event.heroAlt ?? ""}
+              className="aspect-video max-h-[460px] w-full rounded-card border border-line object-cover"
+              src={preview ? `/api/orgs/${organisation.slug}/assets/${event.heroAssetId}` : `/api/public/assets/${event.heroAssetId}`}
+            />
+          ) : null}
           <header className="grid gap-2">
             <Link className="w-fit text-sm font-semibold text-brand underline underline-offset-4" href={`/societies/${organisation.slug}`}>
               {organisation.name}
             </Link>
             <h1 className="font-display text-3xl font-semibold text-ink [overflow-wrap:anywhere] md:text-5xl">{event.title}</h1>
-            {event.cancelled ? <StatusBadge label="Event cancelled" status="cancelled" /> : null}
+            {event.cancelled ? <StatusBadge status="event-cancelled" /> : ended ? <StatusBadge label="Event ended" status="ended" /> : null}
             {event.membersOnly ? (
               <p className="inline-flex w-fit items-center gap-1.5 text-sm font-semibold text-ink-soft">
                 <Icon className="text-brand" name="lock" size={16} />
@@ -73,6 +77,21 @@ export function PublicEventView({
               </p>
             ) : null}
           </header>
+          {event.cancelled && !preview ? (
+            <Notice title={`${organisation.name} cancelled this event`} tone="warning">
+              <p>Paid orders are refunded in full and free registrations are cancelled. Everyone with a ticket has been emailed.</p>
+            </Notice>
+          ) : ended && !preview ? (
+            <Notice title="This event has ended">
+              <p>
+                See what{" "}
+                <Link className="font-semibold text-brand underline underline-offset-4" href={`/societies/${organisation.slug}`}>
+                  {organisation.name}
+                </Link>{" "}
+                has coming up.
+              </p>
+            </Notice>
+          ) : null}
 
           <div className="grid gap-2 text-ink-soft sm:flex sm:flex-wrap sm:gap-x-8">
             <span className="inline-flex items-start gap-2">
@@ -80,7 +99,7 @@ export function PublicEventView({
               <span>
                 {formatDateRange(event.startTime, event.endTime, timeZone)}
                 <span className="block text-sm text-ink-muted">{zoneCity(timeZone)}</span>
-                {preview || event.cancelled ? null : (
+                {preview || event.cancelled || ended ? null : (
                   <a className="block text-sm font-semibold text-brand underline underline-offset-4" href={googleCalendarHref(event)} rel="noopener noreferrer" target="_blank">
                     Add to Google Calendar
                   </a>
@@ -129,6 +148,7 @@ export function PublicEventView({
             salesCloseLabel={event.salesCloseAt ? formatDateTime(event.salesCloseAt, { timeZone }) : undefined}
             salesOpen={event.salesOpen ?? true}
             cancelled={event.cancelled}
+            ended={ended}
             society={organisation.name}
             ticketTypes={event.ticketTypes}
             viewer={viewer}

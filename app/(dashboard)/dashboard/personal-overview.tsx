@@ -69,6 +69,36 @@ export async function PersonalOverview({ userId }: { userId: string }) {
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .slice(0, 3);
   const memberships = [...active.memberships, ...upcomingTerms.memberships];
+  // A brand-new account gets one place to start, not four empty cards.
+  const brandNew = !next && purchases.length === 0 && memberships.length === 0 && societies.length === 0;
+
+  if (brandNew) {
+    return (
+      <>
+        {!profile?.onboardingCompletedAt ? (
+          <Card>
+            <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+              <div className="grid min-w-0 gap-1">
+                <h2 className="text-xl font-semibold text-ink">Complete your profile</h2>
+                <p className="text-sm text-ink-soft">Add your first and last name. Societies see them on the tickets you buy.</p>
+              </div>
+              <Link className={`inline-flex min-h-11 items-center ${moreLink}`} href="/account/settings#profile">Finish profile</Link>
+            </div>
+          </Card>
+        ) : null}
+        <Card>
+          <h2 className="text-xl font-semibold text-ink">Get started</h2>
+          <p className="mt-1 max-w-prose text-ink-soft">
+            Find something on, or join a society to see its events here. Joining is free; a membership with member prices is bought separately.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Link className={buttonClasses()} href="/events">See what&apos;s on</Link>
+            <Link className={buttonClasses({ variant: "secondary" })} href="/societies">Find a society</Link>
+          </div>
+        </Card>
+      </>
+    );
+  }
 
   return (
     <>
@@ -87,7 +117,7 @@ export async function PersonalOverview({ userId }: { userId: string }) {
       {next ? (
         <section aria-labelledby="next-plans" className="flex flex-col overflow-hidden rounded-card border border-line bg-surface sm:flex-row">
           {next.event.heroAssetId ? (
-            <img alt="" className="aspect-video w-full object-cover sm:aspect-auto sm:w-2/5" src={`/api/public/assets/${next.event.heroAssetId}`} />
+            <img alt="" className="aspect-video w-full object-cover sm:aspect-auto sm:w-2/5" decoding="async" loading="lazy" src={`/api/public/assets/${next.event.heroAssetId}`} />
           ) : (
             <div aria-hidden="true" className="flex aspect-video items-center justify-center bg-brand-tint text-brand sm:aspect-auto sm:w-2/5 sm:min-h-[220px]">
               <Icon name="ticket" size={40} />
@@ -110,7 +140,7 @@ export async function PersonalOverview({ userId }: { userId: string }) {
         <Card>
           <h2 className="text-xl font-semibold text-ink">Nothing booked yet</h2>
           <p className="mt-1 text-sm text-ink-soft">Find something on this week, or join a society to see its events here.</p>
-          <Link className={`mt-4 ${buttonClasses()}`} href="/events">Explore events</Link>
+          <Link className={`mt-4 ${buttonClasses()}`} href="/events">See what&apos;s on</Link>
         </Card>
       )}
 
@@ -221,7 +251,7 @@ export async function PersonalOverview({ userId }: { userId: string }) {
             ) : (
               <p className="mt-3 text-sm text-ink-soft">
                 You haven&apos;t joined a society. Joining is free and shows you their events.{" "}
-                <Link className="font-semibold text-brand underline underline-offset-4" href="/societies">Explore societies</Link>
+                <Link className="font-semibold text-brand underline underline-offset-4" href="/societies">Find a society</Link>
               </p>
             )}
             {societies.length ? <p className="mt-3 text-sm text-ink-soft">Joining is free and follows a society. A membership is separate.</p> : null}

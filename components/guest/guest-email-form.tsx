@@ -9,8 +9,9 @@ import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 
 // Asks for an email and sends a link to it: the checkout email step and Find
 // your tickets. The answer never says whether the address has anything. At
-// checkout it also asks for a name, which door staff search by.
-export function GuestEmailForm({ endpoint, submitLabel, callbackUrl }: { endpoint: "/api/guest/email/request" | "/api/guest/recover"; submitLabel: string; callbackUrl?: string }) {
+// checkout it also asks for a name, which door staff search by for tickets and
+// which merchandise pickups are checked against.
+export function GuestEmailForm({ endpoint, submitLabel, callbackUrl, purpose = "tickets" }: { endpoint: "/api/guest/email/request" | "/api/guest/recover"; submitLabel: string; callbackUrl?: string; purpose?: "tickets" | "merchandise" }) {
   const [email, setEmail] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -38,10 +39,10 @@ export function GuestEmailForm({ endpoint, submitLabel, callbackUrl }: { endpoin
       <div className="grid gap-3">
         <h2 className="font-display text-2xl font-semibold text-ink">Check your email</h2>
         <p className="text-ink [overflow-wrap:anywhere]" role="status">
-          {checkout ? <>We&apos;ve sent a link to <strong>{sentTo}</strong>. Open it on this device to carry on with your order.</> : <>If {sentTo} has guest purchases, we&apos;ve sent a link for each one.</>}
+          {checkout ? <>We&apos;ve sent a link to <strong>{sentTo}</strong>. Open it to carry on with your order.</> : <>If {sentTo} has guest purchases, we&apos;ve sent a link for each one.</>}
         </p>
         <p className="text-sm text-ink-soft">
-          {checkout ? "It works once and stops working after 30 minutes. Your tickets aren't held yet." : "Each link opens one order and stops working after 24 hours."} Nothing arrived? Check spam or junk.
+          {checkout ? `It works once and stops working after 30 minutes. Your ${purpose === "merchandise" ? "items aren't" : "tickets aren't"} held yet.` : "Each link opens one order and stops working after 24 hours."} Nothing arrived? Check spam or junk.
         </p>
         <button className="inline-flex min-h-11 w-fit items-center font-semibold text-brand underline underline-offset-4" onClick={() => setSentTo("")} type="button">Use a different email</button>
       </div>
@@ -53,10 +54,10 @@ export function GuestEmailForm({ endpoint, submitLabel, callbackUrl }: { endpoin
       {checkout ? (
         <div className="grid gap-4 sm:grid-cols-2 sm:items-start">
           <TextInput autoComplete="given-name" label="First name" maxLength={80} onChange={(event) => setFirstName(event.target.value)} required value={firstName} />
-          <TextInput autoComplete="family-name" hint="Door staff find your tickets by name." label="Last name" maxLength={80} onChange={(event) => setLastName(event.target.value)} required value={lastName} />
+          <TextInput autoComplete="family-name" hint={purpose === "merchandise" ? "The society finds your order by name when you collect." : "Door staff find your tickets by name."} label="Last name" maxLength={80} onChange={(event) => setLastName(event.target.value)} required value={lastName} />
         </div>
       ) : null}
-      <TextInput autoComplete="email" hint={checkout ? "We'll email a link to confirm it's yours. Your tickets and receipt go here too." : undefined} label="Email" maxLength={320} onChange={(event) => setEmail(event.target.value)} required type="email" value={email} />
+      <TextInput autoComplete="email" hint={checkout ? `We'll email a link to confirm it's yours. Your ${purpose === "merchandise" ? "receipt and pickup details" : "tickets and receipt"} go here too.` : undefined} label="Email" maxLength={320} onChange={(event) => setEmail(event.target.value)} required type="email" value={email} />
       <Button busy={busy} busyLabel="Sending…" size="lg" type="submit">{submitLabel}</Button>
       {error ? <Notice reveal role="alert" tone="warning">{error}</Notice> : null}
       <p className="text-sm text-ink-soft">

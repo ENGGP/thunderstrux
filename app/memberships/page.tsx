@@ -55,7 +55,7 @@ export default async function MyMembershipsPage({ searchParams }: { searchParams
       ) : null}
       {memberships.length === 0 ? (
         <EmptyState
-          action={view === "active" ? <Link className={buttonClasses({ variant: "secondary" })} href="/organisations">Explore societies</Link> : undefined}
+          action={view === "active" ? <Link className={buttonClasses({ variant: "secondary" })} href="/societies">Find a society</Link> : undefined}
           icon="badge"
           title={emptyCopy[view].title}
         >
@@ -102,12 +102,10 @@ export default async function MyMembershipsPage({ searchParams }: { searchParams
                 </div>
                 {membership.renewal ? (
                   <div className="grid gap-1.5 sm:justify-items-end">
-                    <Link
-                      aria-label={`Renew ${membership.society.name} membership: ${membership.renewal.name}`}
-                      className={buttonClasses()}
-                      href={`/societies/${membership.society.slug}/memberships/${membership.renewal.id}/checkout`}
-                    >
+                    {/* The name starts with the words on the button, so voice control can say them (WCAG 2.5.3). */}
+                    <Link className={buttonClasses()} href={`/societies/${membership.society.slug}/memberships/${membership.renewal.id}/checkout`}>
                       {renewLabel(membership.renewal.name)}
+                      <span className="sr-only">, {membership.society.name}</span>
                     </Link>
                     <span className="text-sm text-ink-soft">
                       {membership.renewal.priceAmount ? formatMoney(membership.renewal.priceAmount) : "Free"} · starts {formatDate(membership.renewal.startsAt, zone)}

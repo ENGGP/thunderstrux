@@ -1163,6 +1163,8 @@ Text on its wash is at least 6:1 and icons at least 3:1. Colour never carries me
 | `PhoneActionBar` | `components/purchases/phone-action-bar.tsx` | Below `lg`, repeats the summary and action while the page's own button is below the screen (buy box, checkouts). |
 | `DateField`, `DateTimeField` | `components/ui/date-field.tsx` | Typed dates with a house calendar; replaces browser date and time pickers. |
 | `MoneyInput` | `components/ui/input.tsx` | `$` prefix; callers convert to cents with `parseMoneyInput`. |
+| `QuantityStepper`, `Stepper` | `components/ui/quantity-stepper.tsx` | 44px −/+ ("One fewer", "One more") that never step outside the limits; `QuantityStepper` keeps a typable Quantity field between them (buy box), `Stepper` a count (shop picker, basket). |
+| `PhoneActionBar` (buy box) | `components/events/public-ticket-purchase.tsx` | Until the buyer picks, the event's prices and Get tickets, which scrolls to the choice; then the selection, total and action. |
 | `AuditTimeline` | `components/ui/audit-timeline.tsx` | Buyer-safe order history rail. |
 | `SocietyJoinCard` | `components/organisations/society-join-card.tsx` | The society page's side card on every tab. |
 

@@ -22,6 +22,8 @@ const statuses = {
   "refund-processing": ["Refund processing", "warning"],
   disputed: ["Disputed", "warning"],
   cancelled: ["Cancelled", "neutral"],
+  // An event the society called off: louder than an order's Cancelled, so a shared link can't read as on.
+  "event-cancelled": ["Event cancelled", "warning"],
   failed: ["Failed", "danger"],
   expired: ["Expired", "neutral"],
   joined: ["Joined", "accent"],

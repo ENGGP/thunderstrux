@@ -33,7 +33,8 @@ export function TicketFace({
   of,
   free = false,
   timeZone,
-  orderHref
+  orderHref,
+  ended = false
 }: {
   ticket: { id: string; issueSequence: number; validity: TicketValidity; validityReason: string | null; checkedInAt: Date | null };
   society: string;
@@ -42,10 +43,12 @@ export function TicketFace({
   free?: boolean;
   timeZone: string;
   orderHref?: string;
+  // The event is over: a ticket nobody used reads Event ended, not a green Valid, and shows no code.
+  ended?: boolean;
 }) {
   const reference = ticketReference(ticket.id);
-  const state = ticketState(ticket, timeZone);
-  const admits = ticket.validity === "active";
+  const state = ended && ticket.validity === "active" && !ticket.checkedInAt ? { status: "ended" as const, label: "Event ended" } : ticketState(ticket, timeZone);
+  const admits = ticket.validity === "active" && !ended;
   return (
     <article
       aria-label={`${ticketType}, ticket ${reference}, ${state.label ?? (state.status === "valid" ? "valid" : state.status.replace("-", " "))}`}
@@ -61,7 +64,7 @@ export function TicketFace({
       </div>
       {admits ? <img alt={`QR code for ticket ${reference}`} className="mb-4 size-44 self-center rounded-control" height={176} src={qrSource(ticket.id)} width={176} /> : null}
       <div className="flex items-center justify-between gap-3 border-t-2 border-dashed border-line px-4 py-3">
-        <span className={`font-mono text-xl font-bold tracking-[0.08em] ${admits ? "text-ink" : "text-ink-muted line-through"}`} title={ticket.id}>
+        <span className={`font-mono text-xl font-bold tracking-[0.08em] ${admits ? "text-ink" : ticket.validity === "active" ? "text-ink-soft" : "text-ink-muted line-through"}`} title={ticket.id}>
           {reference}
         </span>
         <StatusBadge label={state.label} status={state.status} />

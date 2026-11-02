@@ -62,7 +62,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "3.1152.0",
     "@prisma/client": "6.19.3",
-    "@redis/client": "6.3.0",
+    "@redis/client": "6.3.1",
     "@zxing/library": "0.21.3",
     "bcryptjs": "3.0.3",
     "jiti": "2.7.0",

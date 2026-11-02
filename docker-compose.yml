@@ -137,7 +137,7 @@ services:
     command: ["node", "scripts/process-operations-monitor.mjs"]
 
   db:
-    image: postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
+    image: postgres:16@sha256:5db6dac2ef5dcff512f4f00a009c3c332b9f2f28f24277175bf3e4a3d02ef83a
     restart: unless-stopped
     env_file:
       - .env.db
@@ -150,7 +150,7 @@ services:
       retries: 10
 
   redis:
-    image: redis:7-alpine@sha256:57e4255cc971b1c8d6f8a6ca283ac01bc3ecdd914273ef6bfaede87aaecd6541
+    image: redis:7-alpine@sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f
     restart: unless-stopped
     volumes:
       - redis_data:/data

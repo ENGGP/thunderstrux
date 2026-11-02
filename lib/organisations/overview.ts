@@ -19,9 +19,11 @@ export async function getOrganisationOverview(organisationId: string, staffRole:
   const can = (permission: OrganisationPermission) => hasOrganisationPermission(staffRole, permission);
   const ownedOrder = { event: { is: { organisationId } } };
   const unsettled = { refundStatus: null, cancelledAt: null };
-  const [setup, eventCount, reviews, pickups, ending, failedEmails, drafts, ticketOrders, commerceOrders, membersNow] = await Promise.all([
+  const [setup, eventCount, publishedCount, reviews, pickups, ending, failedEmails, drafts, ticketOrders, commerceOrders, membersNow] = await Promise.all([
     prisma.organisation.findUnique({ where: { id: organisationId }, select: { onboardingCompletedAt: true, stripeAccountId: true, stripeChargesEnabled: true } }),
     prisma.event.count({ where: { organisationId } }),
+    // Setup ends when one event is published, not when the first draft exists.
+    prisma.event.count({ where: { organisationId, status: "published" } }),
     can("orders:read")
       ? Promise.all([
           prisma.order.count({ where: { ...ownedOrder, requiresCompensationReview: true } }),
@@ -97,6 +99,7 @@ export async function getOrganisationOverview(organisationId: string, staffRole:
     profileComplete: !!setup?.onboardingCompletedAt,
     chargesReady: !!setup && isOrganisationStripeReady(setup),
     hasEvents: eventCount > 0,
+    hasPublished: publishedCount > 0,
     reviews,
     pickups,
     ending,

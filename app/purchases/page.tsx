@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { PersonalShell } from "@/components/layout/personal-shell";
 import { buttonClasses } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { LinkTabs } from "@/components/ui/link-tabs";
+import { LinkTabs, rowLinkClasses } from "@/components/ui/link-tabs";
 import { Notice } from "@/components/ui/notice";
 import { Pager } from "@/components/ui/pager";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -36,7 +36,7 @@ function PurchaseTotal({ order }: { order: Payable }) {
   return <span>{formatPrice(order.totalAmount)}</span>;
 }
 
-const rowLink = "font-semibold text-brand underline-offset-4 hover:underline [overflow-wrap:anywhere]";
+const rowLink = rowLinkClasses;
 
 // One purchase row: the name, a line under it, then the family's columns (T29a).
 function Row({ href, title, detail, columns, date, timeZone, total, grid }: { href: string; title: string; detail: string; columns: ReactNode[]; date: Date; timeZone: string; total: ReactNode; grid: string }) {

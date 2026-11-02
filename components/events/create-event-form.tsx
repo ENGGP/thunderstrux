@@ -2,14 +2,17 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useRef, useState, type ReactNode } from "react";
+import { FormEvent, useEffect, useRef, useState, useTransition, type ReactNode } from "react";
+import { publishEvent } from "@/components/events/event-actions";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DateTimeField } from "@/components/ui/date-field";
+import { Icon } from "@/components/ui/icon";
 import { MoneyInput, Select, TextArea, TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { defaultHoldMinutes, maxHoldMinutes, minHoldMinutes } from "@/lib/checkout-hold";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
+import { useLeaveGuard } from "@/lib/client/leave-guard";
 import { formatMoney, formatMoneyInput, parseMoneyInput } from "@/lib/format";
 import { calculatePlatformFee, isBelowPaidMinimum, paidPriceMinimum } from "@/lib/stripe/fees";
 import { MAX_TICKET_TYPES } from "@/lib/validators/events";
@@ -178,10 +181,13 @@ export function CreateEventForm({
   chargesReady,
   memberPricesOnSale = false,
   membersOnlyOnSale = false,
+  publish,
   startDate
 }: {
-  // The readiness panel on the Edit page.
+  // The readiness panel on the Edit page, drawn in a card.
   aside?: ReactNode;
+  // A draft's Publish button under the readiness panel: the saved version and how many checks fail.
+  publish?: { version: number; blockers: number };
   // Shown under the form in its column: the Edit page's Codes card.
   after?: ReactNode;
   // Whether the society can take card payments now; paid tickets wait for it.
@@ -216,6 +222,9 @@ export function CreateEventForm({
   }, [notice]);
   const [upload, setUpload] = useState<{ busy: boolean; error?: string }>({ busy: false });
   const { form, choices, ticketTypes, closeFollowsStart } = state;
+  const [advancedOpen, setAdvancedOpen] = useState(
+    () => form.checkoutHoldMinutes !== String(defaultHoldMinutes) || form.compensationRefundMode !== "automatic_full"
+  );
   const salesCloseValue = closeFollowsStart ? form.startTime : form.salesCloseAt;
 
   // A save refreshes the page with the new version: show what was saved. Any
@@ -228,26 +237,35 @@ export function CreateEventForm({
     setState(initialState(initialEvent, timeZone));
   }, [initialEvent, timeZone]);
 
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
-    // Links inside the app (Cancel, the sidebar, "set up payments") change page
-    // without unloading it, so beforeunload never fires for them: ask here too.
-    const leave = (event: MouseEvent) => {
-      const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
-      if (!link || link.getAttribute("target") === "_blank" || link.getAttribute("href")?.startsWith("#") || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      if (!window.confirm("Leave this page? Your changes haven't been saved.")) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-    };
-    window.addEventListener("beforeunload", warn);
-    document.addEventListener("click", leave, true);
-    return () => {
-      window.removeEventListener("beforeunload", warn);
-      document.removeEventListener("click", leave, true);
-    };
-  }, [dirty]);
+  // Links inside the app (Cancel, the sidebar, "set up payments") are guarded too, not just the tab.
+  useLeaveGuard(dirty);
+
+  // Publish from Edit (drafts): only what was saved and checked can be published.
+  const [refreshing, startRefresh] = useTransition();
+  const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState("");
+  // The checks are of the saved event, so unsaved changes come first.
+  const publishReason = !publish
+    ? ""
+    : dirty
+      ? "Save your changes first."
+      : publish.blockers > 0
+        ? "Fix the items above to publish."
+        : "Puts it on the public page, where people can buy tickets.";
+
+  async function publishNow() {
+    if (!publish || !eventId) return;
+    setPublishing(true);
+    setPublishError("");
+    try {
+      await publishEvent(eventId, publish.version);
+      // Stays busy until the Summary opens, so a second click can't send it again.
+      router.push(`/dashboard/events/${eventId}`);
+    } catch (error) {
+      setPublishError(getClientErrorMessage(error, "Could not publish the event. Please try again."));
+      setPublishing(false);
+    }
+  }
 
   // Updates read the latest state, so two changes in one tick never undo each other.
   function change(update: Partial<typeof state> | ((current: typeof state) => Partial<typeof state>)) {
@@ -396,7 +414,8 @@ export function CreateEventForm({
         title: "Event saved",
         text: initialEvent?.status === "published" ? "The public page shows your changes now." : "It stays a draft until you publish it."
       });
-      router.refresh();
+      // Publish waits for this, so it sends the version the save made.
+      startRefresh(() => router.refresh());
     } catch (error) {
       const details = error instanceof ClientApiError ? error.payload?.error?.details ?? [] : [];
       const message = getClientErrorMessage(error, "The event could not be saved. Please try again.");
@@ -463,6 +482,17 @@ export function CreateEventForm({
   return (
     <div className={`grid items-start gap-6 ${aside ? "lg:grid-cols-[minmax(0,1fr)_20rem]" : "max-w-3xl"}`}>
       <form aria-label="Event details" className="grid gap-6" noValidate onSubmit={onSubmit}>
+        {/* On phones the readiness card is below the whole form. */}
+        {publish ? (
+          <p className="text-sm text-ink-soft lg:hidden">
+            {publish.blockers > 0
+              ? `${publish.blockers} ${publish.blockers === 1 ? "thing" : "things"} to fix before you can publish.`
+              : "Ready to publish."}{" "}
+            <a className="font-semibold text-brand underline underline-offset-4" href="#publish">
+              {publish.blockers > 0 ? "See what's missing" : "Go to Publish"}
+            </a>
+          </p>
+        ) : null}
         {notice ? (
           <div ref={noticeRef} tabIndex={-1}>
           <Notice
@@ -579,7 +609,11 @@ export function CreateEventForm({
 
               return (
                 <fieldset className="grid gap-3 border-t border-line pt-4" key={ticketType.id ?? index}>
-                  <legend className="sr-only">Ticket {index + 1}</legend>
+                  {/* Floated, so it sits in the grid instead of on the top border. */}
+                  <legend className="float-left text-ui font-semibold text-ink [overflow-wrap:anywhere]">
+                    Ticket {index + 1}
+                    {ticketType.name.trim() ? ` · ${ticketType.name.trim()}` : ""}
+                  </legend>
                   <TextInput error={errorFor(errors, "ticketTypes", String(index), "name")} label="Name" onChange={(event) => setTicketType(index, { name: event.target.value })} value={ticketType.name} />
                   <div className="grid gap-4 sm:grid-cols-3 sm:items-start">
                     <MoneyInput error={errorFor(errors, "ticketTypes", String(index), "price")} onChange={(price) => setTicketType(index, { price })} value={ticketType.price} />
@@ -705,31 +739,44 @@ export function CreateEventForm({
               onChange={(event) => setField("capacity", event.target.value)}
               value={form.capacity}
             />
-            <TextInput
-              error={errorFor(errors, "checkoutHoldMinutes")}
-              hint={`How long tickets stay held while someone pays: ${minHoldMinutes} to ${maxHoldMinutes} minutes, ${defaultHoldMinutes} if unsure. Shorter suits events that sell out.`}
-              id="checkoutHoldMinutes"
-              inputMode="numeric"
-              label="Checkout hold (minutes)"
-              onChange={(event) => setField("checkoutHoldMinutes", event.target.value)}
-              value={form.checkoutHoldMinutes}
-            />
           </div>
         </Card>
 
+        {/* Rarely changed, so closed unless a value differs from the default or has an error. */}
         <Card>
-          <div className="grid max-w-2xl gap-3">
-            <h2 className="text-lg font-semibold text-ink">If tickets cannot be issued</h2>
-            <Select
-              hint="For example, if the event sold out while the buyer was paying. Each new order keeps the policy it was made under."
-              label="When a payment arrives but tickets cannot be issued"
-              onChange={(event) => setField("compensationRefundMode", event.target.value as RefundMode)}
-              value={form.compensationRefundMode}
-            >
-              <option value="automatic_full">Refund the buyer automatically in full</option>
-              <option value="manual_review">Review it manually</option>
-            </Select>
-          </div>
+          <details
+            className="group"
+            onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
+            open={advancedOpen || Boolean(errorFor(errors, "checkoutHoldMinutes") ?? errorFor(errors, "compensationRefundMode"))}
+          >
+            <summary className="-m-2 flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-control p-2 [&::-webkit-details-marker]:hidden">
+              <span className="grid gap-1">
+                <h2 className="text-lg font-semibold text-ink">Advanced options</h2>
+                <span className="text-sm text-ink-soft">Checkout hold, and what happens if tickets can&apos;t be issued after payment.</span>
+              </span>
+              <Icon className="shrink-0 text-ink-soft group-open:rotate-180" name="chevronDown" />
+            </summary>
+            <div className="mt-5 grid max-w-2xl gap-5">
+              <TextInput
+                error={errorFor(errors, "checkoutHoldMinutes")}
+                hint={`How long tickets stay held while someone pays: ${minHoldMinutes} to ${maxHoldMinutes} minutes, ${defaultHoldMinutes} if unsure. Shorter suits events that sell out.`}
+                id="checkoutHoldMinutes"
+                inputMode="numeric"
+                label="Checkout hold (minutes)"
+                onChange={(event) => setField("checkoutHoldMinutes", event.target.value)}
+                value={form.checkoutHoldMinutes}
+              />
+              <Select
+                hint="For example, if the event sold out while the buyer was paying. Each new order keeps the policy it was made under."
+                label="When a payment arrives but tickets cannot be issued"
+                onChange={(event) => setField("compensationRefundMode", event.target.value as RefundMode)}
+                value={form.compensationRefundMode}
+              >
+                <option value="automatic_full">Refund the buyer automatically in full</option>
+                <option value="manual_review">Review it manually</option>
+              </Select>
+            </div>
+          </details>
         </Card>
 
         {/* One opaque row at every width: the status line gives way (truncates) before the buttons do.
@@ -756,7 +803,32 @@ export function CreateEventForm({
           </Button>
         </div>
       </form>
-      {aside ? <aside aria-labelledby="ready-heading" className="lg:sticky lg:top-24">{aside}</aside> : null}
+      {aside ? (
+        <aside aria-labelledby="ready-heading" className="scroll-mt-24 lg:sticky lg:top-24" id="publish">
+          <Card>
+            <div className="grid gap-4">
+              {aside}
+              {publish ? (
+                <div className="grid gap-2 border-t border-line pt-4">
+                  <Button
+                    aria-describedby={publishReason ? "publish-reason" : undefined}
+                    busy={publishing}
+                    busyLabel="Publishing…"
+                    className="w-full"
+                    disabled={publish.blockers > 0 || dirty || saving || refreshing}
+                    onClick={publishNow}
+                    type="button"
+                  >
+                    Publish
+                  </Button>
+                  {publishReason ? <p className="text-sm text-ink-soft" id="publish-reason">{publishReason}</p> : null}
+                  {publishError ? <p className="text-sm text-danger" role="alert">{publishError}</p> : null}
+                </div>
+              ) : null}
+            </div>
+          </Card>
+        </aside>
+      ) : null}
       {after}
     </div>
   );

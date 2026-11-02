@@ -57,12 +57,19 @@ async function busySociety() {
 }
 
 describe("dashboards (T34)", () => {
-  test("a new society's owner gets the setup steps and honest zero tiles", async () => {
+  test("a new society's owner gets the setup steps, not a wall of zero tiles, until an event is published", async () => {
     const { user, organisation } = await createOrganisationAccount();
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
     const html = await page();
-    for (const text of [`Get ${organisation.name} ready`, "Set up payments", "Finish your society profile", "Schedule your first event", "Nothing scheduled yet", "Sales this month", "$0.00", "Members now"]) expect(html).toContain(text);
-    expect(html).not.toContain("Needs your attention");
+    for (const text of [`Get ${organisation.name} ready`, "Set up payments", "Finish your society profile", "Schedule your first event"]) expect(html).toContain(text);
+    for (const hidden of ["Needs your attention", "Sales this month", "$0.00", "Members now", "Upcoming events"]) expect(html).not.toContain(hidden);
+    // Payments is a setup step here, not a warning: free events can be published without it.
+    expect(html).not.toContain("border-warning-border");
+    // A draft doesn't end setup: publishing it is the next step.
+    await eventAt(organisation.id, "First draft", at(21 * day), "draft");
+    const drafted = await page();
+    expect(drafted).toContain("Publish your first event");
+    expect(drafted).not.toContain("Schedule your first event");
   });
 
   test("an owner sees a task for every family, money, members and recent orders across families", async () => {

@@ -15,7 +15,9 @@ test("an owner reads the calendar by month, week and agenda and starts an event 
   await expect(page.getByText("Brisbane time (AEST)")).toBeVisible();
   const chip = page.getByRole("link", { name: /Engineering Mixer/ }).first();
   await expect(chip).toBeVisible();
-  await expect(chip).toContainText("6:00 pm");
+  // A month chip is the title; the times are in its tooltip (Intl spaces, so \s).
+  await expect(chip).toContainText("Engineering Mixer");
+  await expect(chip).toHaveAttribute("title", /6:00\s–\s9:00\spm/);
 
   await page.getByRole("navigation", { name: "Calendar view" }).getByRole("link", { name: "Week" }).click();
   await expect(page).toHaveURL(/view=week/);
@@ -25,7 +27,7 @@ test("an owner reads the calendar by month, week and agenda and starts an event 
 
   await page.getByRole("navigation", { name: "Calendar view" }).getByRole("link", { name: "Month" }).click();
   await expect(page).not.toHaveURL(/view=/);
-  await expect(page.getByRole("link", { name: /Engineering Mixer/ }).first()).toContainText("6:00 pm Engineering Mixer");
+  await expect(page.getByRole("link", { name: /Engineering Mixer/ }).first()).toContainText("Engineering Mixer");
   await page.screenshot({ path: "test-results/calendar-month-1280.png", fullPage: true });
   await page.getByRole("link", { name: `New event on ${formatDay(today, true)}` }).focus();
   await page.keyboard.press("Enter");
@@ -59,7 +61,9 @@ test("an overnight event stays on the day it starts in the month and in the week
   await page.setViewportSize({ width: 1280, height: 1000 });
 
   const chip = page.getByRole("link", { name: /Overnight Draft Workshop/ }).first();
-  await expect(chip).toContainText("1:00 am Overnight Draft Workshop");
+  // A month chip shows the title; the time is in its name and tooltip.
+  await expect(chip).toContainText("Draft Overnight Draft Workshop");
+  await expect(chip).toHaveAttribute("title", /1:00\sam/);
   // One column: Wednesday's, never Thursday's.
   expect(await chip.evaluate((element) => (element as HTMLElement).style.gridColumn)).toBe("3 / span 1");
   await page.screenshot({ path: "test-results/calendar-overnight-month-1280.png", fullPage: true });

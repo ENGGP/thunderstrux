@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { buttonClasses } from "@/components/ui/button";
 import { Pager } from "@/components/ui/pager";
 import { EmptyState } from "@/components/ui/empty-state";
-import { LinkTabs } from "@/components/ui/link-tabs";
+import { LinkTabs, rowLinkClasses } from "@/components/ui/link-tabs";
 import { ListSkeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireManagementPage } from "@/lib/auth/page-access";
@@ -73,7 +73,7 @@ async function Products({ organisationId, orgSlug, page }: { organisationId: str
       </EmptyState>
     );
   }
-  const titleLink = "font-semibold text-ink underline-offset-4 hover:underline [overflow-wrap:anywhere]";
+  const titleLink = rowLinkClasses;
   const cover = (row: Row) =>
     row.coverAssetId ? (
       <img alt="" className="h-[50px] w-10 shrink-0 rounded-[6px] border border-line object-cover" src={`/api/orgs/${orgSlug}/assets/${row.coverAssetId}`} />

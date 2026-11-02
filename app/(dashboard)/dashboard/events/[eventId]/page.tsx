@@ -6,6 +6,7 @@ import { ReadinessChecklist } from "@/components/events/readiness-checklist";
 import { BarChart } from "@/components/analytics/bar-chart";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Card } from "@/components/ui/card";
+import { Notice } from "@/components/ui/notice";
 import { Skeleton } from "@/components/ui/skeleton";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { analyticsAccess, eventCodeMetrics, eventSalesDays, eventTicketTypeMetrics, ticketAttendance, ticketMetrics, type AnalyticsAccess } from "@/lib/analytics/metrics";
@@ -58,10 +59,11 @@ export default async function OrganiserEventPage({
   const { checkedIn, checkInRate, valid } = attendance;
 
   const tiles = [
+    // Sold counts valid tickets, as the events list, overview and Edit do; refunded and cancelled ones are noted.
     {
       label: "Tickets sold",
-      value: issued,
-      note: [free > 0 ? `${issued - free} paid, ${free} free` : "Issued on completed orders", noLongerValid > 0 ? `${noLongerValid} no longer valid` : ""].filter(Boolean).join(" · ")
+      value: total("valid"),
+      note: noLongerValid > 0 ? `${issued} issued · ${noLongerValid} no longer valid` : free > 0 ? `${issued - free} paid, ${free} free` : "Issued on completed orders"
     },
     {
       label: "Tickets left",
@@ -143,7 +145,7 @@ export default async function OrganiserEventPage({
                         {ticketType.name}
                       </th>
                       <td className="px-2 py-3.5 text-right">{formatPrice(ticketType.price)}</td>
-                      <td className="px-2 py-3.5 text-right">{ticketType.issued}</td>
+                      <td className="px-2 py-3.5 text-right">{ticketType.valid}</td>
                       <td className="px-2 py-3.5 text-right">{event.heldByType[ticketType.id] ?? 0}</td>
                       <td className="px-2 py-3.5 text-right">{ticketType.remaining}</td>
                       {financial ? (
@@ -219,7 +221,12 @@ export default async function OrganiserEventPage({
         ) : null}
       </div>
 
-      {event.status === "draft" ? null : (
+      {event.cancelledAt ? (
+        // Cancelled is the whole story: no selling status, and no More menu to point at.
+        <Notice title={`Cancelled on ${formatDateTime(event.cancelledAt, { timeZone: event.timeZone })}`} tone="warning">
+          <p>It is off Explore and its page says so. Paid orders are refunded in full and free registrations cancelled; ticket holders were emailed. Refunds show on each order.</p>
+        </Notice>
+      ) : event.status === "draft" ? null : (
         <Card>
           <div className="flex flex-wrap items-center gap-3">
             <h2 className="text-lg font-semibold text-ink">Selling status</h2>
@@ -240,9 +247,9 @@ export default async function OrganiserEventPage({
               ))}
             <li>
               {event.saleState === "closed"
-                ? "Sales were closed by staff. Use More to reopen them."
+                ? `Sales were closed by staff.${canManage ? " Use More to reopen them." : ""}`
                 : event.salesOpen
-                  ? `Sales close automatically at ${formatDateTime(event.salesCloseAt, { timeZone: event.timeZone })}. Use More to close them sooner.`
+                  ? `Sales close automatically at ${formatDateTime(event.salesCloseAt, { timeZone: event.timeZone })}.${canManage ? " Use More to close them sooner." : ""}`
                   : "Sales closed at the close time."}
             </li>
           </ul>

@@ -42,7 +42,7 @@ export function PersonalShell({
           {/* One row on phones, scrolling sideways like every tab bar, so the page starts near the top. */}
           <nav
             aria-label="Personal navigation"
-            className="-mx-4 flex gap-1 overflow-x-auto px-4 sm:-mx-6 sm:px-6 lg:mx-0 lg:grid lg:overflow-visible lg:px-0"
+            className="tab-cue -mx-4 flex gap-1 overflow-x-auto px-4 sm:-mx-6 sm:px-6 lg:mx-0 lg:grid lg:overflow-visible lg:px-0"
           >
             {items.map((item) => {
               // A purchase's own page sits under Purchases.

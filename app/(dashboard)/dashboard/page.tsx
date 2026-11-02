@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { formatDay } from "@/components/calendar/layout";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
+import { SocietyShortcuts } from "@/components/layout/context-selector";
 import { PersonalShell } from "@/components/layout/personal-shell";
 import { buttonClasses } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -110,6 +111,8 @@ export default async function DashboardPage() {
   return (
     <PersonalShell contexts={contextChoices(context)}>
       <h1 className="text-3xl font-semibold text-ink">Overview</h1>
+      {/* Staff start each sign-in here; one tap opens the society (and a door volunteer's check-in). */}
+      <SocietyShortcuts contexts={contextChoices(context)} />
       <Suspense fallback={<PersonalOverviewSkeleton />}>
         <PersonalOverview userId={user.id} />
       </Suspense>

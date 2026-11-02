@@ -6,7 +6,6 @@ import { EventWorkspaceHeader } from "@/components/events/event-tabs";
 import { ReadinessChecklist } from "@/components/events/readiness-checklist";
 import { TicketCodesEditor } from "@/components/events/ticket-codes-editor";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { Card } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import {
@@ -76,17 +75,16 @@ export default async function EditEventPage({
         membersOnlyOnSale={membersOnly}
         aside={
           event.status === "draft" ? (
-            <Card>
-              <div className="grid gap-4">
-                <div>
-                  <h2 className="text-lg font-semibold text-ink" id="ready-heading">Ready to publish?</h2>
-                  <p className="mt-1 text-sm text-ink-soft">Checked when you save. Publish from the Summary.</p>
-                </div>
-                <ReadinessChecklist blockers={event.blockers} warnings={event.warnings} />
+            <>
+              <div>
+                <h2 className="text-lg font-semibold text-ink" id="ready-heading">Ready to publish?</h2>
+                <p className="mt-1 text-sm text-ink-soft">Checked each time you save.</p>
               </div>
-            </Card>
+              <ReadinessChecklist blockers={event.blockers} warnings={event.warnings} />
+            </>
           ) : null
         }
+        publish={event.status === "draft" ? { version: event.version, blockers: event.blockers.length } : undefined}
         eventId={eventId}
         initialEvent={initialEvent}
         mode="edit"

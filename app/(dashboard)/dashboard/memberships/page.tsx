@@ -5,7 +5,7 @@ import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { buttonClasses } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { LinkTabs } from "@/components/ui/link-tabs";
+import { LinkTabs, rowLinkClasses } from "@/components/ui/link-tabs";
 import { Pager } from "@/components/ui/pager";
 import { ListSkeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -85,7 +85,7 @@ async function Plans({ organisationId, page }: { organisationId: string; page: P
       </EmptyState>
     );
   }
-  const titleLink = "font-semibold text-ink underline-offset-4 hover:underline [overflow-wrap:anywhere]";
+  const titleLink = rowLinkClasses;
   const runs = (plan: Row) => joinDays(formatDay(plan.firstDay), formatDay(plan.lastDay));
   const unlocks = (plan: Row) => plan.entitlements.map((key) => unlockWords[key]).join(", ") || "No unlocks";
   const action = (plan: Row) => (

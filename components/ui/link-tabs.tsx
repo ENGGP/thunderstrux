@@ -3,7 +3,11 @@ import Link from "next/link";
 // URL-driven tabs: each tab is a link, so the view survives reloads and can be
 // shared. The bar scrolls sideways on narrow screens instead of wrapping.
 export const tabBarClasses =
-  "flex overflow-x-auto shadow-[inset_0_-1px_0_var(--color-line)] sm:gap-1";
+  "tab-cue flex overflow-x-auto shadow-[inset_0_-1px_0_var(--color-line)] sm:gap-1";
+
+// A row's title link in a list or table. Brand colour marks it as a link where
+// hover never happens (phones); the underline still comes on hover.
+export const rowLinkClasses = "font-semibold text-brand underline-offset-4 hover:underline [overflow-wrap:anywhere]";
 
 export function tabClasses(active: boolean) {
   return `inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap border-b-[3px] px-3 text-ui sm:px-4 ${

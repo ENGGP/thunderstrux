@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { buttonClasses } from "@/components/ui/button";
+import { Icon, type IconName } from "@/components/ui/icon";
 import { formatClock, formatDayMonth, ticketReference } from "@/lib/format";
 import { fetchWithCsrf } from "@/lib/client/api";
 import type { OrganisationEventTicket } from "@/lib/tickets/check-in";
@@ -36,6 +37,22 @@ const refusals: Record<number, string> = {
   429: "Not saved: too many check-ins at once. Wait a few seconds, then try again."
 };
 
+// One check-in or check-out and what came back. The card and "Check in all" both use it.
+type Answer = { kind: "saved" | "already" | "other" } | { kind: "refused"; text: string } | { kind: "unknown" };
+async function postAction(eventId: string, ticketId: string, action: "check-in" | "check-out"): Promise<Answer> {
+  let response: Response;
+  try {
+    response = await fetchWithCsrf(`/api/tickets/${ticketId}/${action}?eventId=${encodeURIComponent(eventId)}`, { method: "POST", signal: AbortSignal.timeout(requestTimeoutMs) });
+  } catch {
+    return { kind: "unknown" };
+  }
+  const refused = refusals[response.status];
+  if (refused) return { kind: "refused", text: refused };
+  if (response.ok) return { kind: "saved" };
+  if (action === "check-in" && response.status === 409 && (await conflictReason(response)) === "already_checked_in") return { kind: "already" };
+  return { kind: "other" };
+}
+
 async function conflictReason(response: Response) {
   try {
     const body = (await response.json()) as { error?: { details?: Array<{ reason?: string }> } };
@@ -45,7 +62,9 @@ async function conflictReason(response: Response) {
   }
 }
 
-// What the door should do with this ticket, in words and colour.
+// What the door should do with this ticket, in words, an icon and colour (ORG-06):
+// only a check-in just made is green, and only a second try at a used ticket is
+// amber, so neither can be mistaken for the other; a ticket waiting to come in is neutral.
 function verdict(ticket: ConsoleTicket, timeZone: string, outcome: Outcome) {
   const day = (value: Date | string | null) => (value ? formatDayMonth(value, timeZone) : null);
   if (ticket.validity === "refund_review") {
@@ -69,25 +88,25 @@ function verdict(ticket: ConsoleTicket, timeZone: string, outcome: Outcome) {
     const by = ticket.checkedInBy ? ` by ${ticket.checkedInBy}` : "";
     // Admitted by this tap, or a second person on one ticket: the door must tell them apart.
     if (outcome === "checked-in") return { tone: "success", label: "Checked in", detail: "Checked in just now." };
-    if (outcome === "already-used") return { tone: "warning", label: "Already used", detail: `Checked in at ${time}${by}. Don't admit twice.` };
-    return { tone: "info", label: "Checked in", detail: `Checked in at ${time}${by}.` };
+    if (outcome === "already-used") return { tone: "warning", label: "Already checked in", detail: `At ${time}${by}. Don't admit twice.` };
+    return { tone: "neutral", label: "Checked in", detail: `At ${time}${by}.` };
   }
   // Every state has a detail line, so admitting someone never pushes the button down.
-  return { tone: "success", label: "Valid", detail: "Not checked in yet." };
+  return { tone: "neutral", label: "Not checked in", detail: "Valid ticket. Check the name, then check them in." };
 }
 
-const tones: Record<string, { card: string; label: string }> = {
-  success: { card: "border-success-border bg-success-bg", label: "text-success" },
-  info: { card: "border-info-border bg-info-bg", label: "text-info" },
-  warning: { card: "border-warning-border bg-warning-bg", label: "text-warning" },
-  danger: { card: "border-danger-border bg-danger-bg", label: "text-danger" },
-  unknown: { card: "border-line bg-surface", label: "text-ink-soft" }
+const tones: Record<string, { card: string; label: string; icon: IconName }> = {
+  success: { card: "border-success-border bg-success-bg", label: "text-success", icon: "success" },
+  neutral: { card: "border-line bg-surface", label: "text-ink", icon: "ticket" },
+  warning: { card: "border-warning-border bg-warning-bg", label: "text-warning", icon: "warning" },
+  danger: { card: "border-danger-border bg-danger-bg", label: "text-danger", icon: "error" },
+  unknown: { card: "border-line-strong bg-surface", label: "text-ink-soft", icon: "info" }
 };
 
 // One ticket at the door. After any answer from the server the card re-reads
 // the ticket, so it always shows what was saved; with no answer it says the
 // status is unknown and offers a reload instead of guessing.
-function CheckInCard({ eventId, timeZone, initial, initialOutcome = null }: { eventId: string; timeZone: string; initial: ConsoleTicket; initialOutcome?: Outcome }) {
+function CheckInCard({ eventId, timeZone, initial, initialOutcome = null, group }: { eventId: string; timeZone: string; initial: ConsoleTicket; initialOutcome?: Outcome; group?: ReactNode }) {
   const router = useRouter();
   const [ticket, setTicket] = useState(initial);
   const [unknown, setUnknown] = useState(false);
@@ -119,26 +138,23 @@ function CheckInCard({ eventId, timeZone, initial, initialOutcome = null }: { ev
 
   async function act(action: "check-in" | "check-out") {
     setBusy(true);
-    let response: Response;
-    try {
-      response = await fetchWithCsrf(`/api/tickets/${ticket.id}/${action}?eventId=${encodeURIComponent(eventId)}`, { method: "POST", signal: AbortSignal.timeout(requestTimeoutMs) });
-    } catch {
+    const answer = await postAction(eventId, ticket.id, action);
+    if (answer.kind === "unknown") {
       setRefusal(null);
       setUnknown(true);
       setBusy(false);
       return;
     }
-    const refused = refusals[response.status];
-    if (refused) {
-      setRefusal(refused);
+    if (answer.kind === "refused") {
+      setRefusal(answer.text);
       setBusy(false);
       return;
     }
     setRefusal(null);
-    if (action === "check-in" && response.ok) {
+    if (action === "check-in" && answer.kind === "saved") {
       setOutcome("checked-in");
       setLocked(true);
-    } else if (action === "check-in" && response.status === 409 && (await conflictReason(response)) === "already_checked_in") {
+    } else if (answer.kind === "already") {
       setOutcome("already-used");
     } else {
       setOutcome(null);
@@ -158,20 +174,22 @@ function CheckInCard({ eventId, timeZone, initial, initialOutcome = null }: { ev
   const contact = [ticket.guest ? "guest" : null, ticket.buyerName ? ticket.buyerEmail : null].filter(Boolean).join(" · ");
 
   return (
-    <li aria-label={`${name}, ${state.label}`} className={`grid gap-2 rounded-card border-2 p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center md:gap-4 ${tone.card}`}>
-      <div className="min-w-0">
-        <div className="flex items-start justify-between gap-3 md:block">
-          <h3 className="font-display text-[22px] font-semibold leading-tight text-ink [overflow-wrap:anywhere] md:text-lg">{name}</h3>
-          <strong className={`shrink-0 md:hidden ${tone.label}`}>{state.label}</strong>
-        </div>
+    <li aria-label={`${name}, ${state.label}`} className={`grid gap-3 rounded-card border-2 p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center md:gap-4 ${tone.card}`}>
+      {group ? <div className="md:col-span-3">{group}</div> : null}
+      <div className="grid min-w-0 gap-1">
+        {/* The verdict is the loudest thing on the card, read before the name in a bright room. */}
+        <p className={`flex items-center gap-2 font-display text-2xl font-semibold leading-tight ${tone.label}`}>
+          <Icon name={tone.icon} size={24} />
+          {state.label}
+        </p>
+        <h3 className="text-lg font-semibold leading-snug text-ink [overflow-wrap:anywhere]">{name}</h3>
         <p className="text-sm text-ink">
           {ticket.ticketTypeName} · <span className="font-mono font-bold tracking-[0.06em]" title={ticket.id}>{ticketReference(ticket.id)}</span> · {ticket.issueSequence} of {ticket.orderQuantity}
         </p>
         {contact ? <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">{contact}</p> : null}
       </div>
       <div className="grid gap-0.5">
-        <strong className={`hidden md:block ${tone.label}`}>{state.label}</strong>
-        {detail ? <p className={`text-sm font-semibold ${refusal || state.tone === "danger" ? "text-danger" : "text-ink"}`} role={refusal ? "alert" : unknown ? "status" : undefined}>{detail}</p> : null}
+        {detail ? <p className={`text-ui font-semibold ${refusal || state.tone === "danger" ? "text-danger" : "text-ink"}`} role={refusal ? "alert" : unknown ? "status" : undefined}>{detail}</p> : null}
       </div>
       <div className={admits || unknown ? "flex min-h-14 items-center justify-end md:min-h-11" : undefined}>
         {unknown ? (
@@ -186,7 +204,8 @@ function CheckInCard({ eventId, timeZone, initial, initialOutcome = null }: { ev
             Undo check-in<span className="sr-only"> for {name}</span>
           </button>
         ) : (
-          <button className={`inline-flex items-center justify-center rounded-control px-4 font-semibold text-white bg-success transition-[opacity,scale] duration-150 ease-out hover:opacity-90 active:not-disabled:scale-97 disabled:cursor-not-allowed disabled:opacity-60 ${big}`} disabled={busy} onClick={() => act("check-in")} type="button">
+          // The brand action, as every primary is (ORG-06); green is kept for the result, never the button.
+          <button className={buttonClasses({ size: "lg", className: big })} disabled={busy} onClick={() => act("check-in")} type="button">
             Check in<span className="sr-only"> {name}</span>
           </button>
         )}
@@ -398,14 +417,28 @@ const searchLimit = 25;
 // first 25 matches and says so when there are more, and the list on screen
 // stays until the answer arrives.
 export function CheckInConsole({ eventId, timeZone, initialTickets, footer }: { eventId: string; timeZone: string; initialTickets: ConsoleTicket[]; footer?: ReactNode }) {
+  const router = useRouter();
   const [mode, setMode] = useState<"search" | "scan">("search");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<{ tickets: ConsoleTicket[]; more: boolean } | null>(null);
   const [failed, setFailed] = useState(false);
+  // "Check in all" for one order: the tickets re-read afterwards and what each request did, so those cards
+  // remount showing the result; cleared when the search changes.
+  const [batch, setBatch] = useState<{ key: number; outcomes: Record<string, Outcome>; fresh: Record<string, ConsoleTicket> } | null>(null);
+  const [groupBusy, setGroupBusy] = useState<string | null>(null);
+  const [groupStopped, setGroupStopped] = useState<{ orderId: string; text: string } | null>(null);
+  const batchKey = useRef(0);
   const latest = useRef(0);
   const searching = query.trim().length >= 2;
+  // With a mouse or trackpad the door starts in the search field; on a phone it waits for a tap,
+  // so the keyboard doesn't open over the list on arrival (visual spec ORG-06).
+  const focusOnArrival = useCallback((input: HTMLInputElement | null) => {
+    if (input && window.matchMedia("(pointer: fine)").matches) input.focus();
+  }, []);
 
   useEffect(() => {
+    setBatch(null);
+    setGroupStopped(null);
     if (!searching) {
       setResults(null);
       return;
@@ -431,12 +464,53 @@ export function CheckInConsole({ eventId, timeZone, initialTickets, footer }: { 
   }, [eventId, query, searching]);
 
   // Until the first answer, the list on screen stays rather than emptying.
-  const shown = searching && results ? results.tickets : initialTickets;
+  const shown = (searching && results ? results.tickets : initialTickets).map((ticket) => batch?.fresh[ticket.id] ?? ticket);
   const pending = searching && !results;
+  // Friends arrive together: the tickets of one order on screen, in the order they first appear.
+  const orders = new Map<string, ConsoleTicket[]>();
+  for (const ticket of shown) orders.set(ticket.orderId, [...(orders.get(ticket.orderId) ?? []), ticket]);
+  const admittable = (ticket: ConsoleTicket) => ticket.validity === "active" && !ticket.eventCancelled && !ticket.checkedInAt;
+
+  // One request per ticket through the same route as a single tap, so each is checked and audited on
+  // its own (and counts toward the door's rate limit); it stops at the first that doesn't save.
+  async function checkInAll(orderId: string, tickets: ConsoleTicket[]) {
+    setGroupBusy(orderId);
+    setGroupStopped(null);
+    const outcomes: Record<string, Outcome> = {};
+    let stopped: string | null = null;
+    for (const ticket of tickets) {
+      const answer = await postAction(eventId, ticket.id, "check-in");
+      if (answer.kind === "saved") {
+        outcomes[ticket.id] = "checked-in";
+        continue;
+      }
+      if (answer.kind === "already") outcomes[ticket.id] = "already-used";
+      stopped = answer.kind === "refused" ? answer.text : answer.kind === "unknown" ? "We didn't hear back for one ticket. Check each card before admitting." : "One ticket couldn't be checked in. Its card says why.";
+      break;
+    }
+    const fresh: Record<string, ConsoleTicket> = {};
+    try {
+      const response = await fetch(`/api/events/${eventId}/tickets?q=${encodeURIComponent(orderId)}&limit=100`, { cache: "no-store", signal: AbortSignal.timeout(requestTimeoutMs) });
+      if (response.ok) for (const ticket of ((await response.json()) as { tickets: ConsoleTicket[] }).tickets) if (ticket.orderId === orderId) fresh[ticket.id] = ticket;
+    } catch {
+      stopped ??= "We couldn't re-read these tickets. Search again before admitting anyone else on this order.";
+    }
+    setBatch({ key: ++batchKey.current, outcomes, fresh });
+    if (stopped) setGroupStopped({ orderId, text: stopped });
+    setGroupBusy(null);
+    router.refresh();
+  }
+
   const modes = (
-    <div aria-label="Find tickets by" className="flex max-w-2xl gap-2" role="group">
+    <div aria-label="Find tickets by" className="flex w-full max-w-md rounded-control border border-line-strong bg-surface p-1" role="group">
       {(["search", "scan"] as const).map((value) => (
-        <button aria-pressed={mode === value} className={buttonClasses({ variant: mode === value ? "primary" : "secondary", className: "flex-1 md:flex-none" })} key={value} onClick={() => setMode(value)} type="button">
+        <button
+          aria-pressed={mode === value}
+          className={`min-h-11 flex-1 rounded-[7px] px-4 text-ui font-semibold ${mode === value ? "bg-brand-tint text-brand-ink" : "text-ink-soft hover:text-ink"}`}
+          key={value}
+          onClick={() => setMode(value)}
+          type="button"
+        >
           {value === "search" ? "Search" : "Scan QR codes"}
         </button>
       ))}
@@ -455,10 +529,9 @@ export function CheckInConsole({ eventId, timeZone, initialTickets, footer }: { 
         Find a ticket
         <input
           autoComplete="off"
-          // The door is search-first: the field takes focus, which also brings it into view on a phone.
-          autoFocus
           className="h-14 rounded-[12px] border-2 border-brand bg-surface px-4 text-xl font-normal text-ink md:h-[52px] md:text-lg"
           onChange={(event) => setQuery(event.target.value)}
+          ref={focusOnArrival}
           type="search"
           value={query}
         />
@@ -472,7 +545,23 @@ export function CheckInConsole({ eventId, timeZone, initialTickets, footer }: { 
         </div>
       ) : (
         <ul aria-busy={pending || undefined} aria-label={searching && !pending ? "Matching tickets" : "Tickets"} className="grid gap-3">
-          {shown.map((ticket) => <CheckInCard eventId={eventId} initial={ticket} key={ticket.id} timeZone={timeZone} />)}
+          {shown.map((ticket) => {
+            const order = orders.get(ticket.orderId) ?? [ticket];
+            const waiting = order.filter(admittable);
+            const name = ticket.buyerName ?? ticket.buyerEmail ?? "this order";
+            // The strip rides on the order's first card rather than wrapping it, so the list stays one ticket per item.
+            const group = order[0].id === ticket.id && waiting.length >= 2 ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
+                <p className="text-ui font-semibold text-ink [overflow-wrap:anywhere]">{name} · {waiting.length} tickets on this order</p>
+                <button className={buttonClasses({ size: "lg", busy: groupBusy === ticket.orderId, className: "min-h-14 w-full text-lg md:min-h-11 md:w-auto md:text-ui" })} disabled={groupBusy !== null} onClick={() => void checkInAll(ticket.orderId, waiting)} type="button">
+                  Check in all {waiting.length}<span className="sr-only"> for {name}</span>
+                </button>
+                {groupStopped?.orderId === ticket.orderId ? <p className="w-full text-ui font-semibold text-danger" role="alert">{groupStopped.text}</p> : null}
+              </div>
+            ) : undefined;
+            const fresh = batch?.fresh[ticket.id];
+            return <CheckInCard eventId={eventId} group={group} initial={ticket} initialOutcome={batch?.outcomes[ticket.id] ?? null} key={fresh && batch ? `${ticket.id}:${batch.key}` : ticket.id} timeZone={timeZone} />;
+          })}
         </ul>
       )}
       {searching && results?.more ? <p className="text-sm text-ink-soft">Showing the first {searchLimit} matches. Keep typing to narrow it down.</p> : null}

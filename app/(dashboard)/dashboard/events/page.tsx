@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { EventActions } from "@/components/events/event-actions";
 import { SaleBadge, tabBarClasses, tabClasses } from "@/components/events/event-tabs";
-import { Count, TabLabel } from "@/components/ui/link-tabs";
+import { Count, rowLinkClasses, TabLabel } from "@/components/ui/link-tabs";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button, buttonClasses } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import {
 import { formatDateTime } from "@/lib/format";
 import { hasOrganisationPermission, type OrganisationStaffRole } from "@/lib/permissions";
 import { zoneCity } from "@/lib/zoned-time";
+import { localDay } from "@/components/calendar/layout";
 
 export const metadata: Metadata = { title: "Events" };
 
@@ -129,7 +130,21 @@ async function EventsResults({
   const place = (event: DashboardEvent) =>
     event.visibility === "unlisted" ? `${event.location} · Link only` : event.visibility === "members_only" ? `${event.location} · Members only` : event.location;
   const [singular, plural] = viewNouns[view];
-  const titleLink = "font-semibold text-ink underline-offset-4 hover:underline [overflow-wrap:anywhere]";
+  const titleLink = rowLinkClasses;
+  // On the day, the door is one tap from the list. Check-in staff's title already opens it.
+  const now = new Date();
+  const doorOpen = (event: DashboardEvent) =>
+    showSales &&
+    hasOrganisationPermission(staffRole, "tickets:check_in") &&
+    event.status === "published" &&
+    !event.cancelledAt &&
+    event.endTime > now &&
+    localDay(event.startTime, event.timeZone) <= localDay(now, event.timeZone);
+  const doorLink = (event: DashboardEvent, className: string) => (
+    <Link className={`${className} text-sm font-semibold text-brand underline underline-offset-4`} href={`/dashboard/events/${event.id}/tickets`}>
+      Open check-in<span className="sr-only"> for {event.title}</span>
+    </Link>
+  );
 
   return (
     <>
@@ -208,6 +223,7 @@ async function EventsResults({
                         {event.title}
                       </Link>
                       <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">{place(event)}</p>
+                      {doorOpen(event) ? doorLink(event, "mt-1 inline-flex min-h-6 items-center") : null}
                     </td>
                     <td className="whitespace-nowrap px-3 py-4">{formatDateTime(event.startTime, { timeZone: event.timeZone })}</td>
                     <td className="px-3 py-4">
@@ -248,6 +264,7 @@ async function EventsResults({
                   {formatDateTime(event.startTime, { timeZone: event.timeZone })} · {place(event)}
                 </p>
                 {showSales ? <p className="text-sm tabular-nums">{tickets(event)}</p> : null}
+                {doorOpen(event) ? doorLink(event, "inline-flex min-h-11 w-fit items-center") : null}
                 {canManage ? <EventActions event={event} size="md" /> : null}
               </li>
             ))}

@@ -127,7 +127,7 @@ test("door staff scan QR codes: a valid ticket is admitted once, and used, refun
   await holdUp(elsewhere.id);
   await expect(page.getByText("Not for this event")).toBeVisible();
   await holdUp(valid.id);
-  await expect(scanned.getByRole("listitem", { name: "Sam Lee, Already used" })).toContainText("Don't admit twice");
+  await expect(scanned.getByRole("listitem", { name: "Sam Lee, Already checked in" })).toContainText("Don't admit twice");
   expect(await prisma.auditLog.count({ where: { targetId: valid.id, action: "ticket.checked_in" } })).toBe(1);
   expect((await prisma.ticket.findUniqueOrThrow({ where: { id: elsewhere.id } })).checkedInAt).toBeNull();
   // Door staff don't read orders, so the card names the buyer without their email.

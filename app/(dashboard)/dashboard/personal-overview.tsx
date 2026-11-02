@@ -4,6 +4,7 @@ import { DateRail } from "@/components/events/date-rail";
 import { buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
+import { rowLinkClasses } from "@/components/ui/link-tabs";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getAccessibleOrganisationsForCurrentAccount } from "@/lib/auth/access";
 import { readMemberProfile } from "@/lib/auth/account-settings";
@@ -22,7 +23,7 @@ import { zoneCity } from "@/lib/zoned-time";
 
 const day = 86_400_000;
 const moreLink = "text-sm font-semibold text-brand underline underline-offset-4";
-const titleLink = "font-semibold text-ink underline-offset-4 hover:underline [overflow-wrap:anywhere]";
+const titleLink = rowLinkClasses;
 const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
 const lastDay = (endsAt: Date, timeZone: string) => formatDate(new Date(endsAt.getTime() - 1), timeZone);
 

@@ -136,6 +136,25 @@
   }
 }
 
+/* A tab bar that scrolls sideways fades at its right edge while there's more to
+   scroll to, so a clipped tab reads as "more", not as the end. A scroll timeline
+   drives it, so it is on only while the bar overflows and off once scrolled to
+   the end; without scroll-driven animations there is simply no fade. It tracks
+   scrolling, not motion, so reduced motion keeps it (below). */
+@keyframes tab-cue {
+  from,
+  to {
+    mask-image: linear-gradient(to left, transparent, black 2.5rem);
+  }
+}
+@utility tab-cue {
+  @supports (animation-timeline: scroll()) {
+    animation: tab-cue linear;
+    animation-timeline: scroll(self inline);
+    animation-range: 0 calc(100% - 1px);
+  }
+}
+
 @layer base {
   :root {
     color-scheme: light;
@@ -245,6 +264,10 @@
       animation-delay: 0s !important;
       transition-duration: 0s !important;
       scroll-behavior: auto !important;
+    }
+    /* The tab fade follows the scroll position; a zero duration would remove it. */
+    .tab-cue {
+      animation-duration: auto !important;
     }
   }
 }

@@ -66,6 +66,17 @@ describe("analytics page", () => {
     expect(await page()).not.toContain("Shown by week");
   });
 
+  test("a society with no events yet gets one next step instead of a range and zeros", async () => {
+    const account = await createOrganisationAccount();
+    setMockSession({ userId: account.user.id, email: account.user.email, accountRole: "organisation" });
+    const html = await page();
+    expect(html).toContain("No events yet");
+    expect(html).toContain("Create an event");
+    expect(html).not.toContain("Quick ranges");
+    // The commerce tabs don't depend on events.
+    expect(await page({ tab: "memberships" })).toContain("Quick ranges");
+  });
+
   test("a range over 366 days says so and falls back; another society's event is ignored; check-in staff are refused", async () => {
     vi.stubEnv("MFA_ENFORCEMENT_MODE", "off");
     const { staff } = await society();

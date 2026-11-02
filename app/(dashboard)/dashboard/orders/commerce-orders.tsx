@@ -10,8 +10,7 @@ import { Select, TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { commerceOrderFilters, commerceProductOptions, commerceReviewWhere, listOrganisationCommerceOrders, parseCommerceOrderFilter } from "@/lib/commerce/orders";
-import { prisma } from "@/lib/db";
+import { commerceOrderFilters, commerceProductOptions, commerceReviewCount, listOrganisationCommerceOrders, parseCommerceOrderFilter } from "@/lib/commerce/orders";
 import { orderFilterLabels as filterLabels } from "@/lib/orders/grouped-orders";
 import { formatDateTime, formatPrice, formatTerm } from "@/lib/format";
 import { PaginationError, type ParsedPaginationOptions } from "@/lib/pagination/cursor";
@@ -58,7 +57,7 @@ export async function CommerceOrders({
   }
   const [products, reviewCount] = await Promise.all([
     commerceProductOptions(organisationId, kind),
-    prisma.commerceOrder.count({ where: { organisationId, kind, ...commerceReviewWhere } })
+    commerceReviewCount(organisationId, kind)
   ]);
   const { items: orders, pageInfo } = result;
 

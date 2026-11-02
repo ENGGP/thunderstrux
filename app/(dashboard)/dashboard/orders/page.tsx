@@ -16,7 +16,6 @@ import { Notice } from "@/components/ui/notice";
 import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { ListSkeleton, Skeleton } from "@/components/ui/skeleton";
 import { requireManagementPage } from "@/lib/auth/page-access";
-import { prisma } from "@/lib/db";
 import { readTimeZone } from "@/lib/organisations/profile";
 import { dateFilterBound } from "@/lib/zoned-time";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -33,7 +32,7 @@ import {
   parseOrderStatusFilter,
   orderFilterLabels,
   systemOrderStatusFilters,
-  ticketReviewWhere,
+  ticketReviewCount,
   type OrderStatusFilter
 } from "@/lib/orders/grouped-orders";
 import {
@@ -135,7 +134,7 @@ export default async function OrganisationOrdersPage({
   const [eventOptions, reviewCount] = await Promise.all([
     listEventOptions(organisation.id, event?.id),
     family === "tickets"
-      ? prisma.order.count({ where: { event: { organisationId: organisation.id }, ...(eventId ? { eventId } : {}), ...ticketReviewWhere } })
+      ? ticketReviewCount(organisation.id, eventId)
       : 0
   ]);
 

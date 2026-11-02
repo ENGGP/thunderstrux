@@ -279,7 +279,7 @@ test('private staff invitation email supports explicit acceptance, resend and re
     expect(await prisma.organisationStaff.count({ where: { userId: data.member.id } })).toBe(0);
     const pending = page.getByRole('listitem').filter({ hasText: data.member.email });
     await pending.getByRole('button', { name: 'Resend invitation' }).click();
-    await expect(page.getByText('New invitation email queued.', { exact: false })).toBeVisible();
+    await expect(page.getByText('New invitation emailed. The link in the earlier email no longer works.', { exact: false })).toBeVisible();
     await recipient.getByRole('button', { name: 'Accept staff invitation' }).click();
     await expect(recipient.locator('main').getByRole('alert')).toContainText('Invitation is unavailable');
     execFileSync('node', ['scripts/process-notifications.mjs'], { stdio: 'pipe' });

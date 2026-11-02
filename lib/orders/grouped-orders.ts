@@ -70,6 +70,10 @@ export const ticketReviewWhere = {
     { AND: [disputeWonOrNone, { refundStatus: null, isManuallyRefunded: false }, { OR: [{ disputeStatus: "won" }, { requiresCompensationReview: true }, unreviewedOutsideRefund] }] }
   ]
 } satisfies Prisma.OrderWhereInput;
+// The Tickets tab's Needs review count, for one event when asked.
+export function ticketReviewCount(organisationId: string, eventId?: string) {
+  return prisma.order.count({ where: { event: { organisationId }, ...(eventId ? { eventId } : {}), ...ticketReviewWhere } });
+}
 const statusWhere: Record<Exclude<OrderStatusFilter, "all">, Prisma.OrderWhereInput> = {
   paid: { ...settled, status: "paid", paymentKind: "stripe" },
   free: { ...settled, status: "paid", paymentKind: "free" },

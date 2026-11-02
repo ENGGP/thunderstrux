@@ -252,6 +252,11 @@ export const commerceReviewWhere = {
   ]
 } satisfies Prisma.CommerceOrderWhereInput;
 
+// A family's Needs review count on the Orders tab.
+export function commerceReviewCount(organisationId: string, kind: CommerceKind) {
+  return prisma.commerceOrder.count({ where: { organisationId, kind, ...commerceReviewWhere } });
+}
+
 const filterWhere: Record<CommerceOrderFilter, Prisma.CommerceOrderWhereInput> = {
   all: { status: { not: "pending" } },
   paid: { ...settled, status: "paid", paymentKind: "stripe" },

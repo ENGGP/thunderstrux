@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-26
+last-reviewed: 2026-11-02
 owner: engineering
 related: ["[[Development Workflow]]", "[[Issue and Defect Register]]"]
 sources: [AGENTS.md, package.json]
@@ -8,7 +8,7 @@ sources: [AGENTS.md, package.json]
 
 # Engineering Delivery Workflow
 
-**Owns:** how a change is branched, validated by risk, reviewed, cleaned up and merged.
+**Owns:** how a change is branched, validated by risk, reviewed, cleaned up and merged, and how finished side sessions and their worktrees are closed.
 **Read when:** before you validate or deliver any change.
 **Not here:** how to run the commands ([[Development Workflow]], [[E2E and Staging Payments]]); open risks ([[Issue and Defect Register]]).
 
@@ -17,7 +17,7 @@ This is the minimum delivery workflow for a solo-maintained startup. Keep routin
 ## 1. Start From Known State
 
 1. Read [[Project Handover]], the issue register, the PRD, and only the living references relevant to the change. Inspect current code, schema, configuration, tests, and hosted state where relevant; documentation does not override them.
-2. Run `git status` and preserve unrelated work. Switch to `main`, fetch and prune `origin`, then fast-forward local `main` to `origin/main` with `git merge --ff-only origin/main`. Confirm you are on the updated `main`, then create and switch to `codex/<focused-description>` with `git switch -c codex/<focused-description>`. Work in the primary repository folder on that branch. If unrelated changes prevent switching or updating safely, resolve that first with the user. Never stash, reset, overwrite, or carry user work implicitly.
+2. Run `git status` and preserve unrelated work. Switch to `main`, fetch and prune `origin`, then fast-forward local `main` to `origin/main` with `git merge --ff-only origin/main`. Confirm you are on the updated `main`, then create and switch to `codex/<focused-description>` with `git switch -c codex/<focused-description>`. Work in the primary repository folder on that branch. The exception is several sessions sharing a clone: each then works in its own worktree (`git worktree add ../<name> -b codex/<task> origin/main`) and checks `git worktree list` first, so no session commits on another's checked-out branch. If unrelated changes prevent switching or updating safely, resolve that first with the user. Never stash, reset, overwrite, or carry user work implicitly.
 3. Write a short acceptance note covering:
 
    - the required outcome and exclusions
@@ -72,8 +72,9 @@ Integration tests may reset only a run-owned disposable database whose simple na
 
 1. Review the changed files and the diff against `origin/main`. Check generated artifacts, schema and lockfile changes, tenant boundaries, error disclosure, and rollback implications relevant to the change.
 2. As the sole maintainer, perform a deliberate second-pass self-review after implementation. Obtain independent review for authentication, tenancy, payments, schema/data migration, security, production operations, or broad architecture changes before production activation. Routine docs and low-risk UI changes do not require a separate reviewer.
-3. Make cohesive commits, push the branch, and open a PR to protected `main`. Keep the PR description proportional: outcome, risk, tests, and any migration, rollout, rollback, screenshot, external activation, or known limitation that applies.
-4. Confirm the risk-appropriate local validation passed and its evidence covers the final diff. GitHub status checks are optional and do not replace local evidence. Review any optional CI failure that applies to this change. Do not weaken assertions or safety guards to obtain a passing result.
+3. Update [[Project Handover]] only when the work changes behavior, operations, release state, material risk/evidence, or the next safe action. A routine documentation or low-risk UI PR does not need handover churn when the PR itself is sufficient. Update the relevant living reference and issue register whenever their current claims or risk status change. These updates belong in the same PR.
+4. Make cohesive commits, push the branch, and open a PR to protected `main`. Keep the PR description proportional: outcome, risk, tests, and any migration, rollout, rollback, screenshot, external activation, or known limitation that applies.
+5. Confirm the risk-appropriate local validation passed and its evidence covers the final diff. GitHub status checks are optional and do not replace local evidence. Review any optional CI failure that applies to this change. Do not weaken assertions or safety guards to obtain a passing result.
 
 ## 5. Clean Up, Merge, And Record
 
@@ -89,9 +90,22 @@ After applicable local validation and review are complete and the PR is ready to
    - Delete a local branch only when `gh pr view <number> --json state,headRefOid` shows `MERGED` and the PR's head equals the branch tip. Check it in the same command as the delete, so a PR that is still open is never closed by removing its branch. A branch with no PR, or whose tip moved after the PR, is unmerged work: keep it, or ask its owner.
    - GitHub deletes a PR's branch when it merges; after `git fetch --prune`, delete a remaining remote branch only under the same check. Leave bot branches (Renovate) with open PRs alone.
    - Never delete a branch that is checked out, and never switch another session's checkout or the folder the dev app serves from. Switching the dev folder to newer code can load features ahead of their migrations.
-   - Remove a worktree you made with `git worktree remove` once it is clean, never with `--force` over changes. Leave worktrees the desktop app made for sessions to the app's own cleanup.
-   - When several sessions share a clone, each works in its own worktree (`git worktree add ../<name> -b codex/<task> origin/main`) and checks `git worktree list` first, so no session commits on another's checked-out branch.
-
-Update [[Project Handover]] only when the work changes behavior, operations, release state, material risk/evidence, or the next safe action. A routine documentation or low-risk UI PR does not need handover churn when the PR itself is sufficient. Update the relevant living reference and issue register whenever their current claims or risk status change.
+   - Remove a worktree you made with `git worktree remove` once it is clean, never with `--force` over changes. Worktrees the desktop app made for sessions are closed under section 6, with the owner's yes.
 
 If work stops while incomplete, leave one compact note containing the branch/PR, HEAD, dirty files, completed checks, remaining work or blocker, retained resources, and exact next action.
+
+## 6. Close Finished Sessions And Worktrees
+
+This is the last step of any plan that used side sessions. Start it only when everything else is finished: every PR merged, every record updated, and any deploy the owner approved complete. The session that started the side sessions does this. A session never closes itself.
+
+1. Check each session it started. A session is ready to close only when all of these hold:
+   - It is not running.
+   - Its PR is merged at its reviewed head, or it had nothing to merge.
+   - Its worktree has no uncommitted or unpushed work.
+   - No container, test run or other session is using its folder.
+   - Every change or feature it suggested is merged, recorded in the issue register or PRD, or rejected by the owner. Check its last report and wrap-up, including any unanswered question or unstarted task card. If that is unclear, the session is not ready.
+2. Ask the owner before closing anything. List the sessions that are ready, with each one's worktree and branch, and the sessions being kept and why. Approval to merge or deploy doesn't cover this, and a yes covers only the sessions listed.
+3. After the owner's yes, archive each approved session, which also removes its worktree. Then delete its branch under step 7 of section 5, and confirm with `git worktree list`.
+4. Tell the owner what was closed, what was kept and why. If an archive leaves a folder behind, report it. Never kill a process to free a folder, and never delete it recursively.
+
+Leave alone the sessions the owner forked by hand and the spare worktree the app keeps for new sessions. A session that isn't closed this way stays with the app's own cleanup.

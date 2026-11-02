@@ -26,7 +26,7 @@ type Params = Partial<Record<"q" | "when" | "from" | "to" | "society" | "cursor"
 export default async function ExploreEventsPage({ searchParams }: { searchParams: Promise<Params> }) {
   const params = await searchParams;
   const now = new Date();
-  const { filters, errors, range } = parseExploreFilters(params, now);
+  const { filters, errors, range, unknownWhen } = parseExploreFilters(params, now);
   const societies = await getExploreSocieties(now);
   if (filters.society && !societies.some((society) => society.slug === filters.society)) {
     errors.society = "Choose a society from the list.";
@@ -51,6 +51,7 @@ export default async function ExploreEventsPage({ searchParams }: { searchParams
           <ExploreFilterFields errors={errors} filters={filters} societies={societies} />
         </FilterBar>
 
+        {unknownWhen && valid ? <Notice>That date filter isn&apos;t one we know, so these are all upcoming events.</Notice> : null}
         {valid ? (
           <Suspense fallback={<CardGridSkeleton label="Loading events" />} key={JSON.stringify(params)}>
             <ExploreResults filters={filters} params={params} range={range} societyName={societies.find((s) => s.slug === filters.society)?.name} />
@@ -115,7 +116,7 @@ async function ExploreResults({
         Try a wider date range or another search.
       </EmptyState>
     ) : (
-      <EmptyState action={<Link className={buttonClasses({ variant: "secondary" })} href="/societies">Explore societies</Link>} icon="calendar" title="No upcoming events yet">
+      <EmptyState action={<Link className={buttonClasses({ variant: "secondary" })} href="/societies">Find a society</Link>} icon="calendar" title="No upcoming events yet">
         Events show here as soon as a society publishes them.
       </EmptyState>
     );

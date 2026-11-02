@@ -162,8 +162,10 @@ describe("member prices", () => {
 
     expect(await eventPage()).toContain("1 at the member price");
     expect(await checkoutPage(1)).toContain("(member price)");
-    // Several chosen before signing in: back to the box, which keeps the ticket chosen.
-    await expect(checkoutPage(2)).rejects.toThrow(`REDIRECT:/events/${eventId}?ticketTypeId=${ticketTypeId}`);
+    // Several chosen before signing in: back to the box, which keeps the ticket chosen and says why it's 1 (UI-044).
+    await expect(checkoutPage(2)).rejects.toThrow(`REDIRECT:/events/${eventId}?ticketTypeId=${ticketTypeId}&quantity=2#tickets`);
+    const lowered = renderPage(await PublicEventPage({ params: Promise.resolve({ eventId }), searchParams: Promise.resolve({ ticketTypeId, quantity: "2" }) }));
+    expect(await lowered).toContain("so we changed 2 to 1");
 
     await buy(fixture, member.id, 1000, 1);
     const page = await eventPage();

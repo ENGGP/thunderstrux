@@ -60,7 +60,8 @@ export function SocietyHeader({
         </div>
       </header>
 
-      <nav aria-label="Society sections" className={`mt-8 ${tabBarClasses}`}>
+      {/* One tab is no choice: a society with only its overview shows no tab bar. */}
+      {hasMemberships || hasMerchandise || current !== "overview" ? <nav aria-label="Society sections" className={`mt-8 ${tabBarClasses}`}>
         <Link aria-current={current === "overview" ? "page" : undefined} className={tabClasses(current === "overview")} href={base}>
           <TabLabel>Overview</TabLabel>
         </Link>
@@ -74,7 +75,7 @@ export function SocietyHeader({
             <TabLabel>Merchandise</TabLabel>
           </Link>
         ) : null}
-      </nav>
+      </nav> : null}
     </>
   );
 }

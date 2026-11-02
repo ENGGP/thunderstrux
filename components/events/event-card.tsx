@@ -37,7 +37,7 @@ export function EventCard({
     <article className="relative flex flex-wrap content-start gap-4 overflow-hidden rounded-card border border-line bg-surface p-5 hover:shadow-card">
       {heroAssetId ? (
         // Decorative: the title link names the event.
-        <img alt="" className="-mx-5 -mt-5 aspect-video w-[calc(100%+2.5rem)] max-w-none object-cover" src={`/api/public/assets/${heroAssetId}`} />
+        <img alt="" className="-mx-5 -mt-5 aspect-video w-[calc(100%+2.5rem)] max-w-none object-cover" decoding="async" loading="lazy" src={`/api/public/assets/${heroAssetId}`} />
       ) : media ? (
         <div aria-hidden="true" className="-mx-5 -mt-5 hidden aspect-video w-[calc(100%+2.5rem)] max-w-none bg-brand-tint sm:block bg-[repeating-linear-gradient(135deg,transparent_0_15px,color-mix(in_srgb,var(--ts-brand)_9%,transparent)_15px_16px)]" />
       ) : null}

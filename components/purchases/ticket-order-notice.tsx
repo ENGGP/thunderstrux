@@ -31,8 +31,9 @@ export function TicketOrderNotice({ order, processing, cancelled = false }: { or
   }
   if (projection === "refunded") {
     return (
-      <Notice title="Refunded">
+      <Notice title={order.event.cancelledAt ? "Event cancelled, refunded" : "Refunded"}>
         <p>
+          {order.event.cancelledAt ? `${society} cancelled this event. ` : ""}
           {refund ? `${formatMoney(refunded)} was refunded to your card${refund.resolvedAt ? ` on ${formatDate(refund.resolvedAt, timeZone)}` : ""}.` : "This order was refunded in full."} Banks usually take 5 to 10 business days. {issued ? "The tickets are no longer valid." : "No tickets were issued for this order."}
         </p>
       </Notice>

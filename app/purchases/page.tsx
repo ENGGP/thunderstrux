@@ -154,11 +154,11 @@ export default async function PurchasesPage({ searchParams }: { searchParams: Pr
           action={
             family === "tickets" ? (
               <Link className={buttonClasses({ variant: "secondary" })} href="/events">
-                Explore events
+                See what&apos;s on
               </Link>
             ) : (
               <Link className={buttonClasses({ variant: "secondary" })} href="/societies">
-                Explore societies
+                Find a society
               </Link>
             )
           }

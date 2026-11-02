@@ -12,7 +12,7 @@ import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { cancelledByBuyer, pendingCheckoutState } from "@/lib/purchases/pending-checkout";
 import { getLiveSession } from "@/lib/auth/live-session";
-import { formatDate, membershipLabel } from "@/lib/format";
+import { formatDate, formatPrice, membershipLabel, orderReference } from "@/lib/format";
 import { grantState } from "@/lib/memberships/grants";
 import { ownMembershipOrder } from "@/lib/memberships/offers";
 import { reviewDisputeWords, ticketOrderProjection } from "@/lib/purchases/projection";
@@ -65,8 +65,18 @@ export default async function MembershipOrderPage({ params, searchParams }: { pa
               ? "Refunded"
               : returned?.title ?? "Your membership";
 
+  // Once it's a membership this page is a receipt: no steps, and the way back is to Purchases.
+  const receipt = Boolean(grant && state);
   return (
-    <CheckoutShell lead="Buying from" backHref={back} backLabel="Back to memberships" current={grant ? 2 : 1} society={order.sellerName} steps={["Review", "Pay with Stripe", "Membership"]} title={title}>
+    <CheckoutShell
+      backHref={receipt ? "/purchases?family=memberships" : back}
+      backLabel={receipt ? "All purchases" : "Back to memberships"}
+      current={grant ? 2 : 1}
+      lead={receipt ? "Bought from" : "Buying from"}
+      society={order.sellerName}
+      steps={receipt ? undefined : ["Review", "Pay with Stripe", "Membership"]}
+      title={title}
+    >
       <Card>
         <div className="grid gap-4">
           {closed ? (
@@ -106,8 +116,11 @@ export default async function MembershipOrderPage({ params, searchParams }: { pa
             </>
           ) : grant && state ? (
             <>
-              <div>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <StatusBadge status={state} />
+                <span className="text-sm text-ink-soft tabular-nums">
+                  {order.paymentKind === "free" ? "Free" : `Paid ${formatPrice(order.totalAmount)}`} · Order {orderReference(order.id)} · {formatDate(order.paidAt ?? order.createdAt, zone)}
+                </span>
               </div>
               <p className="text-ink">
                 {state === "upcoming"

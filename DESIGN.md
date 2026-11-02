@@ -257,9 +257,10 @@ Moderately squared: 6px tags and badges, 9px controls and buttons, 14px cards an
 ### Inputs / Fields
 - **Style:** 44px, 9px radius, Control Edge border, white fill, 16px text; the label sits above in 14px semibold, hint and error below in 14px.
 - **Focus:** the global blue ring. **Error:** crimson border plus a crimson message tied by `aria-describedby`. **Disabled:** subtle surface.
+- **Quantity stepper:** one Control Edge frame holding 44px − and + buttons around a centred, typable count; an error replaces the hint.
 
 ### Navigation
-- **Header:** white, 60/72px, brand wordmark left; links in Soft Ink, the current one in Ink with a 3px brand rule on the header's bottom edge. Below `md` the links fold into a `Menu` disclosure.
+- **Header:** white, 60/72px, brand wordmark left; links in Soft Ink, the current one in Ink with a 3px brand rule on the header's bottom edge. Below `md` the links sit in a `Menu` popover (44px rows, the current page marked with a 3px brand edge); a member's My tickets stays outside it and Sign out moves in.
 - **Tabs:** 44px tall, 15px; active is semibold Midnight Plum over a 3px brand underline on a 1px hairline track.
 - **Organiser column:** Midnight Plum, white text, group labels at 70% white, 36px rows from `lg` with a 3px left marker on the current item.
 

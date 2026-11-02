@@ -79,3 +79,13 @@ test("a visitor finds Fees, Help and Privacy in the footer, with the fee worked 
   await expect(page.getByRole("link", { name: "Find your purchase" })).toHaveAttribute("href", "/guest/recover");
   await expect(page.getByText("Never send card details", { exact: false })).toBeVisible();
 });
+
+// UI-040: a dead shared link is a real 404, so link previews and checkers don't treat it as live.
+test("unknown event and society links answer 404, and a draft is concealed the same way", async ({ page, data }) => {
+  const draft = await createEvent({ organisationId: data.organisation.id, title: "Draft Not Found" });
+  for (const path of ["/events/not-a-real-event", "/societies/not-a-real-society", `/events/${draft.id}`]) {
+    const response = await page.goto(path);
+    expect(response?.status(), path).toBe(404);
+  }
+  expect((await page.goto(`/societies/${data.organisation.slug}`))?.status()).toBe(200);
+});

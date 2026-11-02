@@ -18,6 +18,8 @@ type MemberOrganisation = {
   // The end of a running membership, shown as its own badge beside Joined.
   memberUntil?: Date | null;
   timeZone?: string | null;
+  // It sells a membership now, so a free join can go on to the paid one.
+  sellsMemberships?: boolean;
 };
 
 // Free affiliations only. Leaving one never touches paid purchases or staff access.
@@ -113,6 +115,14 @@ export function MemberOrganisationsList({
                 >
                   View events
                 </Link>
+                {organisation.sellsMemberships && !organisation.memberUntil ? (
+                  <Link
+                    className={buttonClasses({ variant: "secondary", size: "sm" })}
+                    href={`/societies/${organisation.slug}/memberships`}
+                  >
+                    See memberships
+                  </Link>
+                ) : null}
                 <Button
                   onClick={() => setConfirming(organisation)}
                   size="sm"

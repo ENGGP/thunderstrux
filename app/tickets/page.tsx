@@ -56,7 +56,7 @@ export default async function MyTicketsPage({ searchParams }: { searchParams: Pr
         }))}
       />
       {groups.length === 0 ? (
-        <EmptyState action={view === "upcoming" ? <Link className={buttonClasses({ variant: "secondary" })} href="/events">Explore events</Link> : undefined} icon="ticket" title={emptyCopy[view].title}>
+        <EmptyState action={view === "upcoming" ? <Link className={buttonClasses({ variant: "secondary" })} href="/events">See what&apos;s on</Link> : undefined} icon="ticket" title={emptyCopy[view].title}>
           {emptyCopy[view].body}
         </EmptyState>
       ) : (
@@ -73,6 +73,7 @@ export default async function MyTicketsPage({ searchParams }: { searchParams: Pr
               <div className="grid gap-4 sm:grid-cols-[repeat(auto-fill,minmax(280px,1fr))]">
                 {eventTickets.map((ticket) => (
                   <TicketFace
+                    ended={view === "past"}
                     free={ticket.order.paymentKind === "free"}
                     key={ticket.id}
                     of={ticket.order.quantity}

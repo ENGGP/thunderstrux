@@ -16,11 +16,25 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
 import { useCheckout, type CheckoutResponse } from "@/lib/client/checkout";
 import { formatMoney, formatPrice, payLabel } from "@/lib/format";
-import { readBasket, writeBasket } from "@/lib/merchandise/basket";
+import { basketFromParam, basketToParam, readBasket, writeBasket } from "@/lib/merchandise/basket";
 import type { Quote } from "@/lib/merchandise/shop";
 
 const linkClass = "inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4";
 const items = (count: number) => `${count} ${count === 1 ? "item" : "items"}`;
+
+// Back from a guest's email link, which carries the basket: a browser without it
+// (the link opened somewhere else) gets it back. Declared before useBasket, so
+// the basket is written before that hook first reads it.
+function useBasketFromLink(society: string) {
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("basket")) return;
+    const linked = basketFromParam(params.get("basket"), society);
+    if (linked && readBasket()?.society !== society) writeBasket(linked);
+    params.delete("basket");
+    window.history.replaceState(null, "", `${window.location.pathname}${params.size ? `?${params}` : ""}`);
+  }, [society]);
+}
 
 type Buyer = { name: string | null; email: string; guest: boolean };
 type Refusal = { title: string; body: string; toBasket?: boolean; openOrder?: string };
@@ -46,6 +60,7 @@ export function MerchandiseCheckout({
   callbackUrl: string;
 }) {
   const router = useRouter();
+  useBasketFromLink(society.slug);
   const { basket, ready } = useBasket();
   const [quote, setQuote] = useState<Quote | null>(null);
   const [error, setError] = useState("");
@@ -106,8 +121,8 @@ export function MerchandiseCheckout({
     return { title: "Checkout didn't start", body: `${getClientErrorMessage(failure, "Something went wrong.")} Nothing has been charged.` };
   }
 
-  const shell = (title: string, steps: string[], current: number, children: ReactNode, aside?: ReactNode) => (
-    <CheckoutShell lead="Buying from" aside={aside} backHref={basketHref} backLabel="Back to basket" current={current} society={society.name} steps={steps} title={title}>
+  const shell = (title: string, steps: string[], current: number, children: ReactNode, aside?: ReactNode, context?: string) => (
+    <CheckoutShell lead="Buying from" aside={aside} backHref={basketHref} backLabel="Back to basket" context={context} current={current} society={society.name} steps={steps} title={title}>
       {children}
     </CheckoutShell>
   );
@@ -127,7 +142,7 @@ export function MerchandiseCheckout({
       0,
       <Card>
         <div className="grid justify-items-start gap-3">
-          <p className="text-ink-soft">Add something from {society.name}&apos;s merchandise first. Items you add stay on this device.</p>
+          <p className="text-ink-soft">Add something from {society.name}&apos;s merchandise first. Your basket is kept in this browser.</p>
           <Link className={buttonClasses({ variant: "secondary" })} href={`/societies/${society.slug}/merchandise`}>
             Browse merchandise
           </Link>
@@ -151,7 +166,9 @@ export function MerchandiseCheckout({
 
   const free = quote.total === 0;
   const count = quote.lines.reduce((total, line) => total + line.quantity, 0);
-  const steps = buyer?.guest || !buyer ? ["Your email", "Review", free ? "Pickup" : "Pay with Stripe"] : free ? ["Review", "Pickup"] : ["Review", "Pay with Stripe", "Pickup"];
+  // The same steps the order page shows afterwards, so a guest's count doesn't jump.
+  const steps = buyer?.guest || !buyer ? (free ? ["Your email", "Confirm", "Pickup"] : ["Your email", "Review", "Pay with Stripe", "Pickup"]) : free ? ["Review", "Pickup"] : ["Review", "Pay with Stripe", "Pickup"];
+  const context = `${items(count)} from ${society.name} · Pickup only`;
   const summary = (
     <p className="flex justify-between gap-3 border-t border-line pt-3 text-ui text-ink">
       <span className="[overflow-wrap:anywhere]">
@@ -168,10 +185,12 @@ export function MerchandiseCheckout({
       0,
       <Card>
         <div className="grid gap-4">
-          <GuestEmailForm callbackUrl={callbackUrl} endpoint="/api/guest/email/request" submitLabel="Email me a link" />
+          <GuestEmailForm callbackUrl={`${callbackUrl}?basket=${basketToParam(lines)}`} endpoint="/api/guest/email/request" purpose="merchandise" submitLabel="Email me a link" />
           {summary}
         </div>
-      </Card>
+      </Card>,
+      undefined,
+      context
     );
   }
 
@@ -319,7 +338,8 @@ export function MerchandiseCheckout({
         </div>
       </Card>
     </>,
-    aside
+    aside,
+    context
   );
 }
 

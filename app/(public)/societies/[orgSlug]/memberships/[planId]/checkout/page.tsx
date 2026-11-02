@@ -103,6 +103,7 @@ export default async function MembershipCheckoutPage({ params }: { params: Promi
       backLabel="Back to memberships"
       current={0}
       society={organisation.name}
+      context={`${offer.name} · ${formatTerm(offer.startsAt, offer.endsAt, zone)}`}
       steps={free ? ["Review", "Membership"] : ["Review", "Pay with Stripe", "Membership"]}
       title={free ? "Confirm your membership" : "Review your membership"}
     >

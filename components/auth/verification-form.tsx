@@ -7,7 +7,8 @@ import { Button, buttonClasses } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
-export function VerificationForm({ callbackUrl, defaultEmail = "" }: { callbackUrl: string; defaultEmail?: string }) {
+// Signed in, it doesn't offer Sign in; signed in and already verified, it says so and moves on.
+export function VerificationForm({ callbackUrl, defaultEmail = "", signedIn = false, alreadyVerified = false }: { callbackUrl: string; defaultEmail?: string; signedIn?: boolean; alreadyVerified?: boolean }) {
   const [token, setToken] = useAccountLinkToken();
   const [email, setEmail] = useState(defaultEmail);
   const [password, setPassword] = useState("");
@@ -50,6 +51,12 @@ export function VerificationForm({ callbackUrl, defaultEmail = "" }: { callbackU
     {error && <Notice reveal role="alert" tone="danger">{error}</Notice>}
     {message && <Notice reveal role="status" tone="success">{message}</Notice>}
   </>;
+  if (alreadyVerified && !token) {
+    return <div className="grid gap-3">
+      <p className="text-ink [overflow-wrap:anywhere]">{defaultEmail ? <><strong>{defaultEmail}</strong> is</> : "Your email is"} already verified.</p>
+      <Link className={buttonClasses({ size: "lg" })} href={callbackUrl}>Continue</Link>
+    </div>;
+  }
   return <div className="grid gap-4">
     {verifiedPath ? <Link className={buttonClasses({ size: "lg" })} href={`/login?callbackUrl=${encodeURIComponent(verifiedPath)}`}>Sign in to continue</Link> : <>
       {token && <form className="grid gap-3" onSubmit={confirm}>
@@ -63,7 +70,7 @@ export function VerificationForm({ callbackUrl, defaultEmail = "" }: { callbackU
         {/* With a link open, verifying is the main action; sending a new link is secondary. */}
         <Button busy={busy === "resend"} busyLabel="Sending…" disabled={busy !== null} type="submit" variant={token ? "secondary" : "primary"}>Send verification email</Button>
       </form>
-      <Link className="text-sm font-semibold text-brand underline underline-offset-4" href={`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`}>Sign in</Link>
+      {signedIn ? null : <Link className="text-sm font-semibold text-brand underline underline-offset-4" href={`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`}>Sign in</Link>}
     </>}
     {results}
   </div>;

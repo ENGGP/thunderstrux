@@ -86,7 +86,9 @@ test("email change supports cancellation and explicit logged-out confirmation wi
   const message = messages.filter((item: { data: { to: string } }) => item.data.to === newEmail).at(-1);
   expect(message).toBeTruthy();
   const link = message.data.text.split("\n\n").at(-1);
-  await page.getByRole("button", { name: "Sign out", exact: true }).click(); await expect(page).toHaveURL("http://localhost:3100/");
+  // Still 390px wide from the reflow check, where Sign out is inside the Menu.
+  await page.getByRole("button", { name: "Menu", exact: true }).click();
+  await page.getByRole("navigation", { name: "Menu" }).getByRole("button", { name: "Sign out", exact: true }).click(); await expect(page).toHaveURL("http://localhost:3100/");
   await page.goto("/change-email");
   await page.goto(link); await expect.poll(() => page.url()).not.toContain("#");
   expect((await prisma.user.findUniqueOrThrow({ where: { id: data.member.id } })).email).toBe(data.member.email);

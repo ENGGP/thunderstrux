@@ -59,3 +59,22 @@ export function addToBasket(society: string, variantId: string, quantity: number
 
 export const basketCount = (basket: Basket | null, society: string) =>
   basket && basket.society === society ? basket.lines.reduce((total, line) => total + line.quantity, 0) : 0;
+
+// A guest's email link carries the basket, because it may open in another
+// browser (Instagram's in-app one, then Safari) that has none. Only "id.qty"
+// pairs joined by "_": unreserved characters, as safeReturnPath refuses an
+// encoded slash anywhere in a return path. The server re-quotes it either way.
+export const basketToParam = (lines: BasketLine[]) => lines.map((line) => `${line.variantId}.${line.quantity}`).join("_");
+
+const linePattern = /^([a-z0-9]{1,40})\.(10|[1-9])$/;
+export function basketFromParam(value: string | null | undefined, society: string): Basket | null {
+  const lines: BasketLine[] = [];
+  for (const part of (value ?? "").split("_")) {
+    const match = linePattern.exec(part);
+    if (!match) return null;
+    const existing = lines.find((line) => line.variantId === match[1]);
+    if (existing) existing.quantity = Math.min(MAX_LINE_QUANTITY, existing.quantity + Number(match[2]));
+    else lines.push({ variantId: match[1], quantity: Number(match[2]) });
+  }
+  return lines.length && lines.length <= MAX_BASKET_LINES ? { society, lines } : null;
+}

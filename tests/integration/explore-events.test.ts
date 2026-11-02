@@ -26,6 +26,10 @@ describe("explore events filters", () => {
     // On a Sunday the week still ends that night.
     expect(parseExploreFilters({ when: "week" }, new Date("2026-10-25T00:00:00Z")).range).toEqual({ startBefore: new Date("2026-10-25T14:00:00Z") });
     expect(parseExploreFilters({ when: "month" }, wednesday).range).toEqual({ startBefore: new Date("2026-10-31T14:00:00Z") });
+    // The weekend is Saturday's start to Monday's; on the weekend itself it starts now.
+    expect(parseExploreFilters({ when: "weekend" }, wednesday).range).toEqual({ startFrom: new Date("2026-10-23T14:00:00Z"), startBefore: new Date("2026-10-25T14:00:00Z") });
+    expect(parseExploreFilters({ when: "weekend" }, new Date("2026-10-24T02:00:00Z")).range).toEqual({ startBefore: new Date("2026-10-25T14:00:00Z") });
+    expect(parseExploreFilters({ when: "weekend" }, new Date("2026-10-25T00:00:00Z")).range).toEqual({ startBefore: new Date("2026-10-25T14:00:00Z") });
     expect(parseExploreFilters({}, wednesday)).toMatchObject({ filters: { when: "upcoming" }, range: {}, errors: {} });
   });
 
@@ -38,10 +42,9 @@ describe("explore events filters", () => {
     expect(parseExploreFilters({ when: "custom", from: "2026-01-01", to: "2027-01-02" }, wednesday).errors).toEqual({ to: "Choose a range of 366 days or less." });
     expect(parseExploreFilters({ when: "custom", from: "2026-11-02", to: "2026-11-01" }, wednesday).errors).toEqual({ to: "The end date must be on or after the start date." });
     expect(parseExploreFilters({ when: "custom", from: "2026-02-30" }, wednesday).errors).toEqual({ from: "Enter a real date.", to: "Choose an end date." });
-    expect(parseExploreFilters({ when: "someday", q: "x".repeat(101) }, wednesday).errors).toEqual({
-      when: "Choose when from the list.",
-      q: "Search for up to 100 characters."
-    });
+    expect(parseExploreFilters({ when: "someday", q: "x".repeat(101) }, wednesday).errors).toEqual({ q: "Search for up to 100 characters." });
+    // An unknown "when" (an old or mistyped link) lists everything upcoming and says so, rather than showing nothing.
+    expect(parseExploreFilters({ when: "someday" }, wednesday)).toMatchObject({ filters: { when: "upcoming" }, errors: {}, range: {}, unknownWhen: true });
   });
 });
 

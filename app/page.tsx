@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { EventCard } from "@/components/events/event-card";
@@ -7,6 +8,7 @@ import { buttonClasses } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { CardGridSkeleton, Skeleton } from "@/components/ui/skeleton";
 import { getLiveSession } from "@/lib/auth/live-session";
+import { appUrl } from "@/lib/app-url";
 import { getPublishedEvents } from "@/lib/events/public-events";
 import {
   discoverOrganisations,
@@ -14,6 +16,17 @@ import {
 } from "@/lib/organisations/discovery";
 
 export const dynamic = "force-dynamic";
+
+// A shared link to the home page previews as Thunderstrux, not a bare URL.
+export async function generateMetadata(): Promise<Metadata> {
+  const origin = appUrl();
+  const description = "See what student societies are running and get your tickets, memberships and merchandise.";
+  return {
+    description,
+    ...(origin ? { metadataBase: new URL(origin) } : {}),
+    openGraph: { title: "Thunderstrux", description, type: "website", siteName: "Thunderstrux" }
+  };
+}
 
 // PUB-01: three short notes for first-time visitors; no screenshots or claims.
 const howItWorks = [
@@ -138,9 +151,11 @@ function HomeSkeleton() {
 // A short look ahead; the full, filtered list lives at /events.
 async function HomeListings() {
   const result = await getPublishedEvents({ limit: 6 });
-  const societies = await discoverOrganisations(
-    discoveryInput(new URLSearchParams({ limit: "4" }))
-  );
+  // The home page features societies that have something to show: an upcoming event, then a description.
+  // Directory order (by name) stays as it is; this only re-ranks a first dozen.
+  const found = await discoverOrganisations(discoveryInput(new URLSearchParams({ limit: "12" })));
+  const rank = (society: (typeof found.organisations)[number]) => (society.nextEvent ? 2 : 0) + (society.description ? 1 : 0);
+  const societies = { organisations: [...found.organisations].sort((a, b) => rank(b) - rank(a)).slice(0, 4) };
 
   return (
     <>
@@ -206,7 +221,7 @@ async function HomeListings() {
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             {societies.organisations.map((society) => (
-              <SocietyCard key={society.id} {...society} />
+              <SocietyCard headingLevel="h3" key={society.id} {...society} />
             ))}
           </div>
         </section>

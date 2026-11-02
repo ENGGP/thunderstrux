@@ -9,6 +9,6 @@ export default async function VerifyEmailPage({ searchParams }: { searchParams: 
   const { callbackUrl } = await searchParams;
   const session = await getLiveSession();
   return <AuthShell title="Verify your email" description="You can sign in and edit your profile while waiting. Verify your email to purchase tickets or use society features.">
-    <Card><VerificationForm callbackUrl={safeReturnPath(callbackUrl)} defaultEmail={session?.user?.email ?? ""} /></Card>
+    <Card><VerificationForm alreadyVerified={Boolean(session?.user?.emailVerifiedAt)} callbackUrl={safeReturnPath(callbackUrl)} defaultEmail={session?.user?.email ?? ""} signedIn={Boolean(session?.user)} /></Card>
   </AuthShell>;
 }

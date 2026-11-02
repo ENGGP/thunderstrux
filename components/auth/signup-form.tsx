@@ -61,6 +61,28 @@ export function SignupForm({
     }
   }
 
+  // Sent: the form makes way for what to do next. The wording is the same for every
+  // address, so it never says whether one already has an account.
+  if (successMessage) {
+    return (
+      <div className="grid gap-3">
+        <h2 className="font-display text-2xl font-semibold text-ink">Check your email</h2>
+        <p className="text-ink" role="status">{successMessage}</p>
+        <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">
+          Address: <strong className="text-ink">{email.trim()}</strong>. Open the link to verify your email and sign in. Nothing arrived? Check spam or junk.
+        </p>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
+          <button className="inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4" onClick={() => setSuccessMessage(null)} type="button">
+            Use a different email
+          </button>
+          <Link className="inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4" href={`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`}>
+            Sign in
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <form className="grid gap-4" onSubmit={onSubmit}>
       <fieldset className="grid gap-2">
@@ -70,7 +92,7 @@ export function SignupForm({
             [
               ["member", "Me", "Get tickets, memberships and merch, and join societies."],
               // An organisation account can't hold tickets and can't become a member account later.
-              ["organisation", "A society", "A shared committee login for running events and sales. It can't get tickets."]
+              ["organisation", "A society", "A shared committee login for running events and sales. It can't get tickets, and can't become a personal account later. Committee members use their own accounts for themselves."]
             ] as const
           ).map(([value, label, help]) => (
             <label
@@ -123,6 +145,7 @@ export function SignupForm({
         autoComplete="email"
         label="Email"
         onChange={(event) => setEmail(event.target.value)}
+        required
         type="email"
         value={email}
       />
@@ -132,6 +155,7 @@ export function SignupForm({
         label="Password"
         minLength={8}
         onChange={(event) => setPassword(event.target.value)}
+        required
         type="password"
         value={password}
       />
@@ -144,11 +168,6 @@ export function SignupForm({
       {error ? (
         <Notice reveal role="alert" tone="danger">
           {error}
-        </Notice>
-      ) : null}
-      {successMessage ? (
-        <Notice reveal role="status" tone="success">
-          {successMessage}
         </Notice>
       ) : null}
 

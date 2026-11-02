@@ -135,7 +135,9 @@ describe("dashboards (T34)", () => {
     const newcomer = await createMember();
     setMockSession({ userId: newcomer.id, email: newcomer.email, accountRole: "member" });
     const empty = await page();
-    for (const text of ["Nothing booked yet", "Explore events", "No memberships", "You haven&#x27;t joined a society"]) expect(empty).toContain(text);
+    // One place to start rather than four empty cards; the header owns the name "Explore events".
+    for (const text of ["Get started", "See what&#x27;s on", "Find a society"]) expect(empty).toContain(text);
+    for (const text of ["Nothing booked yet", "Recent purchases", "Explore events"]) expect(empty).not.toContain(text);
   });
 
   // UI-019: the readers leave out checkouts that didn't complete, so ten newer

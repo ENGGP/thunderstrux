@@ -63,7 +63,7 @@ export default async function CheckoutPage({
   // Back to the event, with the code, so its page says why a hidden type isn't there.
   if (!ticketType || !Number.isInteger(quantity) || quantity < 1 || quantity > maxTicketsPerOrder) redirect(query.code ? `${eventHref}?${new URLSearchParams({ code: query.code })}` : eventHref);
   // Someone who chose several before signing in: the box keeps this ticket at 1 and explains.
-  if (ticketType.memberPriced && quantity > 1) redirect(`${eventHref}?${back}`);
+  if (ticketType.memberPriced && quantity > 1) redirect(`${eventHref}?${back}#tickets`);
   // Only a code for this ticket goes to checkout, which decides it again under the event lock.
   const usedCode = code && codeAppliesTo(code, ticketType) ? code : null;
 
@@ -73,9 +73,11 @@ export default async function CheckoutPage({
   const callback = `/events/${eventId}/checkout?ticketTypeId=${ticketType.id}&quantity=${quantity}${codeQuery}`;
   // "Change tickets" goes back to the event with this choice (and code) still picked.
   const changeHref = `${eventHref}?ticketTypeId=${encodeURIComponent(ticketType.id)}&quantity=${quantity}${codeQuery}`;
+  // On a phone the event card is below the form, so the event is named up top as well.
+  const context = `${event.title} · ${formatDateTime(event.startTime, { timeZone: organisation.timeZone })} · ${event.location}`;
   if (!session && !guestCheckout) {
     return (
-      <CheckoutShell backHref={changeHref} current={0} society={organisation.name} steps={ticketSteps({ guest: true, free })} title="Where should we send your tickets?">
+      <CheckoutShell backHref={changeHref} context={context} current={0} society={organisation.name} steps={ticketSteps({ guest: true, free })} title="Where should we send your tickets?">
         <Card>
           <GuestEmailForm callbackUrl={callback} endpoint="/api/guest/email/request" submitLabel="Email me a link" />
         </Card>
@@ -102,7 +104,7 @@ export default async function CheckoutPage({
         <Card>
           <div className="grid gap-4">
             {event.heroAssetId ? (
-              <img alt="" className="aspect-video w-full rounded-control border border-line object-cover" src={`/api/public/assets/${event.heroAssetId}`} />
+              <img alt="" className="aspect-video w-full rounded-control border border-line object-cover" decoding="async" loading="lazy" src={`/api/public/assets/${event.heroAssetId}`} />
             ) : null}
             <div className="grid gap-1.5">
               <h2 className="text-lg font-semibold text-ink [overflow-wrap:anywhere]">{event.title}</h2>
@@ -150,6 +152,7 @@ export default async function CheckoutPage({
         </Card>
       }
       backHref={changeHref}
+      context={context}
       current={guestCheckout ? 1 : 0}
       society={organisation.name}
       steps={ticketSteps({ guest: Boolean(guestCheckout), free })}

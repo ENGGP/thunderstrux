@@ -164,10 +164,22 @@ export function ownMembershipOrder(userId: string, orderId: string) {
     where: { id: orderId, userId, kind: "membership" },
     select: {
       id: true, status: true, paymentKind: true, requiresCompensationReview: true, disputeStatus: true, refundStatus: true, externalRefundedAmount: true, externalRefundReviewedAt: true, cancelledAt: true, sellerName: true,
+      totalAmount: true, createdAt: true, paidAt: true,
       organisation: { select: { slug: true, timeZone: true } },
       lines: { take: 1, select: { nameSnapshot: true, membershipGrant: { select: { startsAt: true, endsAt: true, revokedAt: true } } } }
     }
   });
+}
+
+// Which of these societies sell a membership now (a published plan still to end), so a free
+// join can lead on to it (PER-04).
+export async function societiesSellingMemberships(organisationIds: string[], now = new Date()) {
+  const rows = await prisma.membershipProduct.findMany({
+    where: { organisationId: { in: organisationIds }, status: "published", endsAt: { gt: now } },
+    distinct: ["organisationId"],
+    select: { organisationId: true }
+  });
+  return new Set(rows.map((row) => row.organisationId));
 }
 
 // Whether a published plan still to end unlocks this right: member prices

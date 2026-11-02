@@ -90,6 +90,8 @@ Pick checks from the diff ([[Engineering Delivery Workflow]]; dependencies are H
 | Compose file | `docker compose ... config` for affected stacks, `pnpm docker:hosted:check -- --env-file <file>` for hosted ones |
 | Action SHA pin only | review the pin against the upstream release tag; no functionality tests |
 
+**Renovate batches.** One baseline can cover several Renovate PRs: test `main` plus the open PRs together, add any row above that applies, then merge them. When the owner asks for a batch, that is the yes for a clean one: it passes with no code change and no failed `release-pair`. Otherwise stop and ask. If a batch fails, drop the PR that caused it. Security updates go alone, straight away. A bot PR that needs code moves to a `codex/` PR that replaces it.
+
 Never build inside the running app container; use the isolated runner or rebuild the image. Test setup supplies fake Stripe credentials and blocks external fetches; event fixtures are relative to today.
 
 ## Traps

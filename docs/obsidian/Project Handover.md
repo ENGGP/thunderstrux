@@ -15,7 +15,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 
 ## Current state
 
-**2026-11-02, after #266.** Dated entries below run oldest first, from the 2026-10-30 audit on. Everything earlier is in [[Project Handover 2026-11-02]].
+**2026-11-02.** Dated entries below run oldest first, from the 2026-10-30 audit on. Everything earlier is in [[Project Handover 2026-11-02]].
 - T01 to T46 are delivered and locally qualified, apart from the assistant (T35 to T37), which the founder deferred. [[Pre-hosting Candidate]] is the candidate record.
 - 2026-10-30: #234 starts the fixes from the 2026-10-30 audit, the first of seven PRs. No migration.
   - The stale-order and refunds jobs get `EMAIL_FROM`, the notification key and the app URL from one shared settings block in each compose file, and the config check refuses them without these (DEF-065).
@@ -51,11 +51,11 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 - 2026-11-02: #262 turns on the fast test reset for the baseline, reversing #94's switch-off: a baseline falls from 24 minutes to between 5 and 9, because the integration suite now takes about 3. `test-database-safety` runs both reset modes, so the hand-kept `TRUNCATE` list stays checked. The fast reset exposed DEF-096, now fixed: on statistics from an emptied table, a notification or ticket email claim could take every due job past its limit. No migration. [[Development Workflow#Integration test speed]]
 - 2026-11-02: #265 settles what a review of #254 to #264 found. The Docker stages pinned pnpm 10.34.7 after #260 moved `packageManager` to 10.34.9, so `packageManager` is now the only pin. The manual static validation runs `pnpm lint`. Docs corrected: remote branches stay after a merge, browser and staging runs use only the fast reset's shared hash, the tunnel is back, and the open rush-load risk is PERF-003, because PERF-002 was already used. #264 can't merge alone (PAY-061). No migration.
 - 2026-11-02: #266 moves the pin to `2026-10-28.endive` with `stripe` 23.1.0 (PAY-061). Every generally available item in Stripe's changelog for it is non-breaking, and no field the app reads was removed or changed. A dispute's status can now be `appeal_needs_response` or `appeal_under_review`. Stripe hasn't published where an appeal falls, so both read as `open`, which neither assumes a loss nor undoes one, and the monitor's evidence reminder covers `appeal_needs_response` (PAY-068). Not deployed: the preview still runs `75e3109` on the old pin. No migration.
+- 2026-11-02: #267 gives the delivery workflow a short list of [[Engineering Delivery Workflow#Fixed Lines]] and makes everything else a default that agents adjust with one recorded line of judgement. A behaviour change to the risky core always gets a baseline and `/code-review high`, Renovate PRs are tested in batches, and [[Production Operations#Deploy check]] checks merged PRs together. GitHub now requires a PR, allows squash merges only and deletes merged branches. No app code changes.
 
-**Snapshot after #266.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
+**Snapshot, 2026-11-02.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.9, Next.js 16.4.3, Prisma 6.19.3, stripe 23.1.0 on API `2026-10-28.endive`.
 - Migrations: 73, ending in `20261124010000_ticket_codes`. Models: 40.
-- Latest full baseline: `baseline-693fda37524b3618f29da80c` (#266), 1044 integration tests in 118 files.
 
 **Local development**
 - The dev app runs all migrations. It serves this folder's working tree, so keep the folder on main or a branch built from it.
@@ -93,7 +93,7 @@ Pointers only; each linked note owns its rule.
   - Owner handover clears the legacy `accountUserId` pointer for good.
   - [[Authentication and Dashboard Access]]
 - **Assets:** a rollout needs both PostgreSQL rows and object bytes backed up. [[Society Profiles and Assets]]
-- **Delivery:** follow [[Engineering Delivery Workflow]]. Each PR records local evidence; GitHub test checks are optional (VALID-001); docs-only changes run only the docs and diff checks.
+- **Delivery:** follow [[Engineering Delivery Workflow]]. Each PR records local evidence; GitHub test checks are optional (VALID-001), but a failed `release-pair` blocks a merge; docs-only changes run only the docs and diff checks.
 - **Product decisions:** follow how Eventbrite, Humanitix and Luma solved the same problem, thought through for a student-society tool, with the reasoning recorded in the PR.
 
 ## Next safe actions

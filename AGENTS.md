@@ -15,9 +15,9 @@ Read [Engineering Delivery Workflow](docs/obsidian/Engineering%20Delivery%20Work
 - Treat `Event.organisationId` as the canonical tenant owner for event-owned orders, tickets, and reservations. Client IDs, headers, membership rows, and denormalized organisation fields are not authority.
 - Keep payment fulfilment webhook-driven and idempotent. Stripe remains provider truth. Never mark an order paid from a browser success page.
 - Preserve trusted-origin/CSRF, authentication, live staff authority, permission, tenant, and rate-limit checks when changing protected routes.
-- Add focused regression coverage for behavior changes. Validate according to the risk matrix in the engineering workflow.
+- Add focused regression coverage for behavior changes. Validate according to the engineering workflow: its fixed lines always apply, and its risk matrix is a default you adjust with a recorded reason.
 - Use additive migrations where possible. Production migrations run as a one-shot deployment job before app rollout; ordinary production app startup does not migrate.
 - Update the owning living note (the Index says which), the issue register, and `Project Handover` in the same PR when behavior, operations, risks, or release state change. `pnpm docs:check` fails on broken links, stale code paths, and code its owning note doesn't name.
-- Deliver changes through a PR to protected `main` with recorded risk-appropriate local validation. GitHub test checks are not required. Documentation-only changes use docs/diff checks and claim review; do not run functionality tests. Repeat tests only when changed inputs, failures, or identified risks justify it.
+- Deliver changes through a PR to protected `main` with recorded risk-appropriate local validation. GitHub test checks are not required, but a failed `release-pair` blocks a merge. Documentation-only changes use docs/diff checks and claim review; do not run functionality tests. Repeat tests only when changed inputs, failures, or identified risks justify it.
 
 `Project Handover` is the only current handover document; a superseded handover moves to `docs/obsidian/History/` as a dated note. Record run IDs and validation evidence in the PR description; living notes describe current behavior only, and `docs/obsidian/History/` keeps dated records (Resolved Defects, Evidence Ledger, past handovers).

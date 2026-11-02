@@ -123,7 +123,7 @@ Polling is on because bind-mount file events don't cross into the container on W
 - **Focused integration run in the dev app container:** needs only `DATABASE_URL` on a `_test` database and `NODE_ENV=test`; `tests/setup/integration.setup.ts` pins every other switch (DEF-042). Migrate the test database first:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -e DATABASE_URL="postgresql://thunderstrux:thunderstrux@db:5432/thunderstrux_test?schema=public" -e NODE_ENV=test app sh -c "pnpm prisma migrate reset --force --skip-seed && pnpm vitest run tests/integration/ticket-check-in.test.ts"
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -e DATABASE_URL="postgresql://thunderstrux:thunderstrux@db:5432/thunderstrux_test?schema=public" -e NODE_ENV=test app sh -c "pnpm prisma migrate deploy && pnpm vitest run tests/integration/ticket-check-in.test.ts"
 ```
 
   The dev database `thunderstrux` is never a test target. `pnpm test:integration` in the dev container runs the whole suite, but `tests/integration/redis-runtime.test.ts` fails there without a run-owned `INTEGRATION_REDIS_URL`; never point it at dev Redis.

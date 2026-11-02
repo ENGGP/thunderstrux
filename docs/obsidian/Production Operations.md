@@ -8,7 +8,7 @@ sources: [docker/Dockerfile, docker/entrypoint.sh, docker-compose.hosted.yml, do
 
 # Production Operations
 
-**Owns:** the single-host runner and the public preview, health and readiness, Stripe webhook endpoint setup and keys, workers and schedules, backup, restore, rollback and recovery. Logs, metrics and alerts are in [[Production Operations Alerts]]. Release images, the pilot host (Droplet), the integrity and asset tools and `pnpm ops:test` are in [[Production Operations Hosting]].
+**Owns:** the deploy check, the single-host runner and the public preview, health and readiness, Stripe webhook endpoint setup and keys, workers and schedules, backup, restore, rollback and recovery. Logs, metrics and alerts are in [[Production Operations Alerts]]. Release images, the pilot host (Droplet), the integrity and asset tools and `pnpm ops:test` are in [[Production Operations Hosting]].
 **Read when:** deploying or rolling back, adding a worker, alert or metric, changing a Compose file, or answering an alert.
 **Not here:** every env var and `_FILE` support ([[Environment Variables]]); webhook handler behaviour ([[Stripe Payments and Connect#Webhooks]]); refund, dispute and compensation states ([[Payment Lifecycle]]); integrity checks and migration policy ([[Database and Multi Tenancy]]); local dev stack ([[Development Workflow]]); symptoms to fixes ([[Troubleshooting]]); release gates ([[Pre-hosting Candidate]]).
 
@@ -29,6 +29,10 @@ sources: [docker/Dockerfile, docker/entrypoint.sh, docker-compose.hosted.yml, do
 | Upgrade rehearsal | `scripts/rehearse-upgrade.mjs` |
 | Operations rehearsal | `scripts/run-operations-tests.mjs`, `scripts/seed-operations-verification.mjs`, `scripts/rehearse-assets.mjs`, `scripts/mail-capture.mjs` |
 | Tests | `tests/runner/operations.test.mjs`, `tests/runner/droplet.test.mjs`, `tests/runner/release-pair.test.mjs`, `tests/runner/every-minute.test.mjs`, `tests/runner/container-config.test.mjs`, `tests/integration/worker-contract.test.ts`, `tests/integration/ops-logging.test.ts`, `tests/integration/recovery-fencing.test.ts` |
+
+## Deploy check
+
+Deploy only on the owner's go-ahead. The release's code must have passed `node scripts/run-e2e.mjs baseline` and `pnpm test:e2e`, on that commit or on one that differs from it only in tests or docs. If it hasn't, run them first: this is where merged PRs are checked together, instead of a rerun after each merge. The owner can accept a gap, with its impact recorded. Record each deploy in a docs-only PR, which the go-ahead also covers merging.
 
 ## Single-host runner
 

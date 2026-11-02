@@ -56,7 +56,7 @@ sources: [prisma/schema.prisma, lib/permissions/index.ts, lib/tickets/reservatio
 | Checkout attempt | `CheckoutAttempt`: one try at creating a Stripe Checkout Session, recovered by a worker if the answer was lost | [[Payment Lifecycle]] |
 | Fulfilment | The webhook marking an order paid and issuing its tickets or grants. It is never done from the browser's success page | [[Payment Lifecycle]] |
 | Purchase snapshot | Facts copied onto the order at purchase: ticket name, seller, fee, buyer contact | [[Payment Lifecycle]] |
-| Platform fee | `feeAmount` on the order, from `lib/stripe/fees.ts` (`PLATFORM_FEE_RATE`, `PLATFORM_FEE_PER_ITEM`) with a `feePolicyVersion` | [[Stripe Payments and Connect]] |
+| Thunderstrux fee (code: platform fee) | The only name the UI uses. `feeAmount` on the order, from `lib/stripe/fees.ts` (`PLATFORM_FEE_RATE`, `PLATFORM_FEE_PER_ITEM`) with a `feePolicyVersion` | [[Stripe Payments and Connect]] |
 | Compensation | A payment Stripe took that the order couldn't honour (sold out, expired hold). `CompensationRefundJob` (`CompensationRefundState`); the event's `compensationRefundMode` (`manual_review` or `automatic_full`) decides whether it is refunded automatically | [[Payment Lifecycle Refunds and Disputes]] |
 | Review, payment review | `requiresCompensationReview` on an order: a person must decide | [[Payment Lifecycle]] |
 | Refund request | `RefundRequest` (`RefundRequestStatus`): a refund Thunderstrux sends, by staff or compensation, settled by Stripe's webhook or polling | [[Payment Lifecycle Refunds and Disputes]] |

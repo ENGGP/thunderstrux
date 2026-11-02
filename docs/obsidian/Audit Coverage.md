@@ -132,7 +132,7 @@ OpenClaw actions are deferred and write nothing.
 | Check-ins | `ticket.checked_` (shown only under this filter, so the door doesn't bury the rest) |
 | Staff and security | `staff.`, `staff_mfa.` |
 | Payments setup | `stripe_connect.` |
-| Society profile | `organisation.`, `asset.` |
+| Profile and images | `organisation.`, `asset.` (an upload names its event or product while the image is still attached) |
 
 - **Who:** a person (up to 200 distinct actors in the list), `thunderstrux` (null actor and an action in `automaticActions`: `order.compensation_refund_queued`, `order.compensation_refund_review_required`, `order.compensation_refund_started`, `order.compensation_review_closed`, `commerce_order.compensation_review_closed`, `order.dispute_funds_recovered`, `commerce_order.dispute_funds_recovered`, `asset.orphan_removed`) or `stripe` (any other null-actor row).
 - **Actor shown:** display name, else first and last name, else the account email; a closed account shows "A former staff member"; the role label comes from `actorRole`.

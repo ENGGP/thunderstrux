@@ -17,7 +17,7 @@ export const historyCategories = {
   checkins: "Check-ins",
   staff: "Staff and security",
   payments: "Payments setup",
-  profile: "Society profile"
+  profile: "Profile and images"
 } as const;
 export type HistoryCategory = keyof typeof historyCategories;
 
@@ -128,7 +128,7 @@ async function readTargets(organisationId: string, rows: Row[]) {
   const [events, orders, commerce, grants, plans, products, staff, invites, tickets, ticketTypes, assets] = await Promise.all([
     prisma.event.findMany({ where: { organisationId, id: { in: eventIds } }, select: { id: true, title: true } }),
     prisma.order.findMany({ where: { id: { in: ids("Order") }, event: { is: { organisationId } } }, select: { id: true, status: true, event: { select: { id: true, title: true } } } }),
-    prisma.commerceOrder.findMany({ where: { organisationId, id: { in: ids("CommerceOrder") } }, select: { id: true, kind: true, lines: { take: 1, orderBy: { lineNumber: "asc" }, select: { nameSnapshot: true, membershipGrant: { select: { id: true } } } } } }),
+    prisma.commerceOrder.findMany({ where: { organisationId, id: { in: ids("CommerceOrder") } }, select: { id: true, kind: true, status: true, lines: { take: 1, orderBy: { lineNumber: "asc" }, select: { nameSnapshot: true, membershipGrant: { select: { id: true } } } } } }),
     prisma.membershipGrant.findMany({ where: { organisationId, id: { in: ids("MembershipGrant") } }, select: { id: true, product: { select: { name: true } }, user: { select: { displayName: true, firstName: true, lastName: true, email: true, closedAt: true } } } }),
     prisma.membershipProduct.findMany({ where: { organisationId, id: { in: ids("MembershipProduct") } }, select: { id: true, name: true } }),
     prisma.merchandiseProduct.findMany({ where: { organisationId, id: { in: ids("MerchandiseProduct") } }, select: { id: true, name: true } }),
@@ -136,7 +136,8 @@ async function readTargets(organisationId: string, rows: Row[]) {
     prisma.organisationStaffInvite.findMany({ where: { organisationId, id: { in: ids("OrganisationStaffInvite") } }, select: { id: true, email: true } }),
     prisma.ticket.findMany({ where: { organisationId, id: { in: ids("Ticket") } }, select: { id: true, event: { select: { id: true, title: true } } } }),
     prisma.ticketType.findMany({ where: { id: { in: ids("TicketType") }, event: { organisationId } }, select: { id: true, name: true, event: { select: { id: true, title: true } } } }),
-    prisma.asset.findMany({ where: { organisationId, id: { in: ids("Asset") } }, select: { id: true, kind: true } })
+    // Where an image is used now, so an upload can name its event or product.
+    prisma.asset.findMany({ where: { organisationId, id: { in: ids("Asset") } }, select: { id: true, kind: true, eventHeroes: { take: 1, select: { id: true, title: true } }, productImages: { take: 1, select: { product: { select: { id: true, name: true } } } } } })
   ]);
   const byId = <T extends { id: string }>(list: T[]) => new Map(list.map((item) => [item.id, item]));
   return { events: byId(events), orders: byId(orders), commerce: byId(commerce), grants: byId(grants), plans: byId(plans), products: byId(products), staff: byId(staff), invites: byId(invites), tickets: byId(tickets), ticketTypes: byId(ticketTypes), assets: byId(assets) };
@@ -210,7 +211,8 @@ export function describe(row: Row, targets: Targets, timeZone: string): HistoryE
     const label = `order ${orderReference(row.targetId ?? "")}`;
     if (!found) return [label];
     const grant = found.lines[0]?.membershipGrant;
-    const href = found.kind === "merchandise" ? `/dashboard/merchandise/orders/${found.id}` : grant ? `/dashboard/memberships/members/${grant.id}` : null;
+    // A membership order that was never granted has its own staff page (UI-067).
+    const href = found.kind === "merchandise" ? `/dashboard/merchandise/orders/${found.id}` : grant ? `/dashboard/memberships/members/${grant.id}` : found.status === "pending" ? null : `/dashboard/memberships/orders/${found.id}`;
     return [{ text: label, href }, found.kind === "membership" && found.lines[0] ? ` for ${membershipLabel(found.lines[0].nameSnapshot)}` : ""];
   };
   const anyOrder = () => (row.targetType === "CommerceOrder" ? commerceOrder() : order());
@@ -388,7 +390,16 @@ export function describe(row: Row, targets: Targets, timeZone: string): HistoryE
   else if (a === "organisation.profile_updated") {
     sentence = ["updated the society profile"];
     if (Array.isArray(m.changedFields) && m.changedFields.length) facts = [{ label: "Changed", value: (m.changedFields as string[]).map((field) => (fieldLabels[field] ?? field).toLowerCase()).join(", ") }];
-  } else if (a === "asset.uploaded") sentence = [`uploaded ${assetKinds[text(m.kind) ?? ""] ?? "an image"}`];
+  } else if (a === "asset.uploaded") {
+    // While the image is still attached, say what it is for.
+    const asset = row.targetId ? targets.assets.get(row.targetId) : undefined;
+    const event = asset?.eventHeroes[0];
+    const product = asset?.productImages[0]?.product;
+    sentence = [
+      `uploaded ${assetKinds[text(m.kind) ?? ""] ?? "an image"}`,
+      ...(event ? [" for ", { text: event.title, href: `/dashboard/events/${event.id}` }] : product ? [" for ", { text: product.name, href: `/dashboard/merchandise/${product.id}` }] : [])
+    ];
+  }
   else if (a === "asset.deleted") sentence = [`removed ${assetKinds[text(m.kind) ?? ""] ?? "an image"}`];
   else if (a === "asset.orphan_removed") sentence = ["removed an unused image"];
   else sentence = [`recorded “${a.replace(/[._]/g, " ")}”`];

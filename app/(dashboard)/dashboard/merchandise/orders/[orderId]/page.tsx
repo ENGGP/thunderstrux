@@ -7,6 +7,7 @@ import { MerchandiseMoneyActions, RecordReturn } from "@/components/merchandise/
 import { PickupAction } from "@/components/merchandise/pickup-action";
 import { Notice } from "@/components/ui/notice";
 import { StripeReviewNotice } from "@/components/commerce/stripe-review-notice";
+import { commerceHappened } from "@/lib/commerce/history";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { formatDateTime, formatMoney, formatPrice } from "@/lib/format";
@@ -18,23 +19,6 @@ import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
 
 export const metadata: Metadata = { title: "Merchandise order" };
 
-const happened: Partial<Record<string, string>> = {
-  order_created: "Checkout started",
-  payment_fulfilled: "Payment confirmed by Stripe",
-  free_fulfilled: "Free order confirmed",
-  order_failed: "Checkout didn't complete",
-  order_expired: "Checkout expired",
-  compensation_required: "Payment held for review",
-  free_cancelled: "Cancelled",
-  refund_requested: "Refund requested",
-  refund_pending: "Refund processing at Stripe",
-  refunded: "Refunded",
-  refund_failed: "Stripe turned the refund down",
-  pickup_ready: "Marked ready to collect",
-  pickup_collected: "Handed over",
-  return_recorded: "Return recorded",
-  dispute_funds_recovered: "Lost dispute taken back from the society"
-};
 const pickupBadge = { pending: "preparing", ready: "ready-to-collect", collected: "collected" } as const;
 const name = (person: { firstName: string | null; lastName: string | null; email: string } | null) =>
   person ? [person.firstName, person.lastName].filter(Boolean).join(" ") || person.email : null;
@@ -145,7 +129,7 @@ export default async function MerchandiseOrderPage({ params }: { params: Promise
               </p>
               {can("orders:read") && !free ? (
                 <p className="text-sm text-ink-soft">
-                  Thunderstrux fee {formatMoney(order.feeAmount)}. Your society receives {formatMoney(order.totalAmount - order.feeAmount)}; the fee includes card processing. Names and prices are as bought.
+                  Thunderstrux fee {formatMoney(order.feeAmount)}. Your society receives {formatMoney(order.totalAmount - order.feeAmount)} before any refunds; the fee includes card processing. Names and prices are as bought.
                 </p>
               ) : (
                 <p className="text-sm text-ink-soft">Names and prices are as bought.</p>
@@ -177,9 +161,9 @@ export default async function MerchandiseOrderPage({ params }: { params: Promise
 
             <Card id="history-heading" title="What happened">
               <ul className="grid gap-2.5 text-ui">
-                {[...order.lifecycleEvents].reverse().filter((event) => happened[event.type]).map((event) => (
+                {[...order.lifecycleEvents].reverse().filter((event) => commerceHappened[event.type]).map((event) => (
                   <li className="[overflow-wrap:anywhere]" key={event.sequence}>
-                    <strong>{happened[event.type]}</strong>{" "}
+                    <strong>{commerceHappened[event.type]}</strong>{" "}
                     <span className="text-sm text-ink-soft">
                       {when(event.createdAt)}
                       {name(event.actor) ? ` · ${name(event.actor)}` : ""}

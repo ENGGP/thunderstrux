@@ -61,7 +61,7 @@ export default async function MembershipPlanPage({ params }: { params: Promise<{
           {archived ? null : (
             <Card>
               <div className="grid gap-4">
-                <h2 className="font-display text-xl font-semibold text-ink">{plan.status === "draft" ? "Ready to publish" : "On sale"}</h2>
+                <h2 className="font-display text-xl font-semibold text-ink">{plan.status === "draft" ? (blockers.length ? "Not ready to publish" : "Ready to publish") : "On sale"}</h2>
                 {plan.status === "draft" || blockers.length ? (
                   <PlanChecklist blockers={blockers} />
                 ) : (

@@ -182,17 +182,15 @@ describe("orders API", () => {
     });
 
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
-    const expired = await getOrders(jsonRequest("http://localhost/api/orders?status=expired"));
-    expect(expired.status).toBe(200);
-    expect((await parseJsonResponse(expired)).groups[0].orders).toEqual([
-      expect.objectContaining({ status: "expired" })
-    ]);
-
-    const failed = await getOrders(jsonRequest("http://localhost/api/orders?status=failed"));
-    expect(failed.status).toBe(200);
-    expect((await parseJsonResponse(failed)).groups[0].orders).toEqual([
-      expect.objectContaining({ status: "failed", failureReason: "test" })
-    ]);
+    // Expired holds failed checkouts too, and "failed" is still accepted as its old name.
+    for (const status of ["expired", "failed"]) {
+      const response = await getOrders(jsonRequest(`http://localhost/api/orders?status=${status}`));
+      expect(response.status).toBe(200);
+      expect((await parseJsonResponse(response)).groups[0].orders).toEqual(expect.arrayContaining([
+        expect.objectContaining({ status: "expired" }),
+        expect.objectContaining({ status: "failed", failureReason: "test" })
+      ]));
+    }
 
     setMockSession({ userId: member.id, email: member.email, accountRole: "member" });
     const denied = await getOrders(jsonRequest("http://localhost/api/orders"));

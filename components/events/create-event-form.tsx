@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import { publishEvent } from "@/components/events/event-actions";
+import { FeeHint } from "@/components/purchases/fee-hint";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DateTimeField } from "@/components/ui/date-field";
@@ -14,7 +15,7 @@ import { defaultHoldMinutes, maxHoldMinutes, minHoldMinutes } from "@/lib/checko
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
 import { useLeaveGuard } from "@/lib/client/leave-guard";
 import { formatMoney, formatMoneyInput, parseMoneyInput } from "@/lib/format";
-import { calculatePlatformFee, isBelowPaidMinimum, paidPriceMinimum } from "@/lib/stripe/fees";
+import { isBelowPaidMinimum, paidPriceMinimum } from "@/lib/stripe/fees";
 import { MAX_TICKET_TYPES } from "@/lib/validators/events";
 import { toZonedInput, zoneAbbreviation, zoneCity, zoneLabel, zonedCandidates } from "@/lib/zoned-time";
 
@@ -831,29 +832,5 @@ export function CreateEventForm({
       ) : null}
       {after}
     </div>
-  );
-}
-
-// What the society receives for one ticket, with the same fee function checkout
-// uses. A multi-ticket order is rounded once, so it can differ by a cent.
-function FeeHint({ price, chargesReady }: { price: string; chargesReady: boolean }) {
-  const cents = parseMoneyInput(price);
-  if (cents === null) return null;
-  if (cents === 0) return <p className="text-sm text-ink-muted">Free. No fee and no payment setup needed.</p>;
-
-  return (
-    <p className="text-sm text-ink-muted">
-      For one ticket you receive <strong className="font-semibold text-ink">{formatMoney(cents - calculatePlatformFee(cents))}</strong> after
-      the Thunderstrux fee (3.75% plus $0.89 a ticket), which includes card processing.
-      {chargesReady ? null : (
-        <>
-          {" "}Paid tickets go on sale once you{" "}
-          <Link className="font-semibold text-brand underline underline-offset-4" href="/dashboard/settings">
-            set up payments
-          </Link>
-          .
-        </>
-      )}
-    </p>
   );
 }

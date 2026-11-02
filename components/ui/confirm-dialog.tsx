@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { Button } from "./button";
+import { Notice } from "./notice";
 
 // Native <dialog>: showModal() traps focus, Escape cancels and focus returns
 // to the control that opened it. The body is mounted only while open.
@@ -14,6 +15,7 @@ export function ConfirmDialog({
   busy = false,
   onConfirm,
   onCancel,
+  error,
   children
 }: {
   open: boolean;
@@ -25,10 +27,18 @@ export function ConfirmDialog({
   busy?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  // Why the action was refused. It sits just above the buttons, where the person
+  // pressing Confirm is looking, and takes focus so a long dialog scrolls to it.
+  error?: string;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
+  const errorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (error) errorRef.current?.focus();
+  }, [error]);
 
   useEffect(() => {
     const dialog = ref.current;
@@ -56,6 +66,11 @@ export function ConfirmDialog({
         <div className="grid gap-4">
           <h2 className="text-xl font-semibold" id={titleId}>{title}</h2>
           <div className="text-sm text-ink-soft">{children}</div>
+          {error ? (
+            <div ref={errorRef} tabIndex={-1}>
+              <Notice role="alert" tone="danger">{error}</Notice>
+            </div>
+          ) : null}
           <div className="flex flex-wrap justify-end gap-3">
             <Button disabled={busy} onClick={onCancel} type="button" variant="secondary">
               {cancelLabel}
@@ -63,7 +78,12 @@ export function ConfirmDialog({
             <Button
               busy={busy}
               busyLabel="Working…"
-              onClick={onConfirm}
+              // A refusal the same as the last one doesn't change `error`, so the effect
+              // won't run; focus it after the press too.
+              onClick={() => {
+                onConfirm();
+                requestAnimationFrame(() => errorRef.current?.focus());
+              }}
               type="button"
               variant={destructive ? "dangerSolid" : "primary"}
             >

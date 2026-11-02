@@ -10,6 +10,7 @@ import { TextInput } from "@/components/ui/input";
 import { Count, LinkTabs, pillClasses, rowLinkClasses } from "@/components/ui/link-tabs";
 import { Pager } from "@/components/ui/pager";
 import { ListSkeleton } from "@/components/ui/skeleton";
+import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { formatDate, formatTerm } from "@/lib/format";
@@ -83,7 +84,14 @@ async function Roster({ organisationId, view, query, cursor, direction }: { orga
   const { nextCursor, previousCursor } = joins ?? roster;
   const rows = joins ? joins.joins.length : roster.members.length;
   const runs = (startsAt: Date, endsAt: Date) => formatTerm(startsAt, endsAt, timeZone);
-  const nameLink = rowLinkClasses;
+  type Member = (typeof roster.members)[number];
+  const name = (member: Member) => (
+    <Link className={rowLinkClasses} href={`/dashboard/memberships/members/${member.id}`}>
+      {member.name}
+    </Link>
+  );
+  const state = (member: Member) => <StatusBadge label={member.endedByRefund ? "Ended by refund" : undefined} status={member.state} />;
+  const from = (member: Member) => `${member.paid ? "Paid" : "Free"} · Order ${orderReference(member.orderId)}`;
 
   return (
     <>
@@ -130,51 +138,32 @@ async function Roster({ organisationId, view, query, cursor, direction }: { orga
         </ul>
       ) : (
         <>
-          <div className="hidden overflow-x-auto rounded-card border border-line bg-surface md:block">
-            <table className="w-full min-w-[760px] border-collapse text-left text-ui">
-              <thead>
-                <tr className="text-caption text-ink-soft">
-                  <th className="px-5 py-3.5 font-semibold" scope="col">Member</th>
-                  <th className="px-3 py-3.5 font-semibold" scope="col">Plan</th>
-                  <th className="px-3 py-3.5 font-semibold" scope="col">Runs</th>
-                  <th className="px-3 py-3.5 font-semibold" scope="col">State</th>
-                  <th className="px-5 py-3.5 font-semibold" scope="col">From</th>
-                </tr>
-              </thead>
-              <tbody>
-                {roster.members.map((member) => (
-                  <tr className="border-t border-line align-top" key={member.id}>
-                    <td className="px-5 py-4">
-                      <Link className={nameLink} href={`/dashboard/memberships/members/${member.id}`}>
-                        {member.name}
-                      </Link>
-                      <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">{member.email}</p>
-                    </td>
-                    <td className="px-3 py-4 [overflow-wrap:anywhere]">{member.plan}</td>
-                    <td className="px-3 py-4">{runs(member.startsAt, member.endsAt)}</td>
-                    <td className="px-3 py-4">
-                      <StatusBadge status={member.state} />
-                    </td>
-                    <td className="whitespace-nowrap px-5 py-4">
-                      {member.paid ? "Paid" : "Free"} · Order {orderReference(member.orderId)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <ul className="grid divide-y divide-line rounded-card border border-line bg-surface md:hidden">
-            {roster.members.map((member) => (
-              <li className="grid gap-1 px-4 py-3.5" key={member.id}>
-                <Link className={nameLink} href={`/dashboard/memberships/members/${member.id}`}>
-                  {member.name}
-                </Link>
-                <span className="text-sm text-ink-soft [overflow-wrap:anywhere]">{member.plan}</span>
-                <span className="text-sm text-ink-soft">{runs(member.startsAt, member.endsAt)}</span>
-                <StatusBadge status={member.state} />
-              </li>
-            ))}
-          </ul>
+          <ResponsiveTable
+            card={(member) => (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  {name(member)}
+                  {state(member)}
+                </div>
+                <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">{member.email}</p>
+                <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">
+                  {member.plan} · {runs(member.startsAt, member.endsAt)}
+                </p>
+                <p className="text-sm text-ink-soft">{from(member)}</p>
+              </>
+            )}
+            columns={[
+              { header: "Member", cell: (member) => <>{name(member)}<p className="text-sm text-ink-soft [overflow-wrap:anywhere]">{member.email}</p></> },
+              { header: "Plan", className: "[overflow-wrap:anywhere]", cell: (member) => member.plan },
+              { header: "Runs", cell: (member) => runs(member.startsAt, member.endsAt) },
+              { header: "State", cell: state },
+              { header: "From", className: "whitespace-nowrap", cell: from }
+            ]}
+            label="Members"
+            minWidth={760}
+            rowKey={(member) => member.id}
+            rows={roster.members}
+          />
         </>
       )}
       <Pager label="Member pages" next={nextCursor && href(view, query, nextCursor)} previous={previousCursor && href(view, query, previousCursor, "prev")} />

@@ -31,7 +31,7 @@ export default function FeesPage() {
               <dl className="mt-1 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-ui tabular-nums">
                 <dt>Buyer pays</dt>
                 <dd className="text-right">{formatMoney(example.total)}</dd>
-                <dt>Thunderstrux keeps</dt>
+                <dt>Thunderstrux fee</dt>
                 <dd className="text-right">{formatMoney(example.fee)}</dd>
                 <dt className="font-semibold text-ink">Society receives</dt>
                 <dd className="text-right font-semibold text-ink">{formatMoney(example.total - example.fee)}</dd>
@@ -45,7 +45,7 @@ export default function FeesPage() {
               <tr className="border-b border-line text-left text-sm text-ink-soft">
                 <th className="px-4 py-2.5 font-semibold" scope="col">Order</th>
                 <th className="px-4 py-2.5 text-right font-semibold" scope="col">Buyer pays</th>
-                <th className="px-4 py-2.5 text-right font-semibold" scope="col">Thunderstrux keeps</th>
+                <th className="px-4 py-2.5 text-right font-semibold" scope="col">Thunderstrux fee</th>
                 <th className="px-4 py-2.5 text-right font-semibold" scope="col">Society receives</th>
               </tr>
             </thead>

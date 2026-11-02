@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { CommerceOrders } from "./commerce-orders";
 import { DownloadCsv } from "@/components/orders/download-csv";
 import { Pager } from "@/components/ui/pager";
-import { LinkTabs, pillBarClasses, pillClasses } from "@/components/ui/link-tabs";
+import { Count, LinkTabs, pillBarClasses, pillClasses, rowLinkClasses } from "@/components/ui/link-tabs";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { DateField } from "@/components/ui/date-field";
 import { Select, TextInput } from "@/components/ui/input";
@@ -24,13 +24,15 @@ import {
   getDashboardEvent,
   listEventOptions
 } from "@/lib/events/event-lifecycle";
-import { formatDateTime, formatPrice } from "@/lib/format";
+import { formatDateTime, formatPrice, orderReference } from "@/lib/format";
 import {
   OrganisationOrderEventAccessError,
   getGroupedOrganisationOrdersWithContext,
   orderStatusFilters,
   parseOrderStatusFilter,
+  orderFilterLabels,
   systemOrderStatusFilters,
+  ticketReviewCount,
   type OrderStatusFilter
 } from "@/lib/orders/grouped-orders";
 import {
@@ -52,9 +54,6 @@ function CommerceOrdersSkeleton() {
   );
 }
 
-function filterLabel(status: OrderStatusFilter) {
-  return status.charAt(0).toUpperCase() + status.slice(1);
-}
 
 type Filters = {
   includeSystemOrders: boolean;
@@ -131,7 +130,13 @@ export default async function OrganisationOrdersPage({
     }
   }
 
-  const eventOptions = await listEventOptions(organisation.id, event?.id);
+  // The count follows the event asked for, so another society's id counts nothing, as its list shows.
+  const [eventOptions, reviewCount] = await Promise.all([
+    listEventOptions(organisation.id, event?.id),
+    family === "tickets"
+      ? ticketReviewCount(organisation.id, eventId)
+      : 0
+  ]);
 
   // Every filter link keeps the other filters.
   function ordersHref(changes: Record<string, string | undefined>) {
@@ -187,7 +192,8 @@ export default async function OrganisationOrdersPage({
             href={ordersHref({ status: status === "all" ? undefined : status })}
             key={status}
           >
-            {filterLabel(status)}
+            {orderFilterLabels[status]}
+            {status === "review" && reviewCount ? <Count active={status === activeFilter} value={reviewCount} /> : null}
           </Link>
         ))}
       </nav>
@@ -209,9 +215,8 @@ export default async function OrganisationOrdersPage({
         ) : null}
         <TextInput
           defaultValue={search ?? ""}
-          label="Buyer email"
+          label="Reference, name or email"
           name="search"
-          placeholder="Contains…"
           type="search"
         />
         <Select defaultValue={eventId ?? ""} label="Event" name="eventId">
@@ -363,19 +368,25 @@ async function OrderResults({
   }
 
   type Row = (typeof orders)[number];
-  // Order detail serves settled orders only, so a pending one is not a link.
-  const buyer = (order: Row) =>
-    order.status === "pending" ? (
-      <span className="text-ink [overflow-wrap:anywhere]">{order.buyerEmail ?? "Unknown buyer"}</span>
+  // Order detail serves settled orders only, so a pending one is not a link. The
+  // name leads, as on the other families' tabs, with the reference beneath (UI-066).
+  const buyer = (order: Row) => {
+    const name = order.buyerName ?? order.buyerEmail ?? "Unknown buyer";
+    return order.status === "pending" ? (
+      <span className="text-ink [overflow-wrap:anywhere]">{name}</span>
     ) : (
-      <Link className="font-semibold text-brand underline underline-offset-4 [overflow-wrap:anywhere]" href={`/dashboard/orders/${order.id}`}>
-        {order.buyerEmail ?? "Unknown buyer"}
+      <Link className={rowLinkClasses} href={`/dashboard/orders/${order.id}`}>
+        {name}
       </Link>
     );
+  };
+  const reference = (order: Row) => `Order ${orderReference(order.id)}`;
   const status = (order: Row) => (
     <div className="grid gap-1">
       <StatusBadge status={order.projection} />
       {order.requiresCompensationReview ? <p className="max-w-56 text-sm font-medium text-warning">Payment received; fulfilment review required</p> : null}
+      {/* Under Refunded, because the bank returned the money. */}
+      {order.disputeStatus === "lost" ? <p className="max-w-56 text-sm text-ink-soft">Dispute lost: the bank returned the payment.</p> : null}
     </div>
   );
 
@@ -396,29 +407,28 @@ async function OrderResults({
             icon="search"
             title="No matching orders"
           >
-            Nothing matches these filters. Clear them to see every {activeFilter === "all" ? "" : `${activeFilter} `}order.
+            Nothing matches these filters. Clear them to see every order{activeFilter === "all" ? "" : ` under ${orderFilterLabels[activeFilter]}`}.
           </EmptyState>
         ) : (
-          <div className="rounded-card border border-line bg-surface p-6 text-ink-soft">{`No ${activeFilter === "all" ? "" : `${activeFilter} `}orders yet.`}</div>
+          <div className="rounded-card border border-line bg-surface p-6 text-ink-soft">{activeFilter === "all" ? "No orders yet." : `No orders under ${orderFilterLabels[activeFilter]}.`}</div>
         )
       ) : (
         <ResponsiveTable
           card={(order) => (
             <>
+              {/* The same card as the other families: buyer and total, then what and when, then status. */}
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">{buyer(order)}</div>
-                {status(order)}
+                <strong className="tabular-nums">{formatPrice(order.totalAmount)}</strong>
               </div>
               <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">
-                {order.eventTitle} · {order.ticketType}
+                {reference(order)} · {order.eventTitle} · {order.quantity} × {order.ticketType} · {formatDateTime(order.createdAt, { timeZone })}
               </p>
-              <p className="text-sm tabular-nums text-ink">
-                {order.quantity} {order.quantity === 1 ? "ticket" : "tickets"} · {formatPrice(order.totalAmount)} · {formatDateTime(order.createdAt, { timeZone })}
-              </p>
+              {status(order)}
             </>
           )}
           columns={[
-            { header: "Buyer", cell: buyer },
+            { header: "Buyer", cell: (order) => <>{buyer(order)}<p className="text-sm text-ink-soft [overflow-wrap:anywhere]">{reference(order)}{order.buyerName && order.buyerEmail ? ` · ${order.buyerEmail}` : ""}</p></> },
             { header: "Event and ticket", cell: (order) => <><p className="text-ink [overflow-wrap:anywhere]">{order.eventTitle}</p><p className="text-sm text-ink-soft">{order.ticketType}</p></> },
             { header: "Qty", align: "right", cell: (order) => order.quantity },
             { header: "Total", align: "right", cell: (order) => formatPrice(order.totalAmount) },

@@ -346,6 +346,6 @@ describe("dashboard read services", () => {
     expect(filtered.event).toEqual({ id: first.id, title: "First night" });
     expect(filtered.groups.map((group) => group.eventId)).toEqual([first.id]);
     await expect(getGroupedOrganisationOrdersWithContext(owner.organisation.id, "all", foreign.id)).rejects.toBeInstanceOf(OrganisationOrderEventAccessError);
-    expect((await getGroupedOrganisationOrdersWithContext(owner.organisation.id, "failed")).groups).toEqual([]);
+    expect((await getGroupedOrganisationOrdersWithContext(owner.organisation.id, "expired")).groups).toEqual([]);
   });
 });

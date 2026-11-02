@@ -2,7 +2,9 @@ import { prisma } from "@/lib/db";
 import { ticketAttendance } from "@/lib/analytics/metrics";
 import { addDays } from "@/lib/analytics/range";
 import { readCalendar } from "@/lib/events/calendar";
+import { commerceReviewWhere } from "@/lib/commerce/orders";
 import { buyerIdentitySelect, retainedBuyerIdentity } from "@/lib/orders/buyer-identity";
+import { ticketReviewWhere } from "@/lib/orders/grouped-orders";
 import { hasOrganisationPermission, type OrganisationPermission, type OrganisationStaffRole } from "@/lib/permissions";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 import { toZonedInput } from "@/lib/zoned-time";
@@ -24,11 +26,17 @@ export async function getOrganisationOverview(organisationId: string, staffRole:
     prisma.event.count({ where: { organisationId } }),
     // Setup ends when one event is published, not when the first draft exists.
     prisma.event.count({ where: { organisationId, status: "published" } }),
+    // The Orders tabs' Needs review, so the count and the list always agree (UI-065).
     can("orders:read")
       ? Promise.all([
-          prisma.order.count({ where: { ...ownedOrder, requiresCompensationReview: true } }),
-          prisma.commerceOrder.count({ where: { organisationId, requiresCompensationReview: true } })
-        ]).then(([tickets, commerce]) => tickets + commerce)
+          prisma.order.count({ where: { ...ownedOrder, ...ticketReviewWhere } }),
+          prisma.commerceOrder.count({ where: { organisationId, kind: "membership", ...commerceReviewWhere } }),
+          prisma.commerceOrder.count({ where: { organisationId, kind: "merchandise", ...commerceReviewWhere } })
+        ]).then(([tickets, memberships, merchandise]) => ({
+          count: tickets + memberships + merchandise,
+          // The first tab with one, so the link lands on an order.
+          family: tickets ? "tickets" : memberships ? "memberships" : "merchandise"
+        }))
       : null,
     can("merchandise:fulfil")
       ? Promise.all([

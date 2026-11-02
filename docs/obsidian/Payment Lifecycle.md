@@ -233,7 +233,7 @@ Sources (`OrderLifecycleSource`): `checkout`, `stripe_webhook`, `reconciliation_
 | `paid` / `free` | `paid`, by `paymentKind` |
 | `failed` / `expired` | the order status |
 
-`buyerPurchaseBadge` words it for buyers: failed and expired "Didn't complete", processing "Waiting for payment", cancelled "Cancelled by the society", review "Payment issue" or "Partly refunded", a lost dispute "Refunded by your bank", a staff mark Refunded.
+Orders' pills follow this order, so each order is under one; a lost dispute is under Refunded. `buyerPurchaseBadge` words it for buyers: failed or expired "Didn't complete", processing "Waiting for payment", review "Payment issue" or "Partly refunded", a lost dispute "Refunded by your bank".
 
 ## Transaction rules
 

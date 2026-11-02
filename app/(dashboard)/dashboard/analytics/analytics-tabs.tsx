@@ -29,7 +29,7 @@ const span = (range: AnalyticsRange) => `${formatDate(`${range.from}T12:00:00Z`,
 
 function Tiles({ tiles }: { tiles: Array<{ label: string; value: ReactNode; note: ReactNode }> }) {
   return (
-    <div className="grid gap-5 sm:grid-cols-3">
+    <div className={`grid gap-5 ${tiles.length === 4 ? "sm:grid-cols-2 xl:grid-cols-4" : "sm:grid-cols-3"}`}>
       {tiles.map((tile) => (
         <Card key={tile.label}>
           <p className="text-sm font-semibold text-ink-soft">{tile.label}</p>
@@ -92,11 +92,12 @@ export async function TicketsTab({ organisationId, range, access, eventId }: { o
     ? [
         { label: "Gross sales", value: money(t.gross), note: plural(t.fulfilledOrders - t.freeOrders, "paid order") },
         { label: "Refunded", value: money(t.refunded), note: `${t.refunds} ${t.refunds === 1 ? "refund" : "refunds"} confirmed by Stripe` },
-        { label: "Net sales", value: money(t.net), note: "Before the Thunderstrux fee. Not a payout." }
+        { label: "Net sales", value: money(t.net), note: "Before the Thunderstrux fee. Not a payout." },
+        { label: "After Thunderstrux fee", value: money(t.net === null || t.platformFees === null ? null : t.net - t.platformFees), note: "Net sales less the fee. Not a payout." }
       ]
     : [
         { label: "Tickets issued", value: t.ticketsIssued, note: `${t.ticketsIssued - t.ticketsFree} paid, ${t.ticketsFree} free` },
-        { label: "Checked in", value: rate === null ? 0 : `${a.checkedIn} of ${a.valid}`, note: rate === null ? "No event in this range has started" : "Valid tickets for events that have started" },
+        { label: "Checked in", value: rate === null ? "Not yet" : `${a.checkedIn} of ${a.valid}`, note: rate === null ? "No event in this range has started" : "Valid tickets for events that have started" },
         { label: "Attendance rate", value: rate ?? "Not yet", note: rate === null ? "Shows once an event starts" : "Of valid tickets" }
       ];
   const empty = t.fulfilledOrders === 0 && t.refunds === 0;
@@ -110,7 +111,7 @@ export async function TicketsTab({ organisationId, range, access, eventId }: { o
             ["Still valid", t.ticketsValid, noLongerValid ? `${noLongerValid} no longer valid` : undefined],
             ["Checked in", rate === null ? "Not yet" : `${a.checkedIn} of ${a.valid}`, rate ?? undefined],
             ["Orders started", t.ordersStarted, `${t.ordersCompleted} completed`],
-            ["Platform fees", money(t.platformFees), "after reversals"]
+            ["Thunderstrux fee", money(t.platformFees), "less any returned on refunds"]
           ]}
           title="Tickets and attendance"
         >
@@ -128,16 +129,17 @@ export async function TicketsTab({ organisationId, range, access, eventId }: { o
         <ChartCard title={access.financial ? by(range) : `Tickets issued by ${range.bucket}`}>
           <BarChart
             bars={series.map((row) => access.financial
-              ? { key: row.start, label: bucketLabel(row.start, range), primary: row.gross ?? 0, secondary: row.refunded ?? 0, value: dollars(row.gross ?? 0) }
+              ? { key: row.start, label: bucketLabel(row.start, range), primary: row.gross ?? 0, secondary: row.refunded ?? 0, value: dollars(row.gross ?? 0), secondaryValue: dollars(row.refunded ?? 0) }
               : { key: row.start, label: bucketLabel(row.start, range), primary: row.tickets, value: String(row.tickets) })}
             label={access.financial ? `Gross and refunded by ${range.bucket}` : `Tickets issued by ${range.bucket}`}
+            below={access.financial}
             legend={access.financial ? ["Gross", "Refunded"] : undefined}
           />
           <div className="mt-5">
             <ResponsiveTable
               card={(row) => (
                 <>
-                  <div className="flex justify-between gap-3 font-semibold tabular-nums"><span>{bucketLabel(row.start, range)}</span><span>{access.financial ? `${money(row.net)} net` : `${row.tickets} tickets`}</span></div>
+                  <div className="flex justify-between gap-3 font-semibold tabular-nums"><span>{bucketLabel(row.start, range)}</span><span>{access.financial ? `${money(row.net)} net` : plural(row.tickets, "ticket")}</span></div>
                   <p className="text-sm text-ink-soft">{row.orders} orders · {row.tickets} tickets{access.financial ? ` · ${money(row.gross)} gross · ${money(row.refunded)} refunded` : ""}</p>
                 </>
               )}
@@ -185,7 +187,7 @@ export async function MembershipsTab({ organisationId, range, access, asOf }: { 
       <Tiles
         tiles={[
           { label: "Members now", value: t.activeMembers, note: `Holding a membership on ${asOf}` },
-          { label: "New memberships", value: t.granted, note: `${t.granted - t.renewals} new members, ${t.renewals} renewals` },
+          { label: "New memberships", value: t.granted, note: `${plural(t.granted - t.renewals, "new member")}, ${plural(t.renewals, "renewal")}` },
           { label: "Net sales", value: money(t.net), note: `${money(t.gross)} gross, ${money(t.refunded)} refunded` }
         ]}
       />
@@ -203,7 +205,7 @@ export async function MembershipsTab({ organisationId, range, access, asOf }: { 
               card={(row) => (
                 <>
                   <div className="flex justify-between gap-3 font-semibold tabular-nums"><span>{bucketLabel(row.start, range)}</span><span>{money(row.net)} net</span></div>
-                  <p className="text-sm text-ink-soft">{row.granted - row.renewals} new · {row.renewals} renewals</p>
+                  <p className="text-sm text-ink-soft">{row.granted - row.renewals} new · {plural(row.renewals, "renewal")}</p>
                 </>
               )}
               columns={[
@@ -224,7 +226,7 @@ export async function MembershipsTab({ organisationId, range, access, asOf }: { 
         facts={[
           ["Free memberships", t.freeOrders, "never money"],
           ["Refunded", t.refunds, "membership ended"],
-          ["Platform fees", money(t.platformFees), "after reversals"]
+          ["Thunderstrux fee", money(t.platformFees), "less any returned on refunds"]
         ]}
         title="Also in this range"
       />

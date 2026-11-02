@@ -189,6 +189,20 @@ export async function getOrganisationCommerceOrder(organisationId: string, comme
   return { family: order.kind, guest: guestIdentityId !== null, ...rest };
 }
 
+// A membership order for staff (orders:read), when it never became a membership:
+// a granted one opens its member page instead. Scoped to the society.
+export async function staffMembershipOrder(organisationId: string, commerceOrderId: string) {
+  return prisma.commerceOrder.findFirst({
+    where: { id: commerceOrderId, organisationId, kind: "membership", status: { not: "pending" } },
+    select: {
+      ...summarySelect, feeAmount: true, buyerEmailSnapshot: true, buyerNameSnapshot: true, guestIdentityId: true, reviewReason: true, paidAt: true,
+      lines: { orderBy: { lineNumber: "asc" }, select: { ...lineSelect, membershipGrant: { select: { id: true } } } },
+      lifecycleEvents: { orderBy: { sequence: "asc" }, select: { sequence: true, type: true, reason: true, createdAt: true, actor: { select: { firstName: true, lastName: true, email: true } } } },
+      disputes: { orderBy: { createdAt: "desc" }, take: 1, select: { stripeDisputeId: true, amount: true, providerStatus: true, evidenceDueBy: true, createdAt: true, closedAt: true } }
+    }
+  });
+}
+
 // The member's commerce orders, newest first, for the unified Purchases (T29).
 export async function getOwnCommerceOrders(userId: string, { limit, cursor, direction }: ParsedPaginationOptions, kind?: CommerceKind, { incomplete = false } = {}) {
   const decoded = cursor ? decodeTimestampCursor("createdAt", cursor) : null;
@@ -212,17 +226,44 @@ export async function getOwnCommerceOrders(userId: string, { limit, cursor, dire
 export const commerceOrderFilters = ["all", "paid", "free", "refunded", "review", "expired"] as const;
 export type CommerceOrderFilter = (typeof commerceOrderFilters)[number];
 
-// A payment that couldn't be filled and is back with the buyer: a closed review (PAY-057).
-const repaid = { status: "failed", paidAt: { not: null }, requiresCompensationReview: false } as const;
+// "failed" reads as Expired, as on the Tickets tab.
+export function parseCommerceOrderFilter(value: string | null | undefined): CommerceOrderFilter {
+  const name = value === "failed" ? "expired" : value;
+  return commerceOrderFilters.find((filter) => filter === name) ?? "all";
+}
+
+// The same pills as ticket orders (lib/orders/grouped-orders.ts), from the fields
+// ticketOrderProjection reads: one pill per settled order, cancelled ones under All
+// only, and a lost dispute under Refunded, since the bank returned the money (PAY-057).
+const unreviewedOutsideRefund = { externalRefundedAmount: { gt: 0 }, externalRefundReviewedAt: null } satisfies Prisma.CommerceOrderWhereInput;
+const settled = {
+  cancelledAt: null,
+  disputeStatus: null,
+  refundStatus: null,
+  requiresCompensationReview: false,
+  NOT: unreviewedOutsideRefund
+} satisfies Prisma.CommerceOrderWhereInput;
+const disputeWonOrNone = { OR: [{ disputeStatus: null }, { disputeStatus: "won" }] } satisfies Prisma.CommerceOrderWhereInput;
+export const commerceReviewWhere = {
+  cancelledAt: null,
+  OR: [
+    { disputeStatus: "open" },
+    { AND: [disputeWonOrNone, { refundStatus: null }, { OR: [{ disputeStatus: "won" }, { requiresCompensationReview: true }, unreviewedOutsideRefund] }] }
+  ]
+} satisfies Prisma.CommerceOrderWhereInput;
+
+// A family's Needs review count on the Orders tab.
+export function commerceReviewCount(organisationId: string, kind: CommerceKind) {
+  return prisma.commerceOrder.count({ where: { organisationId, kind, ...commerceReviewWhere } });
+}
 
 const filterWhere: Record<CommerceOrderFilter, Prisma.CommerceOrderWhereInput> = {
   all: { status: { not: "pending" } },
-  paid: { status: "paid", paymentKind: "stripe", refundStatus: null, requiresCompensationReview: false, disputeStatus: null },
-  free: { status: "paid", paymentKind: "free", cancelledAt: null },
-  refunded: { OR: [{ refundStatus: { not: null } }, repaid] },
-  // Payment review, a dispute, or a partial refund made in Stripe nobody has reviewed (PAY-003).
-  review: { OR: [{ requiresCompensationReview: true }, { disputeStatus: { not: null } }, { externalRefundedAmount: { gt: 0 }, externalRefundReviewedAt: null, refundStatus: null }], NOT: repaid },
-  expired: { status: { in: ["expired", "failed"] }, requiresCompensationReview: false, paidAt: null }
+  paid: { ...settled, status: "paid", paymentKind: "stripe" },
+  free: { ...settled, status: "paid", paymentKind: "free" },
+  refunded: { cancelledAt: null, OR: [{ disputeStatus: "lost" }, { AND: [disputeWonOrNone, { refundStatus: { not: null } }] }] },
+  review: commerceReviewWhere,
+  expired: { ...settled, status: { in: ["expired", "failed"] } }
 };
 
 export async function listOrganisationCommerceOrders(
@@ -237,7 +278,10 @@ export async function listOrganisationCommerceOrders(
       AND: [
         { organisationId, kind },
         filterWhere[filter],
-        search ? { buyerEmailSnapshot: { contains: search, mode: "insensitive" } } : {},
+        // Buyer name, email or the six-character order reference, as on the Tickets tab.
+        search
+          ? { OR: [{ buyerEmailSnapshot: { contains: search, mode: "insensitive" } }, { buyerNameSnapshot: { contains: search, mode: "insensitive" } }, ...(/^[a-z0-9]{6}$/i.test(search) ? [{ id: { endsWith: search.toLowerCase() } }] : [])] }
+          : {},
         productId ? { lines: { some: kind === "membership" ? { membershipProductId: productId } : { merchandiseVariant: { productId } } } } : {},
         startDate || endDate ? { createdAt: { ...(startDate ? { gte: startDate } : {}), ...(endDate ? { lte: endDate } : {}) } } : {},
         decoded ? descendingCursorWhere("createdAt", decoded, direction) : {}

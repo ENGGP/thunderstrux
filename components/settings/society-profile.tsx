@@ -1,8 +1,12 @@
 "use client";
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Icon } from "@/components/ui/icon";
+import { tabBarClasses, tabClasses } from "@/components/ui/link-tabs";
+import { useLeaveGuard } from "@/lib/client/leave-guard";
+import { profileSteps } from "./profile-steps";
 import { Select, TextInput, TextArea } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import {
@@ -35,20 +39,37 @@ export function SocietyProfile({
   initialProfile,
   checklist,
   timeZones,
+  initialStep = 0,
 }: {
   initialProfile: Profile;
   checklist: Checklist;
   timeZones: string[];
+  initialStep?: number;
 }) {
   const [profile, setProfile] = useState(initialProfile);
   const [saved, setSaved] = useState(initialProfile);
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(initialStep);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
   const [confirmingReload, setConfirmingReload] = useState(false);
   const dirty = JSON.stringify(profile) !== JSON.stringify(saved);
+  const fileInputs = useRef<Partial<Record<"logo" | "cover", HTMLInputElement | null>>>({});
+  // Links in the app and closing the tab both ask before unsaved edits are lost.
+  useLeaveGuard(dirty);
+  // Changing step stays on the client; the address follows so a reload keeps it.
+  function go(index: number) {
+    setStep(index);
+    window.history.replaceState(null, "", index === 0 ? window.location.pathname : `?step=${profileSteps[index]}`);
+  }
+  // Which steps are done, from what is saved: shown as a tick and read out.
+  const done = [
+    Boolean(saved.name.trim() && saved.description.trim() && saved.supportEmail.trim()),
+    Boolean(saved.logoAssetId || saved.coverAssetId),
+    Boolean(saved.refundPolicy.trim() && saved.pickupPolicy.trim()),
+    Boolean(saved.onboardingCompletedAt),
+  ];
   const endpoint = `/api/orgs/${profile.slug}/profile`;
   function field(
     key:
@@ -65,6 +86,13 @@ export function SocietyProfile({
   }
   async function save(event: FormEvent) {
     event.preventDefault();
+    await persist();
+  }
+  // Continue saves first when there are changes, so moving on never drops them.
+  async function saveAndContinue() {
+    if (!dirty || (await persist())) go(step + 1);
+  }
+  async function persist() {
     setBusy(true);
     setError("");
     setMessage("");
@@ -88,9 +116,11 @@ export function SocietyProfile({
       setSaved(response.profile);
       setConflict(false);
       setMessage("Profile saved.");
+      return true;
     } catch (failure) {
       setConflict(failure instanceof ClientApiError && failure.status === 409);
       setError(getClientErrorMessage(failure, "Unable to save profile."));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -204,18 +234,26 @@ export function SocietyProfile({
   ];
   return (
     <section className="grid gap-6 rounded-card border border-line bg-surface p-5 sm:p-6">
-      <nav aria-label="Profile setup steps" className="flex flex-wrap gap-2">
+      {/* Steps read as tabs, not a row of actions; each stays a button with aria-current. */}
+      {/* min-w-0: a grid item, so the bar scrolls instead of widening the page. */}
+      <nav aria-label="Profile setup steps" className={`min-w-0 ${tabBarClasses}`}>
         {steps.map((label, index) => (
-          <Button
+          <button
             key={label}
             type="button"
-            variant={index === step ? "primary" : "secondary"}
-            onClick={() => setStep(index)}
+            className={`relative ${tabClasses(index === step)} disabled:cursor-not-allowed`}
+            onClick={() => go(index)}
             aria-current={index === step ? "step" : undefined}
             disabled={busy}
           >
             {index + 1}. {label}
-          </Button>
+            {done[index] ? (
+              <>
+                <Icon className="text-success" name="success" size={16} />
+                <span className="sr-only">, done</span>
+              </>
+            ) : null}
+          </button>
         ))}
       </nav>
       <form onSubmit={save} className="grid gap-5">
@@ -281,46 +319,55 @@ export function SocietyProfile({
               </p>
               {(["logo", "cover"] as const).map((kind) => (
                 <div className="grid gap-3" key={kind}>
-                  <label className="grid gap-2 text-sm font-semibold text-ink">
-                    <span>{kind === "logo" ? "Logo image" : "Cover image"}</span>
-                    <input
-                      className="font-normal"
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      onChange={(event) => {
-                        void upload(kind, event.target.files?.[0]);
-                        event.target.value = "";
-                      }}
-                    />
-                  </label>
+                  <span className="text-sm font-semibold text-ink" id={`${kind}-label`}>
+                    {kind === "logo" ? "Logo image" : "Cover image"}
+                  </span>
+                  {/* The button opens it, as on the event and product forms; hidden, so it
+                      isn't a second, unstyled control. */}
+                  <input
+                    accept="image/jpeg,image/png,image/webp"
+                    aria-label={kind === "logo" ? "Logo image" : "Cover image"}
+                    className="hidden"
+                    onChange={(event) => {
+                      void upload(kind, event.target.files?.[0]);
+                      event.target.value = "";
+                    }}
+                    ref={(element) => {
+                      fileInputs.current[kind] = element;
+                    }}
+                    type="file"
+                  />
+                  {/* The image first, then what you can do with it, as on the event form. */}
                   {profile[`${kind}AssetId`] && (
-                    <>
-                      <img
-                        alt={`${kind} preview`}
-                        className={
-                          kind === "logo"
-                            ? "h-24 w-24 rounded-control border border-line object-contain"
-                            : "max-h-48 w-full rounded-control object-cover"
-                        }
-                        src={`/api/orgs/${profile.slug}/assets/${profile[`${kind}AssetId`]}`}
-                      />
-                      <div>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          onClick={() =>
-                            setProfile((current) => ({
-                              ...current,
-                              [`${kind}AssetId`]: null,
-                            }))
-                          }
-                        >
-                          Remove {kind}
-                        </Button>
-                      </div>
-                    </>
+                    <img
+                      alt={`${kind} preview`}
+                      className={
+                        kind === "logo"
+                          ? "h-24 w-24 rounded-control border border-line object-contain"
+                          : "max-h-48 w-full rounded-control object-cover"
+                      }
+                      src={`/api/orgs/${profile.slug}/assets/${profile[`${kind}AssetId`]}`}
+                    />
                   )}
+                  <div className="flex flex-wrap gap-2">
+                    <Button aria-describedby={`${kind}-label`} onClick={() => fileInputs.current[kind]?.click()} type="button" variant="secondary">
+                      {profile[`${kind}AssetId`] ? `Replace ${kind}` : `Upload ${kind}`}
+                    </Button>
+                    {profile[`${kind}AssetId`] && (
+                      <Button
+                        type="button"
+                        variant="tertiary"
+                        onClick={() =>
+                          setProfile((current) => ({
+                            ...current,
+                            [`${kind}AssetId`]: null,
+                          }))
+                        }
+                      >
+                        Remove {kind}
+                      </Button>
+                    )}
+                  </div>
                 </div>
               ))}
             </>
@@ -413,10 +460,10 @@ export function SocietyProfile({
             <Button
               type="button"
               variant="secondary"
-              disabled={busy}
-              onClick={() => setStep(step + 1)}
+              disabled={busy || (dirty && conflict)}
+              onClick={() => void saveAndContinue()}
             >
-              Continue
+              {dirty ? "Save and continue" : "Continue"}
             </Button>
           )}
           <span className="text-sm text-ink-muted">

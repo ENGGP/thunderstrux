@@ -1,7 +1,7 @@
 import { apiError, mapRouteError, notFound, routeErrorRule } from "@/lib/api/errors";
 import { authenticationRule, organisationAccessRule } from "@/lib/api/route-rules";
 import { requireAuthenticatedUser, requireCurrentOrganisationAccount, requireOrganisationPermission } from "@/lib/auth/access";
-import { commerceOrderFilters } from "@/lib/commerce/orders";
+import { parseCommerceOrderFilter } from "@/lib/commerce/orders";
 import { ExportTooLargeError, exportCommerceOrders, exportFileName, exportTicketOrders, recordExport } from "@/lib/export/order-exports";
 import { OrganisationOrderEventAccessError, parseOrderStatusFilter } from "@/lib/orders/grouped-orders";
 import { readTimeZone } from "@/lib/organisations/profile";
@@ -41,7 +41,7 @@ export async function GET(request: Request) {
       file = await exportTicketOrders(organisation.id, timeZone, status, eventId, { includeSystemOrders, search, startDate, endDate });
       filters = { status, eventId, search, startDate: value("startDate"), endDate: value("endDate") };
     } else {
-      const filter = commerceOrderFilters.find((name) => name === value("status")) ?? "all";
+      const filter = parseCommerceOrderFilter(value("status"));
       const productId = value("productId");
       file = await exportCommerceOrders(organisation.id, timeZone, family === "memberships" ? "membership" : "merchandise", { filter, search, productId, startDate, endDate });
       filters = { status: filter, productId, search, startDate: value("startDate"), endDate: value("endDate") };

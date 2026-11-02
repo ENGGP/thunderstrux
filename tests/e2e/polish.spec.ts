@@ -53,10 +53,10 @@ test("dashboard filters fold behind a toggle on phones", async ({ page, data }) 
   await login(page, data.owner.email, "/dashboard/orders");
   const toggle = page.getByRole("button", { name: "Filters" });
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
-  await expect(page.getByLabel("Buyer email")).toBeHidden();
+  await expect(page.getByLabel("Reference, name or email")).toBeHidden();
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
-  await expect(page.getByLabel("Buyer email")).toBeVisible();
+  await expect(page.getByLabel("Reference, name or email")).toBeVisible();
   await page.screenshot({ path: "test-results/orders-filters-390.png", fullPage: true });
 
   // A filter that is on keeps the panel open and says so.
@@ -65,5 +65,5 @@ test("dashboard filters fold behind a toggle on phones", async ({ page, data }) 
   await expect(page.getByRole("button", { name: /Filters/ })).toContainText("1 on");
   await page.setViewportSize({ width: 1280, height: 900 });
   await expect(page.getByRole("button", { name: /Filters/ })).toBeHidden();
-  await expect(page.getByLabel("Buyer email")).toBeVisible();
+  await expect(page.getByLabel("Reference, name or email")).toBeVisible();
 });

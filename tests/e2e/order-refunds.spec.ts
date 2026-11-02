@@ -33,7 +33,7 @@ test("finance staff pick tickets to refund or cancel, a wrong reference changes 
   // Refused before Stripe: nothing is recorded and the tickets stay valid.
   await dialog.getByLabel("Reason").fill("Buyer asked for a refund.");
   await dialog.getByLabel(/^Type .+ to confirm$/).fill("WRONG1");
-  await dialog.getByRole("button", { name: "Confirm" }).click();
+  await dialog.getByRole("button", { name: "Refund or cancel", exact: true }).click();
   await expect(dialog.getByRole("alert")).toContainText("to confirm");
   expect(await prisma.refundRequest.count({ where: { orderId: order.id } })).toBe(0);
 
@@ -41,7 +41,7 @@ test("finance staff pick tickets to refund or cancel, a wrong reference changes 
   await dialog.getByLabel("Refund amount").fill("0");
   await expect(dialog).toContainText(`No refund and cancel ${reference(second.id)}.`);
   await dialog.getByLabel(/^Type .+ to confirm$/).fill(reference(order.id));
-  await dialog.getByRole("button", { name: "Confirm" }).click();
+  await dialog.getByRole("button", { name: "Refund or cancel", exact: true }).click();
   await expect(dialog).toBeHidden();
   const tickets = page.getByRole("heading", { name: "Tickets", exact: true }).locator("..");
   await expect(tickets.getByRole("listitem").filter({ hasText: reference(second.id) })).toContainText("Cancelled");

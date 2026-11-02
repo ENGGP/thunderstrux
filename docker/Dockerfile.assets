@@ -1,4 +1,4 @@
-FROM golang:1.27.3-alpine@sha256:b8c9b82affbbb82a020bbcf998dad2ba9516944ac7e883524642a481a9505e9c AS builder
+FROM golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS builder
 WORKDIR /src
 ADD --checksum=sha256:217b507e7457d10629e837cebea6542d8b7685819dafbb56ef910330594af0e1 https://codeload.github.com/seaweedfs/seaweedfs/tar.gz/530be3e37337488ecc34d58441e0bc476e121c93 /tmp/source.tar.gz
 # Rebuild upstream 4.48 with fixes for its Go runtime and x/net advisories.

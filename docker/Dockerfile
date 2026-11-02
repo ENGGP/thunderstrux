@@ -11,14 +11,14 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates libpcre2-8-0 openssl perl-base \
   && rm -rf /var/lib/apt/lists/*
 
-# Build stages add pnpm; the release images (runtime below) never carry it.
+# Build stages add pnpm through Corepack, at the version package.json's packageManager
+# names; the release images (runtime below) never carry it.
 FROM os AS base
 
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 
-RUN corepack enable \
-  && corepack prepare pnpm@10.34.7 --activate
+RUN corepack enable
 
 FROM base AS deps
 

@@ -99,6 +99,8 @@ Never build inside the running app container; use the isolated runner or rebuild
 - `@zxing/library` (the check-in scanner's fallback decoder) is imported by its QR module paths under `esm/core/`, not its index, which carries every format at four times the size; a bump must keep those paths (`tests/e2e/check-in.spec.ts` runs that decoder). From 0.22 it declares Node 24 or later for its build tools only, so it stays on 0.21.x while the project runs Node 22.
 - `eslint-plugin-react-hooks` stays on 5.x, so close Renovate's major PR for it. From 6 it depends on `@babel/core`, which pnpm links as `styled-jsx`'s optional peer, so `next` resolves differently and Babel joins the production install behind the ops image, all for one lint rule. 5.x declares peers only up to ESLint 9, so `pnpm add` warns, but `react-hooks/rules-of-hooks` works on ESLint 10.
 - `typescript-eslint` caps the TypeScript versions it accepts, so the two update in one group, and a TypeScript major waits for it.
+- `stripe` types `apiVersion` as the one version it ships with, so an update that moves it fails the production build until `stripeApiVersion` in `lib/stripe/version.ts` moves too. That move needs a fresh test-mode campaign and webhook endpoints on the new version (PAY-061).
+- `packageManager` in `package.json` is the only pnpm pin. The Docker build stages run `corepack enable` and Corepack reads that field, so a pnpm update touches nothing else.
 - `integration-tests` and `redis-runtime.test.ts` need a disposable Redis; never point `INTEGRATION_REDIS_URL` at a development or production Redis.
 
 ## Related

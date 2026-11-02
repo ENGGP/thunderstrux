@@ -15,6 +15,7 @@ Rows moved here unchanged from the register on 2026-10-26. File paths and run ID
 
 | ID | Resolved | Defect and root cause | Fix and evidence |
 | --- | --- | --- | --- |
+| UI-031 | 2026-11-02 | When the browser refused the clipboard, Copy link on a ticket code did nothing and said nothing, because `copyLink` had no `catch`. Where there is no clipboard at all, it said "Link copied". The review of `pnpm lint`'s first findings caught it. | It now says it couldn't copy and shows the link to copy by hand. `tests/e2e/event-builder.spec.ts`. #257. |
 | DEF-094 | 2026-11-02 | The staging driver's guest step never filled the first and last name the form now requires, so `guest` stopped at Email me a link. | The driver fills them. #252. |
 | DEF-093 | 2026-11-02 | Each staging scenario makes a society on the run's one connected account, and `Organisation.stripeAccountId` has been unique since 2026-10-28, so a full run stopped at its second scenario. Only single-scenario runs had passed since. | Each society takes the account over from the last. #252. |
 | SEC-044 | 2026-11-02 | Who checked a ticket in fell back to that person's email, and names are optional, so a door volunteer could read a colleague's address. | Only roles that can read emails get the fallback. #251. |

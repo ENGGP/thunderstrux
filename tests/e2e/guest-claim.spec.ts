@@ -37,5 +37,6 @@ test("a guest who later signs in with the same email adds the order to their acc
   await expect(page.getByText("This order is in your account")).toBeVisible();
 
   await page.goto("/tickets");
-  await expect(page.getByText("Claimable Quiz Night")).toBeVisible();
+  // The event heads its tickets, and each ticket's band repeats it (round G).
+  await expect(page.getByRole("link", { name: "Claimable Quiz Night" })).toBeVisible();
 });

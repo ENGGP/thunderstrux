@@ -137,6 +137,10 @@ export async function createCommerceCheckout(input: {
       const attempt = { family: input.family, actorKind: actor.kind, actorId: actor.id, operationType: commerceCheckoutOperation, clientIdempotencyKey: input.idempotencyKey, requestHash, providerOperationKey: newProviderOperationKey() };
       const common = { organisationId: input.organisationId, kind: input.family, buyer, buyerEmail: account.email, buyerName: [account.firstName, account.lastName].filter(Boolean).join(" ") || null, lines, source: "checkout" as const, actorUserId: guest ? null : actor.id };
 
+      // A society support restricted (T55) sells nothing, free memberships included.
+      if ((await tx.organisation.findUnique({ where: { id: input.organisationId }, select: { restrictedAt: true } }))?.restrictedAt) {
+        throw new CommerceCheckoutError("unavailable", "This purchase is no longer available", [{ path: ["selection"], message: "This society isn't selling right now" }]);
+      }
       // A free total is fulfilled here, without reading Stripe configuration.
       if (totalAmount === 0) {
         const order = await createCommerceOrder(tx, { ...common, paymentKind: "free" });

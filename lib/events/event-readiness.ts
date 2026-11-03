@@ -34,9 +34,11 @@ export function ticketTypeReason(ticketType: ReadinessEvent["ticketTypes"][numbe
 // paid tickets wait for Stripe. `chargesReady` comes from the society's
 // Connect state; `membersOnlyReady` says a published plan still to end unlocks
 // members-only events (T24b), which a members-only event needs to publish.
+// `restricted` is a society Thunderstrux support restricted (T55): it can't
+// publish, and nothing it lists is on sale.
 export function eventReadiness(
   event: ReadinessEvent,
-  { chargesReady, membersOnlyReady = false, now = new Date() }: { chargesReady: boolean; membersOnlyReady?: boolean; now?: Date }
+  { chargesReady, membersOnlyReady = false, restricted = false, now = new Date() }: { chargesReady: boolean; membersOnlyReady?: boolean; restricted?: boolean; now?: Date }
 ) {
   const ticketTypes = event.ticketTypes.map((ticketType) => {
     const reason = ticketTypeReason(ticketType, chargesReady);
@@ -44,6 +46,7 @@ export function eventReadiness(
   });
   const blockers: ReadinessBlocker[] = [];
   const block = (code: string, field: string, message: string) => blockers.push({ code, field, message });
+  if (restricted) block("society_restricted", "status", "Thunderstrux support has restricted this society, so it can't publish or sell. The owners were emailed.");
 
   if (!event.title.trim() || !event.description.trim() || !event.location.trim()) {
     block("details_missing", "title", "Add a title, description and location before publishing.");
@@ -83,6 +86,6 @@ export function eventReadiness(
     blockers,
     warnings,
     ticketTypes,
-    salesOpen: event.status === "published" && salesOpen(event, now)
+    salesOpen: !restricted && event.status === "published" && salesOpen(event, now)
   };
 }

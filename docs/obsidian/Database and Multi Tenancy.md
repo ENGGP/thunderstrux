@@ -55,12 +55,13 @@ Fields, defaults and relations: `prisma/schema.prisma`. Amounts are integer cent
 | `MfaGrant` | A session's MFA verification: keyed by session digest, with expiry. The stale-orders worker deletes expired grants. |
 | `PlatformOperator` | A platform operator (T54), `PlatformOperator_revocation_chk`. [[Platform Admin Portal]] |
 | `PlatformAuditLog` | The operators' trail; `PlatformAuditLog_actor_chk`, `PlatformAuditLog_reason_chk`. |
+| `PlatformRecoveryRequest` | A delayed recovery (T55; `PlatformRecoveryKind`, `PlatformRecoveryStatus`). |
 
 ### Societies and staff
 
 | Model | Purpose and notable rules |
 | --- | --- |
-| `Organisation` | A society. Unique `slug`. Public profile fields (`description`, `supportEmail`, `refundPolicy`, `pickupPolicy`, `timeZone` default `Australia/Brisbane`, `profileVersion`, `onboardingCompletedAt`) and `logoAssetId`/`coverAssetId` through `(assetId, id)` composite keys ([[Society Profiles and Assets]]). Cached Connect fields `stripeAccountId` (unique, SEC-035), `stripeAccountStatus` (a string, not an enum), `stripeChargesEnabled`, `stripePayoutsEnabled`, `stripeDetailsSubmitted` ([[Stripe Payments and Connect#Connect account states]]). `payoutCheckedAt` is the payouts claim. `accountUserId` (unique) is the legacy owner pointer. |
+| `Organisation` | A society. Unique `slug`. Public profile fields (`description`, `supportEmail`, `refundPolicy`, `pickupPolicy`, `timeZone` default `Australia/Brisbane`, `profileVersion`, `onboardingCompletedAt`) and `logoAssetId`/`coverAssetId` through `(assetId, id)` composite keys ([[Society Profiles and Assets]]). Cached Connect fields `stripeAccountId` (unique, SEC-035), `stripeAccountStatus` (a string, not an enum), `stripeChargesEnabled`, `stripePayoutsEnabled`, `stripeDetailsSubmitted` ([[Stripe Payments and Connect#Connect account states]]). `payoutCheckedAt` is the payouts claim. `restrictedAt`, `restrictionReason` and `payoutsHeld*` are support's restriction and payout hold (T55). `accountUserId` (unique) is the legacy owner pointer. |
 | `Asset` | An uploaded image: owner society, uploader, unique `storageKey`, `kind` (`logo`, `cover`, `event`, `product`), processed size, dimensions, `sha256`, `status` string (`pending`, `ready`, `failed`, `deleted`), `unreferencedAt` cleanup clock. Bytes live in object storage ([[Society Profiles and Assets]]). |
 | `OrganisationMember` | Free join, unique `(userId, organisationId)`, `role` `OrganisationRole` (joins write `member`; bootstrap writes `org_owner`). No authority. |
 | `OrganisationStaff` | Named staff: unique `(organisationId, userId)`, role, status, who invited, accepted, revoked. |
@@ -220,7 +221,7 @@ No path locks an order and then an event, ticket type, plan or option. Invites a
 - **Additive first.** Add nullable columns or columns with defaults, backfill only facts the rows prove, then tighten. A required column or new check can stop an older release writing (for example `Order.paymentKind` required, `Event.salesCloseAt` required): say in the PR whether rollback needs checkout or event creation paused.
 - **Production:** migrations run once as the `migration` service (`prisma migrate deploy`) before the new app starts; ordinary app startup never migrates. Readiness fails until the migration named in `config/schema-contract.json` is applied, so bump `requiredMigration` when the app needs a new migration ([[Production Operations]]).
 - **Development:** the dev `app` container runs `pnpm prisma:migrate:deploy` on every start, so restarting it applies pending migrations; `pnpm docker:migrate` runs `prisma migrate dev` to create one from schema changes ([[Development Workflow]]).
-- **Upgrade rehearsal:** `node scripts/rehearse-upgrade.mjs <archive.dump> [...]` restores each `pg_dump` archive into a throwaway Postgres container as `upgrade_rehearsal_test`, applies this checkout's migrations, runs the audit and compares row counts, then removes the container. Archives from a newer `pg_dump` are skipped with a reason. It never touches dev or production volumes.
+- **Upgrade rehearsal:** `scripts/rehearse-upgrade.mjs` restores archives into a throwaway container and migrates them ([[Production Operations#Backup, restore and rollback]]).
 
 ## Worker leases
 

@@ -507,7 +507,7 @@ The order after the 2026-10-30 audit, set by what depends on what. Each item get
 4. Checkout questions, attendee names, and the student number in the roster and export.
 5. O-Week: guests can buy a membership, and members show a card on their phone.
 
-Alongside, before `thunderstrux.com` serves real societies: the platform admin portal for Thunderstrux's own operators (T54, read-only, in progress; T55, the changes). See [Platform Admin Portal](obsidian/Platform%20Admin%20Portal.md).
+Alongside, before `thunderstrux.com` serves real societies: the platform admin portal for Thunderstrux's own operators (T54, read-only, merged; T55, the changes, #283). See [Platform Admin Portal](obsidian/Platform%20Admin%20Portal.md).
 
 Later: a buyer refund request button, a waitlist, messaging attendees, wallet passes, early payout release, and a second look at what is over-built for this stage (MFA on every staff page, the steps a small refund takes, per-event settings for compensation mode and hold length, and the size of these docs).
 

@@ -3,16 +3,16 @@ status: living
 last-reviewed: 2026-11-03
 owner: engineering
 related: ["[[Authentication and Dashboard Access]]", "[[Audit Coverage]]", "[[Production Operations]]", "[[Route Security Inventory]]", "[[Database and Multi Tenancy]]"]
-sources: [lib/platform/authority.ts, lib/platform/operators.ts, lib/platform/mode.ts, lib/platform/audit.ts, lib/platform/search.ts, lib/platform/records.ts, lib/platform/overview.ts, lib/permissions/platform.ts, proxy.ts, scripts/operators.ts, scripts/operations.mjs, components/admin/admin-shell.tsx]
+sources: [lib/platform/authority.ts, lib/platform/operators.ts, lib/platform/mode.ts, lib/platform/audit.ts, lib/platform/search.ts, lib/platform/records.ts, lib/platform/overview.ts, lib/platform/changes.ts, lib/platform/accounts.ts, lib/platform/societies.ts, lib/platform/recovery.ts, lib/platform/operations.ts, lib/platform/specs.ts, lib/permissions/platform.ts, proxy.ts, app/api/admin/actions/route.ts, scripts/operators.ts, scripts/operations.mjs, components/admin/admin-shell.tsx, components/admin/action-dialog.tsx, components/admin/recovery-wizard.tsx]
 ---
 
 # Platform Admin Portal
 
-**Owns:** the platform admin portal at `/admin` (T54): who an operator is, how they reach it, what it shows, the platform trail, the operator CLI and the loopback runner.
+**Owns:** the platform admin portal at `/admin` (T54, T55): who an operator is, how they reach it, what it shows, every change an operator can make, the platform trail, the operator CLI and the loopback runner.
 **Read when:** changing anything under `app/(admin)`, `lib/platform/` or `components/admin/`, granting an operator, or running the portal against the preview or production.
 **Not here:** society staff roles and staff MFA ([[Authentication and Dashboard Access]]); what each society action records ([[Audit Coverage]]); deploys, workers and recovery ([[Production Operations]]).
 
-The portal is for Thunderstrux's own developers and operators, never societies or buyers. T54 is read-only; the changes (disable an account, recovery, restriction, payout hold, worker controls) arrive with T55. Design: round H on the design canvas, approved 3 Nov 2026.
+The portal is for Thunderstrux's own developers and operators, never societies or buyers. T54 built the read-only portal; T55 added the changes (account help and disable, delayed recovery, restriction, payout hold, operator revoke, worker controls). No impersonation, no refunds or cancellations, no money movement and no export. Design: round H on the design canvas, approved 3 Nov 2026.
 
 ## Code
 
@@ -27,9 +27,11 @@ The portal is for Thunderstrux's own developers and operators, never societies o
 | Omnibox search | `lib/platform/search.ts`: `searchPlatform`; the server action `adminSearch` (`app/(admin)/admin/search/actions.ts`) |
 | Records and overview | `lib/platform/records.ts` (`readUserRecord`, `readSocietyRecord`, `readOrderRecord`, `listNewestUsers`, `listSocieties`), `lib/platform/overview.ts` (`readNeeds`, `readHealth`, `readCounts`) |
 | Shell and parts | `components/admin/admin-shell.tsx`, `components/admin/omnibox.tsx`, `components/admin/verify-window.tsx`, `components/admin/record.tsx`, `components/admin/id-chip.tsx`, `components/admin/admin-sign-out.tsx` |
+| Changes | `POST /api/admin/actions` (`app/api/admin/actions/route.ts`); `lib/platform/changes.ts` (`platformWrite`, `notifyPeople`, `societyHistory`), `lib/platform/accounts.ts` (`changeAccount`), `lib/platform/societies.ts` (`changeSociety`), `lib/platform/recovery.ts` (`requestRecovery`, `completeRecovery`, `cancelRecovery`, `readRecoveryRequest`), `lib/platform/operations.ts` (`setWorkerPaused`, `runIntegrityAudit`, `revokeOperatorFromWeb`); `lockPlatformActor` and `platformApiActor` in `authority.ts` |
+| Dialogs | `components/admin/action-dialog.tsx` (`ActionDialog`, `AdminActions`), `components/admin/recovery-wizard.tsx` with the server action `lookupRecoveryCandidate` (`app/(admin)/admin/recovery/actions.ts`); each dialog's words come from `lib/platform/specs.ts` |
 | CLI | `scripts/operators.mjs` → `scripts/operators.ts` (`pnpm ops:operator`) |
 | Loopback runner | `scripts/operations.mjs` `admin` (`pnpm ops:admin`), `adminPortalRunArgs` in `scripts/operations-guards.mjs` |
-| Tests | `tests/integration/platform-admin.test.ts`, `tests/runner/operations.test.mjs`, `tests/runner/container-config.test.mjs` |
+| Tests | `tests/integration/platform-admin.test.ts`, `tests/integration/platform-controls.test.ts`, `tests/runner/operations.test.mjs`, `tests/runner/container-config.test.mjs` |
 
 ## Who can reach it
 
@@ -45,9 +47,14 @@ Every check below must pass, in this order, on every page:
 | Permission | `support` | `admin` |
 | --- | --- | --- |
 | `platform:monitor` (overview, operations) | ✓ | ✓ |
-| `platform:read` (search, users, societies, orders) | ✓ | ✓ |
+| `platform:read` (search, users, societies, orders, recovery requests) | ✓ | ✓ |
+| `platform:account_assist` (resend verification, send a password reset, sign out everywhere) | ✓ | ✓ |
+| `platform:account_disable` (disable, re-enable) | | ✓ |
+| `platform:recovery` (request, complete or cancel an authenticator reset or ownership recovery) | | ✓ |
+| `platform:society_control` (restrict and lift, hold and release payouts) | | ✓ |
+| `platform:operations` (pause and resume jobs, run the integrity audit) | | ✓ |
 | `platform:audit_read` (the trail) | | ✓ |
-| `platform:operators` (the operator list) | | ✓ |
+| `platform:operators` (the operator list, revoke another) | | ✓ |
 
 While a page is open, the shell counts the window down; under 10 minutes it offers Extend (`/mfa`), and at zero a code dialog covers the page (`POST /api/me/mfa/verify`) and a verified code reloads it in place.
 
@@ -78,9 +85,33 @@ Every page is a server page in `app/(admin)/admin/` inside `AdminShell`, which r
 | `/admin/orders`, `/admin/orders/[orderId]` | Find by reference or id; one ticket, membership or shop order with its lifecycle, refunds, disputes and tickets. No money buttons: refunds happen in Stripe or on the society's page |
 | `/admin/operations` | Workers and queues, as `pnpm ops:workers -- status` reads them |
 | `/admin/audit` | The platform trail, filtered by action and target |
-| `/admin/operators` | Operators and their authenticator state |
+| `/admin/operators` | Operators and their authenticator state; Revoke |
+| `/admin/recovery/[requestId]` | One recovery request: requested, who was told and whether each notice went out, ready on, the outcome; Complete (from `executeAfter`, after a recheck) and Cancel |
 
 The omnibox (`/` or Ctrl/⌘+K) posts to the server action `adminSearch`, so a pasted email never reaches a URL or the browser history: one match opens its record, none opens `/admin/search?none=1`, and only a name or id with several matches goes to `/admin/search?q=`. It takes an email (exact), an app id, `cs_` or `pi_` (the order paid with it), `acct_` or `po_` (the society), `re_`, `du_` or `dp_` (the order), a six-character order reference, or a name. Recent records it lists live in the tab's `sessionStorage` only, with display names, never emails.
+
+## Changes
+
+Every change goes through one dialog (board H7, `ActionDialog`): what will happen (and what won't), why (a reason picker plus details, 8 to 500 characters), then a fresh 6-digit authenticator code. The dialog title repeats the environment. The code renews the 60-minute window, so a change never bounces to `/mfa`. A refusal names its reason and keeps what was typed; an unexpected error names the operation (`admin.<action>`) and time for finding `api.request_failed`. The result sits under the button, with Undo where there is an opposite (re-enable, lift, release, resume), which opens that dialog with the reason filled in. The Actions menu lists only what the role allows, and shows an action that doesn't apply now disabled, with why.
+
+`platformWrite` runs each one in a transaction: `lockPlatformActor` locks the operator's `User`, rechecks `authVersion`, the live role and the permission, and uses the code once (`consumeStaffMfaCode`); then the change locks its target, applies, enqueues its notices, writes any society History row and the `PlatformAuditLog` row with the reason. After commit it alerts `platform_admin_action`. A refusal (`PlatformRefusal`, 409) rolls all of it back, the code included.
+
+| Change | Effect | Who hears |
+| --- | --- | --- |
+| Resend verification; send password reset | The usual verify or reset link (`issueVerification`, `issuePasswordReset`); refused for a disabled account, and verification for a verified one | the person, by the usual email |
+| Sign out everywhere | `authVersion` + 1, every `MfaGrant` deleted; security event `support_signed_out` | `account_signed_out_by_support` |
+| Disable; re-enable | `disabledAt` set with the sign-out (live staff authority stops at once), or cleared; security events `support_disabled`, `support_reenabled`. Tickets and orders stay | `account_disabled`, `account_reenabled`; History in each society they staff |
+| Restrict; lift | `restrictedAt` and `restrictionReason`. While set: every checkout family refuses (free registration included), publishing an event, plan or product and reopening sales refuse, the Connect dashboard link and disconnect refuse, payouts wait, and its events leave Explore, the home page and society pages ([[Event Lifecycle]]). Tickets, check-in, refunds, reads and fulfilment of a payment Stripe already took carry on | owners by `society_restricted`, `society_unrestricted`; History; the society Overview and Payments page say so |
+| Hold payouts; release | `payoutsHeldAt`, optional `payoutsHeldUntil`, `payoutsHeldReason`. `processPayoutBatch` skips a held society until the end date (or release). Stripe still pays out manual-payout money after 90 days (PAY-022) | History; the Payments page notice |
+| Authenticator reset (delayed) | Request: the person must have an authenticator. Complete, from 72 hours later: deletes `UserMfa`, recovery codes and grants, `authVersion` + 1 | the person and, when they own a society, its other owners and admins: `mfa_reset_requested`, `mfa_reset_completed` |
+| Ownership recovery (delayed) | Request names an existing, verified, enabled account that isn't an operator or already an owner; the trail keeps the current owners' last sign-in. Complete: that account's staff row becomes `owner` (nobody else's changes) and payouts are held for 7 days (an open-ended hold stays open-ended) | every active staff member, the society's contact address and the new owner: `ownership_recovery_requested`, `ownership_recovered`; History |
+| Cancel a request | `status` `cancelled` | everyone it told: `recovery_cancelled`; History for an ownership request |
+| Revoke an operator | `status` `revoked`, `revokedByUserId`. Never yourself; the revoked one's authority is read live under lock, so two admins can't revoke each other to none | `platform_operator_changed` (`via: "web"`) |
+| Pause, resume a job; run the integrity audit | The same `WorkerLease` write as `pnpm ops:workers`; `runDatabaseIntegrityAudit`, whose counts and sample ids the Operations page shows from the trail | ops |
+
+**Delayed recovery** (board H8). The wizard is three steps: who (an authenticator reset is the record you're on; an ownership recovery finds an existing account by exact email, posted to `lookupRecoveryCandidate` and logged as a search), what you checked (a checklist and notes, the stored evidence), then who will be emailed and when it can be completed, with the reason and code. Completion rechecks under the locks (target `User`, `Organisation`, the request): still verified and enabled, not an operator, and for a reset an authenticator still there, for ownership not an owner yet. Anything else refuses with one answer: cancel and start again. A restore can bring an old request back, so the recheck applies to it too. Ready requests rise to the top of Needs you; waiting ones and restricted or held societies are listed too.
+
+Account changes never touch your own account or an operator's (`pnpm ops:operator` on the host does), and refuse a closed account. An operator's lost authenticator is reset on the host.
 
 ## The trail
 
@@ -96,13 +127,18 @@ The omnibox (`/` or Ctrl/⌘+K) posts to the server action `adminSearch`, so a p
 - A new `platform.*` action must be named in [[Audit Coverage]]; `history.test.ts` leaves `platform.` actions out of society History on purpose.
 - `pnpm ops:admin` keeps a timer while it waits for Ctrl-C: a signal listener alone doesn't keep Node running, and the first real run (preview, 3 Nov 2026) ended at once with exit 13 and left `ops-preview-admin` up unsupervised. If a run ever ends early, `docker stop ops-preview-admin` removes the container.
 - The fast integration reset truncates `PlatformAuditLog` (`tests/helpers/db-reset.ts`), because the trigger refuses row deletes.
+- A change is a `platformWrite`, never a direct write: that is what puts the trail row, the permission recheck and the one-use code in the same transaction. Lock the target after `lockPlatformActor`, in the order User, Organisation, then the request or operator row.
+- `payoutsAllowedWhere` lives in `lib/payouts/payouts.ts`, not `lib/platform/`: the refunds worker must not load the portal's HTTP and session modules.
+- Society History rows from support have no actor; History names them by the `platform.` prefix. Never put the operator's reason in a society row or a notice.
 
 ## Failure and recovery
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | `/admin` is a 404 for an operator | The process isn't in admin mode, the host isn't the sign-in host, the operator row is revoked, or the account is disabled | Use the dev app at `127.0.0.1:3080` or `pnpm ops:admin`; check `pnpm ops:operator -- list` |
-| Always sent to `/mfa` | No authenticator, or none verified in the last 60 minutes | Verify; a lost authenticator is reset by T55's recovery, until then by hand on the host |
+| Always sent to `/mfa` | No authenticator, or none verified in the last 60 minutes | Verify; an operator's lost authenticator is reset by hand on the host (the portal's reset is for other accounts) |
+| A change answers "That code was already used" | Each 30-second code works once, the window's included | Wait for the next code; the reason is kept |
+| Rolling back to a build before T55 | An older payouts worker ignores `restrictedAt` and the payout hold | Pause the `refunds` job first ([[Production Operations#Backup, restore and rollback]]) |
 | `pnpm ops:admin` says the port is in use | Another admin portal is running | Stop it (Ctrl-C in its terminal) |
 | After a restore | `fence-restored-identity.sql` empties grants, so every operator verifies again; operator rows come back as they were at the backup | Re-apply operator revocations made after the restore point, read from the `platform_operator_changed` alerts ([[Production Operations#Failure and recovery]]) |
 

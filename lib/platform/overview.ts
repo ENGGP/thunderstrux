@@ -17,15 +17,31 @@ const queueLabels: Record<string, string> = {
 };
 
 export async function readNeeds(now = new Date()): Promise<NeedItem[]> {
-  const [disputes, reviews, refunds, payouts, queues, workers] = await Promise.all([
+  const [disputes, reviews, refunds, payouts, queues, workers, recoveries, controlled] = await Promise.all([
     readDisputesDue(now),
     prisma.order.findMany({ where: { requiresCompensationReview: true }, orderBy: { createdAt: "asc" }, take: 10, select: { id: true, createdAt: true, event: { select: { title: true, organisation: { select: { name: true } } } } } }),
     prisma.refundRequest.findMany({ where: { status: "uncertain" }, orderBy: { createdAt: "asc" }, take: 10, select: { orderId: true, commerceOrderId: true, createdAt: true } }),
     prisma.societyPayout.findMany({ where: { status: "failed", createdAt: { gte: new Date(now.getTime() - 7 * 86_400_000) } }, take: 10, select: { createdAt: true, organisation: { select: { id: true, name: true } } } }),
     readQueues(now),
-    readWorkers(now)
+    readWorkers(now),
+    // T55: recovery requests (ready ones rise to the top) and societies support stopped.
+    prisma.platformRecoveryRequest.findMany({ where: { status: "pending" }, orderBy: { executeAfter: "asc" }, take: 20,
+      select: { id: true, kind: true, executeAfter: true, target: { select: { email: true } }, organisation: { select: { name: true } } } }),
+    prisma.organisation.findMany({ where: { OR: [{ restrictedAt: { not: null } }, { payoutsHeldAt: { not: null }, OR: [{ payoutsHeldUntil: null }, { payoutsHeldUntil: { gt: now } }] }] },
+      orderBy: { name: "asc" }, take: 20, select: { id: true, name: true, restrictedAt: true, payoutsHeldAt: true, payoutsHeldUntil: true } })
   ]);
   const needs: NeedItem[] = [
+    ...recoveries.map((request) => {
+      const ready = request.executeAfter <= now;
+      const what = request.kind === "mfa_reset" ? `Authenticator reset for ${request.target.email}` : `Ownership of ${request.organisation?.name ?? "a society"} for ${request.target.email}`;
+      return { level: ready ? "hot" as const : "cool" as const, title: ready ? "Recovery ready to complete" : "Recovery waiting", detail: `${what}. ${ready ? "Recheck and complete, or cancel." : "Cancel it if anyone objects."}`,
+        due: request.executeAfter, href: `/admin/recovery/${request.id}`, action: ready ? "Complete" : "Open request" };
+    }),
+    ...controlled.map((society) => ({
+      level: "cool" as const, title: society.restrictedAt ? "Society restricted" : "Payouts held",
+      detail: `${society.name}. ${society.restrictedAt ? "Sales, publishing and payouts are paused until you lift it." : society.payoutsHeldUntil ? "Payouts resume on their own at the end date." : "Payouts wait until released."}`,
+      age: society.restrictedAt ?? society.payoutsHeldAt ?? undefined, href: `/admin/societies/${society.id}`, action: "Open society"
+    })),
     ...disputes.flatMap((dispute) => {
       const orderId = dispute.orderId ?? dispute.commerceOrderId;
       return orderId && dispute.evidenceDueBy ? [{ level: "hot" as const, title: "Dispute answer due", detail: `Order ${orderReference(orderId)}. The staged answer is waiting in Stripe.`, due: dispute.evidenceDueBy, href: `/admin/orders/${orderId}`, action: "Open order" }] : [];

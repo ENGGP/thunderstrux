@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { readHistory } from "@/lib/audit/history";
 import { formatDateTime } from "@/lib/format";
 import { accessActions } from "./audit";
+import { listOpenRecoveries } from "./recovery";
 
 // T54: what an operator sees on a user, society or order record. Every select
 // is an allow-list: never a password hash, authenticator secret, recovery code,
@@ -9,12 +10,19 @@ import { accessActions } from "./audit";
 
 export type ActivitySource = "SUPPORT" | "SOCIETY" | "STRIPE" | "THUNDERSTRUX" | "ACCOUNT" | "CHECKOUT";
 export type ActivityRow = { id: string; source: ActivitySource; text: string; detail?: string; at: Date; facts?: unknown };
-export type Attention = { tone: "danger" | "warning" | "info"; title: string; body: string };
+export type Attention = { tone: "danger" | "warning" | "info"; title: string; body: string; href?: string; link?: string };
 
 // How a person reads in the portal: their chosen name, else first and last, else their email.
 export const personLabel = (user: { firstName: string | null; lastName: string | null; displayName: string | null; email: string }) =>
   user.displayName || [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email;
 const words = (value: string) => value.replace(/[._]/g, " ");
+const recoveryAttention = (request: Awaited<ReturnType<typeof listOpenRecoveries>>[number]): Attention => {
+  const ready = request.executeAfter <= new Date();
+  const what = request.kind === "mfa_reset" ? "Authenticator reset" : `Ownership recovery for ${personLabel(request.target)}`;
+  return { tone: ready ? "warning" : "info", title: `${what} ${ready ? "ready to complete" : "waiting"}`,
+    body: ready ? "72 hours have passed. Recheck and complete it, or cancel it." : `It can be completed from ${formatDateTime(request.executeAfter)}, Brisbane time.`,
+    href: `/admin/recovery/${request.id}`, link: "Open request" };
+};
 const newestFirst = (rows: ActivityRow[]) => rows.sort((a, b) => b.at.getTime() - a.at.getTime());
 
 // Support changes about one record; views and searches stay on the Audit page.
@@ -35,7 +43,8 @@ export async function readUserRecord(id: string) {
     mfa: { select: { enabledAt: true } },
     platformOperator: { select: { role: true, status: true } },
     _count: { select: { mfaRecoveryCodes: true, orders: true, commerceOrders: true, organisationMemberships: true } },
-    organisationStaff: { orderBy: { createdAt: "asc" }, select: { role: true, status: true, createdAt: true, organisation: { select: { id: true, name: true } } } },
+    organisationStaff: { orderBy: { createdAt: "asc" }, select: { role: true, status: true, createdAt: true,
+      organisation: { select: { id: true, name: true, staff: { where: { role: "owner", status: "active", user: { disabledAt: null } }, select: { userId: true } } } } } },
     securityEvents: { orderBy: { createdAt: "desc" }, take: 20, select: { id: true, type: true, createdAt: true } }
   } });
   if (!user) return null;
@@ -57,16 +66,19 @@ export async function readUserRecord(id: string) {
   else if (user.disabledAt) attention.push({ tone: "danger", title: "Disabled", body: "Can't sign in and holds no society authority." });
   if (!user.closedAt && !user.emailVerifiedAt) attention.push({ tone: "warning", title: "Email not verified", body: "Can sign in, but can't buy, join or accept staff access until it's verified." });
   if (user.mfa?.enabledAt && user._count.mfaRecoveryCodes === 0) attention.push({ tone: "warning", title: "No recovery codes left", body: "If the phone is lost too, they can't verify. The way back is an authenticator reset." });
-  return { user, activity, attention };
+  const recoveries = await listOpenRecoveries({ targetUserId: id });
+  attention.push(...recoveries.map(recoveryAttention));
+  return { user, activity, attention, recoveries };
 }
 
 export async function readSocietyRecord(id: string) {
   const society = await prisma.organisation.findUnique({ where: { id }, select: {
     id: true, name: true, slug: true, timeZone: true, supportEmail: true, createdAt: true, accountUserId: true,
     stripeAccountId: true, stripeAccountStatus: true, stripeChargesEnabled: true, stripePayoutsEnabled: true, stripeDetailsSubmitted: true, payoutCheckedAt: true,
+    restrictedAt: true, restrictionReason: true, payoutsHeldAt: true, payoutsHeldUntil: true, payoutsHeldReason: true,
     _count: { select: { members: true, events: true } },
     staff: { orderBy: [{ status: "asc" }, { createdAt: "asc" }], select: { role: true, status: true, createdAt: true,
-      user: { select: { id: true, email: true, firstName: true, lastName: true, displayName: true, lastSignInAt: true, mfa: { select: { enabledAt: true } } } } } },
+      user: { select: { id: true, email: true, firstName: true, lastName: true, displayName: true, lastSignInAt: true, disabledAt: true, mfa: { select: { enabledAt: true } } } } } },
     events: { orderBy: { startTime: "desc" }, take: 20, select: { id: true, title: true, status: true, saleState: true, startTime: true, cancelledAt: true } },
     payouts: { orderBy: { createdAt: "desc" }, take: 10, select: { stripePayoutId: true, amount: true, status: true, createdAt: true } },
     purchaseDisputes: { where: { providerStatus: { in: ["needs_response", "warning_needs_response", "appeal_needs_response", "under_review", "warning_under_review", "appeal_under_review"] } },
@@ -80,10 +92,19 @@ export async function readSocietyRecord(id: string) {
       attention.push({ tone: "warning", title: "Dispute answer due", body: `Due ${formatDateTime(dispute.evidenceDueBy)}, Brisbane time. Answer it in Stripe's Dashboard from the staged draft.` });
     }
   }
-  if (!society.staff.some((row) => row.role === "owner" && row.status === "active")) {
-    attention.push({ tone: "warning", title: "No active owner", body: "Nobody can hand over ownership or manage staff above admin." });
+  if (!society.staff.some((row) => row.role === "owner" && row.status === "active" && !row.user.disabledAt)) {
+    attention.push({ tone: "warning", title: "No active owner", body: "Nobody can hand over ownership or manage staff above admin. Ownership recovery is the way back." });
   }
-  return { society, history: history.entries.slice(0, 10), support, attention };
+  // T55: what support has stopped, worst first.
+  if (society.restrictedAt) attention.push({ tone: "danger", title: `Restricted ${formatDateTime(society.restrictedAt)}`, body: `New sales, publishing, Stripe changes and payouts are paused. Reason: ${society.restrictionReason ?? "not recorded"}` });
+  const now = new Date();
+  if (society.payoutsHeldAt && (!society.payoutsHeldUntil || society.payoutsHeldUntil > now)) {
+    attention.push({ tone: "warning", title: society.payoutsHeldUntil ? `Payouts held until ${formatDateTime(society.payoutsHeldUntil, { timeZone: society.timeZone })}` : "Payouts held until released",
+      body: `Reason: ${society.payoutsHeldReason ?? "not recorded"}. Stripe pays out manual-payout money after 90 days anyway (PAY-022).` });
+  }
+  const recoveries = await listOpenRecoveries({ organisationId: id });
+  attention.push(...recoveries.map(recoveryAttention));
+  return { society, history: history.entries.slice(0, 10), support, attention, recoveries };
 }
 
 const lifecycleSource = (source: string): ActivitySource =>

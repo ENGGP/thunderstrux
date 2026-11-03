@@ -119,7 +119,7 @@ OpenClaw actions are deferred and write nothing.
 
 ## Platform trail
 
-The admin portal and the operator CLI write `PlatformAuditLog`, never `AuditLog`, so none of these reaches a society's History ([[Platform Admin Portal#The trail]]).
+The admin portal and the operator CLI write `PlatformAuditLog` ([[Platform Admin Portal#The trail]]). Every change also carries the operator's reason (8 to 500 characters) and is written in the same transaction as the change (`platformWrite`, `lib/platform/changes.ts`); a refused change writes nothing.
 
 | Source | Action(s) | Holds |
 | --- | --- | --- |
@@ -127,6 +127,12 @@ The admin portal and the operator CLI write `PlatformAuditLog`, never `AuditLog`
 | Every admin search (`recordPlatformSearch`) | `platform.searched` | a keyed digest of the query (`searchDigest`) and the result count, never the text |
 | `pnpm ops:operator` (`lib/platform/operators.ts`) | `platform.operator_granted`, `platform.operator_role_changed`, `platform.operator_revoked` | no actor; the reason, `via: "cli"`, the OS user and host, the old role on a change |
 | An operator's authenticator steps (`lib/security/staff-mfa.ts`) | `platform.mfa_enabled`, `platform.mfa_verified`, `platform.mfa_recovery_used`, `platform.mfa_recovery_codes_replaced` | the operator |
+| Account changes (`lib/platform/accounts.ts`) | `platform.verification_resent`, `platform.password_reset_sent`, `platform.signed_out_everywhere`, `platform.account_disabled`, `platform.account_reenabled` | the target user; a disable or re-enable lists the societies told |
+| Society controls (`lib/platform/societies.ts`) | `platform.society_restricted`, `platform.society_unrestricted`, `platform.payouts_held`, `platform.payouts_released` | the society; a hold's end date |
+| Recovery (`lib/platform/recovery.ts`) | `platform.mfa_reset_requested`, `platform.ownership_recovery_requested`, `platform.mfa_reset_completed`, `platform.ownership_recovered`, `platform.recovery_cancelled` | the request (`Recovery`); the person, how many were told, when it becomes completable, owners' last sign-in, the payout hold's end |
+| Operations (`lib/platform/operations.ts`) | `platform.worker_paused`, `platform.worker_resumed`, `platform.integrity_audit_run`, `platform.operator_revoked` (`via: "web"`) | the job, each audit check's count, class and up to 5 sample ids, or the revoked operator |
+
+**In society History.** A change that touches a society also writes an `AuditLog` row with no actor, which History tells as "Thunderstrux support" (category Thunderstrux support), never naming the operator: `platform.member_disabled` and `platform.member_reenabled` (in each society the person staffs, with their name and role), `platform.society_restricted`, `platform.society_unrestricted`, `platform.payouts_held`, `platform.payouts_released`, `platform.ownership_recovery_requested`, `platform.ownership_recovered` and `platform.ownership_recovery_cancelled`. The reason stays in the platform trail. Support rows never appear under Stripe in the Who filter.
 
 ## History
 

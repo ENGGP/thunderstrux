@@ -95,7 +95,8 @@ export async function discoverOrganisations(
       description: true,
       logoAssetId: true,
       events: {
-        where: { status: "published", visibility: "public", cancelledAt: null, startTime: { gte: new Date() } },
+        // A restricted society (T55) stays listed, without its events.
+        where: { status: "published", visibility: "public", cancelledAt: null, startTime: { gte: new Date() }, organisation: { restrictedAt: null } },
         orderBy: [{ startTime: "asc" }, { id: "asc" }],
         take: 1,
         select: { id: true, title: true, startTime: true },

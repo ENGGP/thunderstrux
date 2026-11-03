@@ -78,6 +78,9 @@ export async function readWorkers(now = new Date()) {
     return {
       worker: name,
       paused: Boolean(allPaused || row?.pausedAt),
+      // The job's own pause, apart from a pause of every job (T55's Operations page).
+      pausedAt: row?.pausedAt ?? null,
+      pauseReason: row?.pauseReason ?? null,
       lastSucceededAt,
       lastFailedAt: row?.lastFailedAt ?? null,
       running: Boolean(row?.leasedUntil && row.leasedUntil > now),

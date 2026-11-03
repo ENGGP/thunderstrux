@@ -8,10 +8,14 @@ import { adminHostAllowed, isAdminPortalEnabled } from "@/lib/platform/mode";
 
 export async function proxy(request: NextRequest) {
   // T54: the public app never serves the admin portal, and the admin process
-  // serves it only to its own loopback host (no DNS rebinding).
-  if ((request.nextUrl.pathname === "/admin" || request.nextUrl.pathname.startsWith("/admin/")) && (!isAdminPortalEnabled() || !adminHostAllowed(request.headers.get("host")))) {
+  // serves it only to its own loopback host (no DNS rebinding). T55: the same for
+  // its API, whose routes answer their own 401 rather than a sign-in redirect.
+  const path = request.nextUrl.pathname;
+  const api = path.startsWith("/api/admin/");
+  if ((path === "/admin" || path.startsWith("/admin/") || api) && (!isAdminPortalEnabled() || !adminHostAllowed(request.headers.get("host")))) {
     return new NextResponse("Not Found", { status: 404, headers: { "Cache-Control": "no-store" } });
   }
+  if (api) return NextResponse.next();
 
   const token = await getToken({
     req: request,
@@ -36,5 +40,5 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   // Event pages are public (T15a); their checkout pages ask for sign-in themselves.
-  matcher: ["/dashboard/:path*", "/account/:path*", "/admin/:path*"]
+  matcher: ["/dashboard/:path*", "/account/:path*", "/admin/:path*", "/api/admin/:path*"]
 };

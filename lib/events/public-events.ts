@@ -117,14 +117,15 @@ export async function getPublishedEvents({
     : {};
   const events = await prisma.event.findMany({
     // Unlisted events open by direct link only; members-only events never appear
-    // publicly; ended and cancelled events drop out of every list (PUB-001, EVT-004).
+    // publicly; ended and cancelled events drop out of every list (PUB-001, EVT-004),
+    // and so do a restricted society's (T55).
     where: {
       status: "published",
       visibility: "public",
       cancelledAt: null,
       endTime: { gt: now },
       ...(title ? { title: { contains: title, mode: "insensitive" as const } } : {}),
-      ...(societySlug ? { organisation: { slug: societySlug } } : {}),
+      organisation: { restrictedAt: null, ...(societySlug ? { slug: societySlug } : {}) },
       AND: [
         cursorWhere,
         ...(startFrom ? [{ startTime: { gte: startFrom } }] : []),
@@ -174,7 +175,7 @@ export async function listingAvailability(eventIds: string[], now = new Date()):
         id: true,
         saleState: true,
         salesCloseAt: true,
-        organisation: { select: { stripeAccountId: true, stripeChargesEnabled: true } },
+        organisation: { select: { stripeAccountId: true, stripeChargesEnabled: true, restrictedAt: true } },
         // Cards price only what anyone can buy.
         ticketTypes: { where: { hidden: false }, select: { id: true, price: true, quantity: true } }
       }
@@ -185,7 +186,7 @@ export async function listingAvailability(eventIds: string[], now = new Date()):
   return new Map(
     events.map((event): [string, ListingAvailability | null] => {
       if (event.ticketTypes.length === 0) return [event.id, null];
-      if (!salesOpen(event, now)) return [event.id, { state: "sales_closed" }];
+      if (!salesOpen(event, now) || event.organisation.restrictedAt) return [event.id, { state: "sales_closed" }];
       const inventory = inventories.get(event.id);
       const chargesReady = isOrganisationStripeReady(event.organisation);
       const types = event.ticketTypes.map((ticketType) => ({
@@ -202,7 +203,7 @@ export async function listingAvailability(eventIds: string[], now = new Date()):
 // The societies the Explore filter offers: those with a listed event still to come.
 export function getExploreSocieties(now = new Date()) {
   return prisma.organisation.findMany({
-    where: { events: { some: { status: "published", visibility: "public", cancelledAt: null, endTime: { gt: now } } } },
+    where: { restrictedAt: null, events: { some: { status: "published", visibility: "public", cancelledAt: null, endTime: { gt: now } } } },
     orderBy: { name: "asc" },
     select: { name: true, slug: true }
   });
@@ -231,7 +232,8 @@ const detailSelect = {
       supportEmail: true,
       refundPolicy: true,
       stripeAccountId: true,
-      stripeChargesEnabled: true
+      stripeChargesEnabled: true,
+      restrictedAt: true
     }
   },
   ticketTypes: {
@@ -267,7 +269,8 @@ async function readEventDetail(where: Prisma.EventWhereInput, unlock: string | n
     checkoutHoldMinutes: event.checkoutHoldMinutes,
     status: event.status,
     membersOnly: event.visibility === "members_only",
-    salesOpen: salesOpen(event, now),
+    // A restricted society's page stays for its ticket holders; the buy box only says sales are closed.
+    salesOpen: salesOpen(event, now) && !event.organisation.restrictedAt,
     salesCloseAt: event.salesCloseAt,
     cancelled: event.cancelledAt !== null,
     // The society's Stripe fields decide availability but are not public.

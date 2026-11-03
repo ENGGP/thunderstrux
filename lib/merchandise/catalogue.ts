@@ -312,6 +312,8 @@ export async function publishProduct(actor: AccountActor, organisationId: string
     if (product.status === "published") return product;
     checkVersion(product, version);
     if (product.status === "archived") throw new MerchandiseCatalogueError(409, "Restore this product as a draft before publishing it.");
+    // T55: read under the society lock.
+    if (organisation.restrictedAt) throw new MerchandiseCatalogueError(409, "Thunderstrux support has restricted this society, so it can't publish or sell. The owners were emailed.");
     const blockers = await organisationReadiness(tx, organisation, product.id);
     if (blockers.length) throw refusal(blockers);
     const now = new Date();

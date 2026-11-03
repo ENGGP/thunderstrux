@@ -4,10 +4,14 @@ import { appUrl } from "@/lib/app-url";
 export const notificationTemplateSchema = z.enum([
   "verify_account", "reset_password", "password_changed", "email_change_requested",
   "email_changed", "account_closed", "staff_invite", "business_notice", "guest_access", "guest_order_link", "event_cancelled",
-  "society_enquiry"
+  "society_enquiry",
+  // T55: what Thunderstrux support changed. Account and recovery notices go to each
+  // person (security); a restriction is the society's own notice (business).
+  "account_signed_out_by_support", "account_disabled", "account_reenabled", "mfa_reset_requested", "mfa_reset_completed",
+  "ownership_recovery_requested", "ownership_recovered", "recovery_cancelled", "society_restricted", "society_unrestricted"
 ]);
 // Society notices: tenant-owned, listed and requeued on the society's Notifications page.
-export const businessTemplates: readonly NotificationTemplate[] = ["business_notice", "event_cancelled", "society_enquiry"];
+export const businessTemplates: readonly NotificationTemplate[] = ["business_notice", "event_cancelled", "society_enquiry", "society_restricted", "society_unrestricted"];
 export type NotificationTemplate = z.infer<typeof notificationTemplateSchema>;
 export const notificationPayloadSchema = z.object({
   message: z.string().min(1).max(2000),
@@ -34,7 +38,17 @@ const subjects: Record<NotificationTemplate, string> = {
   // EVT-004: one per ticket holder when a society cancels an event; the subject names the event.
   event_cancelled: "Event cancelled",
   // DEBT-002: "Contact {society}", sent to the society; the subject names the event and sender.
-  society_enquiry: "Enquiry"
+  society_enquiry: "Enquiry",
+  account_signed_out_by_support: "Thunderstrux support signed you out",
+  account_disabled: "Your Thunderstrux account is disabled",
+  account_reenabled: "Your Thunderstrux account is enabled again",
+  mfa_reset_requested: "An authenticator reset was requested",
+  mfa_reset_completed: "Your authenticator was reset",
+  ownership_recovery_requested: "A society ownership change was requested",
+  ownership_recovered: "A society has a new owner",
+  recovery_cancelled: "A support request was cancelled",
+  society_restricted: "Your society is restricted",
+  society_unrestricted: "Your society's restriction is lifted"
 };
 export function escapeEmailHtml(value: string) {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")

@@ -117,6 +117,8 @@ There is no one universal order. Each family runs its checks in this order; a re
 | `data_export` | 20 / 1 h | closed | society, user | orders and attendee CSV downloads |
 | `society_enquiry` | 5 / 1 h | closed | IP and slug; then sender email | Contact {society} (required) |
 | `platform_read` | 600 / 1 h | open | operator | every admin portal page (`requirePlatformPage`, [[Platform Admin Portal]]); open so an incident can still be investigated without Redis |
+| `platform_write` | 30 / 1 h | closed | operator | every admin change, wrong codes included (`platformApiActor`) |
+| `platform_integrity_audit` | 5 / 1 h | closed | operator | running the integrity audit from the portal |
 | `ticket_code_check` | 600 / 10 min | open | IP, event | a `?code=` read on the event and checkout pages (`codeForBuyer`), so codes can't be found by trying them; when limited the page says to wait |
 | `staff_mfa_setup` | 5 / 1 h | closed | user | MFA setup (not required) |
 | `staff_mfa_verify` | 10 / 10 min | closed | user | MFA confirm, verify and new recovery codes; every fresh-code action when a code is sent (not required) |
@@ -158,6 +160,7 @@ Methods in backticks; "ctx" is the selected dashboard context ([[Authentication 
 | Route | Checks |
 | --- | --- |
 | `GET` `/api/health`, `GET` `/api/health/ready` | public; no data |
+| `POST` `/api/admin/actions` | admin process and sign-in host only (proxy 404 otherwise), origin + CSRF, live operator (404 otherwise), enrolled authenticator, `platform_write`; under lock: authVersion, live role and the action's permission, then a fresh code used once ([[Platform Admin Portal#Changes]]) |
 | `GET` `/api/security/csrf` | live session |
 | `GET`/`POST` `/api/auth/[...nextauth]` | Auth.js; login limits on the credentials callback |
 | `POST` `/api/auth/signup`, `/api/auth/verification/request`, `/api/auth/password/request` | origin, `signup_ip`, `signup_email` |

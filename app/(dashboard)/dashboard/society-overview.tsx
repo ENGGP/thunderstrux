@@ -44,6 +44,8 @@ export async function SocietyOverview({ organisation, timeZone }: { organisation
   const eventHref = (id: string) => (can("analytics:read") ? `/dashboard/events/${id}` : `/dashboard/events/${id}/tickets`);
 
   const tasks: Task[] = [];
+  // T55: first, because nothing sells until Thunderstrux support lifts it.
+  if (overview.restricted) tasks.push({ key: "restricted", icon: "warning", warn: true, title: "Thunderstrux support restricted this society", text: "New sales, publishing, Stripe changes and payouts are paused. Tickets already sold stay valid and refunds still work. The owners were emailed; reply to support to find out more.", href: "/help", link: "Contact support" });
   if (!overview.chargesReady && can("stripe:manage")) tasks.push({ key: "payments", icon: "warning", warn: true, setup: true, title: "Set up payments", text: "Needed for paid tickets, memberships and merchandise. Free events can be published now.", href: "/dashboard/settings", link: "Set up payments" });
   if (!overview.profileComplete && can("organisation:settings")) tasks.push({ key: "profile", icon: "profile", setup: true, title: "Finish your society profile", text: "Add a description and a contact email so students know who you are.", href: "/dashboard/settings/profile", link: "Edit society profile" });
   // Setting up ends at the first published event, so a draft three weeks out still has its next step here.

@@ -49,6 +49,8 @@ export function validateHostedConfig(config) {
   // T53: staff authority on a hosted app always needs an authenticator and a live staff row.
   if (app.environment?.MFA_ENFORCEMENT_MODE !== "enforce") throw new Error("Hosted app must set MFA_ENFORCEMENT_MODE=enforce");
   if (app.environment?.LEGACY_ORGANISATION_ACCESS_MODE !== "deny") throw new Error("Hosted app must set LEGACY_ORGANISATION_ACCESS_MODE=deny");
+  // T54: the admin portal runs only on loopback, on demand (pnpm ops:admin), never in the public app.
+  if (app.environment?.ADMIN_PORTAL_ENABLED !== undefined) throw new Error("Hosted app must not set ADMIN_PORTAL_ENABLED: the admin portal runs only on loopback");
 
   const secretVariables = [
     "DATABASE_URL",

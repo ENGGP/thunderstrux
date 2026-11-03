@@ -53,6 +53,11 @@ model User {
   eventChanges            EventChange[]
   // Optional mail (T30): the seven-day membership renewal reminder.
   renewalReminders        Boolean              @default(true)
+  // T54: the last successful password sign-in (support sees a dormant owner).
+  lastSignInAt            DateTime?
+  platformOperator        PlatformOperator?    @relation("PlatformOperatorUser")
+  revokedPlatformOperators PlatformOperator[]  @relation("PlatformOperatorRevoker")
+  platformAuditLogs       PlatformAuditLog[]
 
   @@index([accountRole])
 }
@@ -137,6 +142,7 @@ model Organisation {
   merchandiseProducts MerchandiseProduct[]
   membershipGrants    MembershipGrant[]
   payouts             SocietyPayout[]
+  platformAuditLogs   PlatformAuditLog[]
 
   @@index([accountUserId])
   @@index([name, id])
@@ -252,6 +258,47 @@ model AuditLog {
   @@index([actorUserId, createdAt])
   @@index([organisationId, actorUserId, createdAt])
   @@index([action])
+}
+
+// T54: platform operators, granted only by the CLI (pnpm ops:operator). Live
+// authority like OrganisationStaff; permissions come from the role.
+model PlatformOperator {
+  id              String                 @id @default(cuid())
+  userId          String                 @unique
+  role            PlatformOperatorRole
+  status          PlatformOperatorStatus @default(active)
+  grantedAt       DateTime               @default(now())
+  grantedBy       String
+  note            String?
+  revokedAt       DateTime?
+  revokedByUserId String?
+  updatedAt       DateTime               @updatedAt
+  user            User                   @relation("PlatformOperatorUser", fields: [userId], references: [id], onDelete: Restrict)
+  revokedBy       User?                  @relation("PlatformOperatorRevoker", fields: [revokedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([status, role])
+}
+
+// T54: what operators read and change. Append-only (trigger
+// PlatformAuditLog_append_only); only old view and search rows may be deleted.
+model PlatformAuditLog {
+  id             String        @id @default(cuid())
+  actorUserId    String?
+  operatorRole   String?
+  action         String
+  targetType     String
+  targetId       String?
+  organisationId String?
+  reason         String?
+  metadata       Json?
+  createdAt      DateTime      @default(now())
+  actor          User?         @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  organisation   Organisation? @relation(fields: [organisationId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([targetType, targetId, createdAt])
+  @@index([organisationId])
 }
 
 model UserMfa {
@@ -837,6 +884,16 @@ enum OrganisationStaffRole {
 
 enum OrganisationStaffStatus {
   invited
+  active
+  revoked
+}
+
+enum PlatformOperatorRole {
+  support
+  admin
+}
+
+enum PlatformOperatorStatus {
   active
   revoked
 }

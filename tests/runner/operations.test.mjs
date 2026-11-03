@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
+  ADMIN_PORTAL_PORT,
+  adminPortalRunArgs,
   assertHttpLoopbackUrl,
   assertOperationsProject,
   assertRestoreDatabase,
@@ -26,6 +28,17 @@ test("operations identifiers are narrowly scoped", () => {
   assert.throws(() => assertOperationsProject("thunderstrux"));
   assert.equal(assertRestoreDatabase("ops_restore_test"), "ops_restore_test");
   assert.throws(() => assertRestoreDatabase("thunderstrux"));
+});
+
+test("the admin portal container publishes on loopback only and switches the portal on there alone", () => {
+  const args = adminPortalRunArgs("ops-preview");
+  assert.equal(args[args.indexOf("-p") + 1], `127.0.0.1:${ADMIN_PORTAL_PORT}:3000`);
+  assert.equal(args.filter((arg) => arg === "-p").length, 1);
+  assert.ok(args.includes("ADMIN_PORTAL_ENABLED=true"));
+  assert.ok(args.includes(`AUTH_URL=http://localhost:${ADMIN_PORTAL_PORT}`));
+  assert.ok(!args.some((arg) => arg.startsWith("NEXT_PUBLIC_APP_URL=")), "notices keep linking to the public site");
+  assert.ok(args.includes("--rm") && args.at(-1) === "app");
+  assert.throws(() => adminPortalRunArgs("thunderstrux"));
 });
 
 test("rehearsal URLs are loopback-only", () => {

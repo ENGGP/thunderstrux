@@ -7,6 +7,7 @@ import { invitationIssuerRole } from "./invite-authority";
 import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
 import { mfaGrantDigest } from "@/lib/security/csrf";
 import { appUrl } from "@/lib/app-url";
+import { livePlatformRole } from "@/lib/platform/operators";
 
 export class StaffInviteError extends Error {
   constructor(message = "Invitation is unavailable", readonly kind: "invalid" | "authority" | "stale_session" | "conflict" = "invalid") { super(message); }
@@ -121,6 +122,8 @@ export async function acceptOrganisationStaffInvite(input: { token: string; acto
   return prisma.$transaction(async tx => {
     await lockUsers(tx, [input.actor.id, snapshot.invitedById]);
     const user = await liveRecipient(tx, input.actor);
+    // T54: an operator login stays dedicated; the same generic answer as any refusal.
+    if (await livePlatformRole(tx, user)) throw new StaffInviteError();
     await lockOrganisation(tx, snapshot.organisationId);
     await tx.$queryRaw`SELECT "id" FROM "OrganisationStaffInvite" WHERE "id" = ${snapshot.id} FOR UPDATE`;
     const invite = await tx.organisationStaffInvite.findUnique({ where: { tokenHash } });

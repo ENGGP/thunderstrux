@@ -8,6 +8,8 @@ services:
       THUNDERSTRUX_RUNTIME_CONTAINER: "false"
       WATCHPACK_POLLING: "true"
       CHOKIDAR_USEPOLLING: "true"
+      # T54: the dev app is loopback-only (port 3080), so it serves the admin portal at /admin.
+      ADMIN_PORTAL_ENABLED: "true"
       ASSET_STORAGE_ENDPOINT: http://object-store:8333
       ASSET_STORAGE_BUCKET: thunderstrux-assets
       ASSET_STORAGE_PATH_STYLE: "true"

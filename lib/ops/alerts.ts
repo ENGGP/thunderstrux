@@ -52,7 +52,11 @@ export type OperationalAlertName =
   | "worker_timed_out"
   | "worker_stale"
   | "queue_backlog_high"
-  | "queue_processing_stuck";
+  | "queue_processing_stuck"
+  // T54: an operator verified for the admin portal (a sign-in you didn't make shows at
+  // once), and an operator granted, changed or revoked.
+  | "platform_operator_verified"
+  | "platform_operator_changed";
 
 export type OperationalAlertPayload = {
   orderId: string;
@@ -72,6 +76,18 @@ const ALERT_COOLDOWN_MS = 5 * 60_000;
 const cooledAlerts = new Set<OperationalAlertName>(["stripe_webhook_signature_failure", "stripe_webhook_body_too_large"]);
 const cooldowns = new Map<OperationalAlertName, { until: number; suppressed: number }>();
 
+// T54: the admin portal path of the record an alert names (ids only, which the
+// alert already carries), so the receiver links straight to it.
+export function adminPathFor(details: Record<string, unknown>) {
+  const id = (key: string) => (typeof details[key] === "string" && details[key] ? details[key] as string : null);
+  const order = id("orderId") ?? id("commerceOrderId");
+  if (order) return `/admin/orders/${encodeURIComponent(order)}`;
+  const organisation = id("organisationId");
+  if (organisation) return `/admin/societies/${encodeURIComponent(organisation)}`;
+  const user = id("userId");
+  return user ? `/admin/users/${encodeURIComponent(user)}` : null;
+}
+
 // T42: with ALERT_WEBHOOK_URL set, each alert is also POSTed there as JSON
 // (redacted like the logs). Delivery is best effort: a slow or failing
 // receiver is logged and never delays or fails the caller.
@@ -87,11 +103,13 @@ function deliverAlert(event: OperationalAlertName, payload: OperationalAlertPayl
     cooldowns.set(event, { until: now + ALERT_COOLDOWN_MS, suppressed: 0 });
   }
   const details: Record<string, unknown> = { ...redactLogContext(payload), ...(suppressed ? { suppressed } : {}) };
+  const adminPath = adminPathFor(details);
   const body = JSON.stringify({
     event,
     environment: process.env.NODE_ENV ?? "development",
     timestamp: new Date().toISOString(),
     dedupeKey: typeof details.dedupeKey === "string" ? details.dedupeKey : event,
+    ...(adminPath ? { adminPath } : {}),
     details
   });
   const delivery: Promise<void> = fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body, signal: AbortSignal.timeout(ALERT_DELIVERY_TIMEOUT_MS) })

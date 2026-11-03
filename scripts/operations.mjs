@@ -17,7 +17,10 @@ import { dirname, join, resolve } from "node:path";
 import { userInfo } from "node:os";
 import { fileURLToPath } from "node:url";
 import { parseEnv } from "node:util";
+import { createServer } from "node:net";
 import {
+  ADMIN_PORTAL_PORT,
+  adminPortalRunArgs,
   assertHttpLoopbackUrl,
   assertOperationsProject,
   assertRestoreDatabase,
@@ -455,6 +458,42 @@ async function restore(ctx) {
   }
 }
 
+const portFree = (port) => new Promise((resolvePromise) => {
+  const server = createServer().once("error", () => resolvePromise(false))
+    .once("listening", () => server.close(() => resolvePromise(true)));
+  server.listen(port, "127.0.0.1");
+});
+
+// T54: the admin portal, on demand and on loopback only (Q6). It runs this
+// project's current release image as a one-off container beside its database
+// and Redis; the public app never serves /admin. Ctrl-C stops and removes it.
+async function admin(ctx) {
+  const manifest = await readFile(join(ctx.stateDir, "current-release.json"), "utf8")
+    .then((contents) => JSON.parse(contents))
+    .catch(() => { throw new Error(`No release recorded for ${ctx.project}: deploy it first`); });
+  if (!(await portFree(ADMIN_PORTAL_PORT))) {
+    throw new Error(`Port ${ADMIN_PORTAL_PORT} is in use. Is another admin portal still running? Stop it (Ctrl-C in its terminal) and try again.`);
+  }
+  const name = `${ctx.project}-admin`;
+  const origin = `http://localhost:${ADMIN_PORTAL_PORT}`;
+  console.error(`Starting the admin portal from ${manifest.imageRef ?? manifest.candidateImageId} on 127.0.0.1:${ADMIN_PORTAL_PORT}…`);
+  await compose(ctx, adminPortalRunArgs(ctx.project), { env: { ...process.env, APP_IMAGE: manifest.candidateImageId }, capture: true });
+  const stop = () => run("docker", ["stop", "-t", "10", name]).catch(() => {});
+  try {
+    await waitReady(origin, 60);
+  } catch (error) {
+    await stop();
+    throw new Error(`The admin portal didn't become ready: ${error.message}`);
+  }
+  console.log(`Admin portal ready: ${origin}/admin   (Ctrl-C to stop)`);
+  await new Promise((resolvePromise) => {
+    process.once("SIGINT", resolvePromise);
+    process.once("SIGTERM", resolvePromise);
+  });
+  await stop();
+  console.error("Admin portal stopped and removed.");
+}
+
 try {
   if (commandName === "smoke") await smoke(required("--url"));
   else {
@@ -462,7 +501,8 @@ try {
     if (commandName === "backup") console.log(JSON.stringify((await backup(ctx)).record));
     else if (commandName === "restore") await restore(ctx);
     else if (commandName === "deploy") await deploy(ctx);
-    else throw new Error("Use deploy, backup, restore, or smoke");
+    else if (commandName === "admin") await admin(ctx);
+    else throw new Error("Use deploy, backup, restore, smoke, or admin");
   }
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));

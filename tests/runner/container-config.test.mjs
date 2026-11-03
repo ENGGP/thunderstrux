@@ -87,6 +87,11 @@ test("hosted contract requires external services, file secrets, and runtime hard
     const app = { ...config.services.app, environment: { ...config.services.app.environment, [name]: value } };
     assert.throws(() => validateHostedConfig({ ...config, services: { ...config.services, app } }), new RegExp(name));
   }
+  // T54: the admin portal never runs in the public app, whatever the value says.
+  for (const value of ["true", "false", ""]) {
+    const app = { ...config.services.app, environment: { ...config.services.app.environment, ADMIN_PORTAL_ENABLED: value } };
+    assert.throws(() => validateHostedConfig({ ...config, services: { ...config.services, app } }), /ADMIN_PORTAL_ENABLED/);
+  }
   assert.throws(() => validateHostedConfig({
     ...config,
     services: { ...config.services, app: { ...config.services.app, environment: { ...environment, AUTH_SECRET: "unsafe" } } }

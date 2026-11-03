@@ -65,6 +65,7 @@ Thunderstrux is a Docker-first Next.js App Router app for student societies: eve
 | `lib/guest` | Verified guest sessions, guest CSRF, claim into an account | `guest-access.ts`, `guest-csrf.ts`, `guest-claim.ts` |
 | `lib/memberships` | Plans, offers, grants, roster, revocation, reminders | `plans.ts`, `offers.ts`, `grants.ts`, `roster.ts`, `revocation.ts`, `reminders.ts`, `http.ts` |
 | `lib/merchandise` | Catalogue, shop, basket, sale family, pickups, after-sale | `catalogue.ts`, `shop.ts`, `basket.ts`, `sale.ts`, `pickups.ts`, `after-sale.ts`, `http.ts` |
+| `lib/platform` | The platform admin portal (T54): operator authority, the trail, search, records, overview ([[Platform Admin Portal]]) | `mode.ts`, `operators.ts`, `authority.ts`, `audit.ts`, `search.ts`, `records.ts`, `overview.ts` |
 | `lib/ops` | Logging, metrics, alerts, readiness, worker contract, monitor, integrity audit | `logger.ts`, `alerts.ts`, `metrics.ts`, `worker.ts` (`runWorker`), `monitor.ts`, `readiness.ts`, `integrity-audit.ts` |
 | `lib/export` | Spreadsheet (CSV) downloads of orders and attendees | `csv.ts`, `order-exports.ts` |
 | `lib/orders` | Staff order reads and actions, member ticket orders, stale order expiry | `grouped-orders.ts`, `order-detail.ts`, `member-tickets.ts`, `stale-orders.ts`, `buyer-identity.ts` |
@@ -72,7 +73,7 @@ Thunderstrux is a Docker-first Next.js App Router app for student societies: eve
 | `lib/pagination` | Opaque timestamp cursors and page options | `cursor.ts` |
 | `lib/payments` | Ticket checkout, attempts and recovery, reconciliation, lifecycle journal, refunds, disputes, compensation, free orders | `checkout-creation.ts`, `checkout-attempts.ts`, `checkout-reconciliation.ts`, `checkout-fulfilment-orchestrator.ts`, `checkout-settlement.ts`, `order-lifecycle.ts`, `order-refunds.ts`, `purchase-disputes.ts`, `compensation-refunds.ts`, `dispute-reversals.ts`, `free-ticket-issuance.ts` |
 | `lib/payouts` | Manual payouts after events and the money held back | `payouts.ts` (`processPayoutBatch`), `release.ts` |
-| `lib/permissions` | Roles and the permission matrix | `index.ts` |
+| `lib/permissions` | Roles and the permission matrix; platform operator permissions | `index.ts`, `platform.ts` |
 | `lib/purchases` | Buyer purchase reads, projection to buyer-facing status, pending-checkout actions | `ticket-purchases.ts`, `projection.ts`, `pending-checkout.ts`, `pending-checkout-http.ts` |
 | `lib/security` | Origin and CSRF guard, rate limits, staff MFA, safe return paths, token cleanup | `request-guard.ts`, `csrf.ts`, `rate-limit.ts`, `staff-mfa.ts`, `fresh-staff-mfa.ts`, `safe-return-path.ts`, `token-cleanup.ts` |
 | `lib/staff` | Live staff authority, staff management, invitations, owner handover | `live-authority.ts`, `management.ts`, `invites.ts`, `invite-http.ts`, `handover.ts` |
@@ -93,6 +94,7 @@ Thunderstrux is a Docker-first Next.js App Router app for student societies: eve
 | `components/commerce` | Shared commerce notices | `stripe-review-notice.tsx` |
 | `components/events` | Event builder, workspace header and actions, public event view and buy box, cards | `create-event-form.tsx`, `ticket-codes-editor.tsx`, `event-tabs.tsx`, `event-actions.tsx`, `public-event-view.tsx`, `public-ticket-purchase.tsx`, `event-card.tsx`, `date-rail.tsx`, `readiness-checklist.tsx`, `members-only-gate.tsx`, `explore-filter-fields.tsx` |
 | `components/guest` | Guest email, access and claim | `guest-email-form.tsx`, `guest-access-form.tsx`, `guest-claim.tsx` |
+| `components/admin` | The admin portal's shell, omnibox, verification window and record parts | `admin-shell.tsx`, `omnibox.tsx`, `verify-window.tsx`, `record.tsx`, `id-chip.tsx`, `admin-sign-out.tsx` |
 | `components/layout` | Header, footer, shells, page header, switcher, verify banner | `navbar.tsx`, `site-footer.tsx`, `dashboard-shell.tsx`, `personal-shell.tsx`, `auth-shell.tsx`, `checkout-shell.tsx`, `page-header.tsx`, `context-selector.tsx`, `verify-email-banner.tsx`, `auth-session-provider.tsx` |
 | `components/memberships` | Plan form, checklist and actions; member actions; checkout action | `plan-form.tsx`, `plan-actions.tsx`, `plan-checklist.tsx`, `membership-actions.tsx`, `membership-checkout-action.tsx` |
 | `components/merchandise` | Shop, product tile, basket, checkout, product form and actions, pickup and order actions | `shop.tsx`, `product-tile.tsx`, `checkout.tsx`, `product-form.tsx`, `product-actions.tsx`, `pickup-action.tsx`, `order-actions.tsx` |

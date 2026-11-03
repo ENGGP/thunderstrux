@@ -34,6 +34,8 @@
     "ops:restore": "node scripts/operations.mjs restore",
     "ops:smoke": "node scripts/operations.mjs smoke",
     "ops:workers": "node scripts/workers.mjs",
+    "ops:operator": "node scripts/operators.mjs",
+    "ops:admin": "node scripts/operations.mjs admin",
     "ops:droplet": "node scripts/droplet.mjs",
     "ops:droplet:rehearse": "node scripts/rehearse-droplet.mjs",
     "ops:test": "node --test tests/runner/operations.test.mjs && node scripts/run-operations-tests.mjs",

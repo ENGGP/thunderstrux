@@ -1,6 +1,7 @@
 import type { PlatformRecoveryKind, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { lockAccount } from "@/lib/auth/account-lock";
+import { roleLabels } from "@/lib/audit/history";
 import { formatDateTime } from "@/lib/format";
 import { PlatformRefusal, type PlatformActor } from "./authority";
 import { notifyPeople, platformWrite, societyHistory, type ChangeInput, type Recipient } from "./changes";
@@ -36,13 +37,13 @@ async function mfaResetRecipients(tx: Prisma.TransactionClient, user: { id: stri
     where: { organisationId: { in: owned.map((row) => row.organisationId) }, status: "active", role: { in: ["owner", "admin"] }, userId: { not: user.id }, user: { disabledAt: null } },
     select: { role: true, user: { select: { id: true, email: true } } }
   }) : [];
-  return [{ email: user.email, userId: user.id, relation: "account holder" }, ...colleagues.map((row) => ({ email: row.user.email, userId: row.user.id, relation: row.role }))];
+  return [{ email: user.email, userId: user.id, relation: "account holder" }, ...colleagues.map((row) => ({ email: row.user.email, userId: row.user.id, relation: roleLabels[row.role].toLowerCase() }))];
 }
 
 // Everyone an ownership recovery tells: every active staff member, the society's contact address, and the new owner.
 function ownershipRecipients(society: Prisma.OrganisationGetPayload<{ select: typeof societySelect }>, user: { id: string; email: string }): Recipient[] {
   return [
-    ...society.staff.filter((row) => !row.user.disabledAt).map((row) => ({ email: row.user.email, userId: row.user.id, relation: row.role })),
+    ...society.staff.filter((row) => !row.user.disabledAt).map((row) => ({ email: row.user.email, userId: row.user.id, relation: roleLabels[row.role].toLowerCase() })),
     ...(society.supportEmail ? [{ email: society.supportEmail, relation: "society contact address" }] : []),
     { email: user.email, userId: user.id, relation: "new owner" }
   ];

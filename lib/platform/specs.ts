@@ -167,7 +167,7 @@ export function workerSpec(input: { role: PlatformOperatorRole; worker: string; 
     done: { title: `${all ? "Jobs" : input.worker} resumed`, body: "Its next scheduled run does work again." }
   };
   const pause: ActionSpec = {
-    key: `pause-${input.worker}`, label: all ? "Pause all…" : "Pause…", title: `Pause ${name}`, confirm: "Pause", danger: true, request: { action: "pause_worker", targetId: input.worker },
+    key: `pause-${input.worker}`, label: all ? "Pause all…" : "Pause…", title: `Pause ${name}`, confirm: "Pause", request: { action: "pause_worker", targetId: input.worker },
     does: [`Each run of ${name} exits at once without work, until resumed`, "The reason shows in this table"], doesNot: ["Doesn't stop a run in progress: wait until Running says no"],
     reasons: ["Deploying", "Restoring a backup", "Rolling back across a migration"],
     done: { title: `${all ? "Jobs" : input.worker} paused`, body: "Wait until Running says no before a restore or rollback." }, undo: resume

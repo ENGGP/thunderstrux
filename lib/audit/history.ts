@@ -416,7 +416,7 @@ export function describe(row: Row, targets: Targets, timeZone: string): HistoryE
 // T55: support's changes. The person is named from the row (support has no staff page to link to).
 function supportSentence(action: string, m: Record<string, unknown>, when: (iso: unknown) => string): { sentence: Part[]; facts: Fact[] } {
   const who = text(m.name) ?? "a staff member";
-  const role = text(m.role) ? roleLabels[text(m.role) as string] ?? text(m.role) : null;
+  const role = text(m.role) ? (roleLabels[text(m.role) as string] ?? text(m.role) as string).toLowerCase() : null;
   const sentences: Record<string, Part[]> = {
     "platform.member_disabled": [`disabled ${who}'s account, so their ${role ? `${role} ` : ""}access is paused`],
     "platform.member_reenabled": [`enabled ${who}'s account again`],

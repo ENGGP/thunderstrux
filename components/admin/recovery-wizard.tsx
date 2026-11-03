@@ -133,7 +133,7 @@ export function RecoveryWizard(props: {
               <section className="grid gap-1.5">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-ink-muted">Then</h3>
                 <ul className="grid gap-1.5 text-sm">
-                  <li className="flex gap-2"><Icon className="mt-0.5 shrink-0 text-ink-soft" name="clock" size={16} /><span>You can complete it from <strong>{ready.toLocaleString("en-AU", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</strong>, 72 hours from now. Anyone who objects writes to support and you cancel.</span></li>
+                  <li className="flex gap-2"><Icon className="mt-0.5 shrink-0 text-ink-soft" name="clock" size={16} /><span>You can complete it from <strong>{ready.toLocaleString("en-AU", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Australia/Brisbane" })}</strong>, Brisbane time, 72 hours from now. Anyone who objects writes to support and you cancel.</span></li>
                   <li className="flex gap-2"><Icon className="mt-0.5 shrink-0 text-ink-soft" name="success" size={16} /><span>{props.kind === "mfa_reset" ? `Completing removes ${target?.name}'s authenticator and recovery codes and signs them out; they set up a new one.` : `Completing makes ${target?.name} an owner. Nobody else's role changes.`}</span></li>
                   {props.kind === "ownership" ? <li className="flex gap-2"><Icon className="mt-0.5 shrink-0 text-ink-soft" name="lock" size={16} /><span>Payouts are held for 7 days after it completes.</span></li> : null}
                 </ul>

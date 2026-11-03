@@ -31,6 +31,7 @@ Target: WCAG 2.2 AA (T40).
 - **Public journeys:** `/`, `/events`, an event page, `/societies`, a society page with its memberships and merchandise tabs, `/login`, `/signup`, `/forgot-password`, `/guest/recover`.
 - **Member journeys:** `/dashboard`, `/tickets`, `/purchases` and a ticket purchase, `/memberships` and a membership order, `/dashboard/organisations`, `/account/settings`, and an event checkout.
 - **Organiser journeys (owner):** overview; events list, new, Summary, Edit, Attendees; Calendar in month, week and agenda; Orders and an order; Analytics; History; membership plans, a plan, Members and a member; merchandise products, a product, Pickups and an order; Society profile, Staff, Payments, Email delivery.
+- **Dark door:** the check-in page is scanned again with a dark system theme, so its own dark palette meets the same rules, and a chosen Light must survive a reload (`tests/e2e/accessibility.spec.ts`).
 - **Keyboard:** the first Tab on `/` reaches **Skip to content** and Enter moves focus to `main`; on `/dashboard/events` a confirmation opened from the keyboard (More, Unpublish) takes focus, closes on Escape and changes nothing.
 
 A new page joins the matching journey list in the spec.
@@ -44,6 +45,7 @@ A new page joins the matching journey list in the spec.
 - **Live regions:** results are `Notice`s with `role="status"` or `role="alert"`; nothing permanent on a page is a live region.
 - **Dialogs:** native `<dialog>` via `showModal()` traps focus; Escape cancels and never confirms.
 - **Scrolling content:** a container that scrolls sideways is a focusable region named after its content (`role="region"`, `tabIndex={0}`, `aria-label`), as `ResponsiveTable` does; page grids use `grid-cols-1` so wide tables scroll inside their card.
+- **Never colour alone (1.4.1):** every status badge carries a glyph and its word, the door's STOP band carries stripes, and chart outflow is hatched. Under deuteranopia the success and danger washes are the same colour (Machado model, ΔE 0.4), so colour only ever supports a shape and a word ([[UI Architecture Rules#Patterns]]).
 - **Charts and grids:** a chart's accessible name lists every value (`components/analytics/bar-chart.tsx`); the calendar's agenda lists what the grids show.
 - **Definition lists** hold only `dt`/`dd` pairs; notes go after the list.
 - **Target size:** default controls are 44px (`Button` `md`, link tabs `min-h-11`); compact controls are smaller: `Button size="sm"` is 36px (`h-9`) and filter pills are 40px (`min-h-10`). Both clear WCAG 2.2 AA's 24px minimum. Row checkboxes are 20px boxes inside a 44px label (Pickups).
@@ -57,7 +59,7 @@ Scans and scripted keys don't prove real people can use the product. Open for th
 
 - a screen-reader pass with NVDA and Chrome, and VoiceOver on iOS, through sign-up, an event checkout (member and guest), My tickets, check-in on a phone, creating and publishing an event, and a refund;
 - browser zoom at 200% and 400% on a real desktop, and text-spacing overrides;
-- colour contrast in states scans can't trigger (hover, disabled, focus on coloured backgrounds).
+- colour contrast in states scans can't trigger (hover, disabled, focus on coloured backgrounds), and text on a stripe or hatch, which axe can't measure: the door bands were checked by hand on 3 Nov 2026 (lowest 6.46:1, white on GO), so a change to `--ts-go`, `--ts-stop`, `--ts-hold` or their stripes needs that check again.
 
 ## Traps
 

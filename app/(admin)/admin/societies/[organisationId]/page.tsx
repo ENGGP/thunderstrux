@@ -8,13 +8,13 @@ import { ActivityList, AdminTime, AttentionStrip, Breadcrumbs, Facts, Panel, Rec
 import { LinkTabs } from "@/components/ui/link-tabs";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatMoney } from "@/lib/format";
+import { roleLabels } from "@/lib/audit/history";
 import { recordPlatformView } from "@/lib/platform/audit";
 import { requirePlatformPage } from "@/lib/platform/authority";
-import { readSocietyRecord } from "@/lib/platform/records";
+import { personLabel, readSocietyRecord } from "@/lib/platform/records";
 
 export const metadata: Metadata = { title: "Admin society" };
 
-const roleLabels: Record<string, string> = { owner: "Owner", admin: "Admin", event_manager: "Event manager", finance_manager: "Finance manager", check_in_staff: "Check-in staff" };
 const tabs = ["overview", "activity"] as const;
 const stripeAccountLink = (account: string) => `https://dashboard.stripe.com/connect/accounts/${encodeURIComponent(account)}`;
 
@@ -59,7 +59,7 @@ export default async function AdminSocietyPage({ params, searchParams }: { param
                   <tbody>
                     {society.staff.map((row) => (
                       <tr key={row.user.id}>
-                        <td><Link className={rowLink} href={`/admin/users/${row.user.id}`}>{row.user.displayName || [row.user.firstName, row.user.lastName].filter(Boolean).join(" ") || row.user.email}</Link></td>
+                        <td><Link className={rowLink} href={`/admin/users/${row.user.id}`}>{personLabel(row.user)}</Link></td>
                         <td>{roleLabels[row.role] ?? row.role}{row.status === "active" ? "" : " (revoked)"}</td>
                         <td>{row.role === "check_in_staff" ? <span className="text-ink-muted">not needed</span> : row.user.mfa?.enabledAt ? "On" : "Off"}</td>
                         <td><AdminTime value={row.user.lastSignInAt} timeZone={zone} /></td>

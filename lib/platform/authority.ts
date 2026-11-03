@@ -9,8 +9,6 @@ import { assertStaffMfaMutationConfiguration, MfaConfigurationError } from "@/li
 import { ADMIN_WINDOW_MS, isAdminPortalEnabled } from "./mode";
 import { livePlatformRole } from "./operators";
 
-export { livePlatformRole };
-
 // Not an operator, a revoked one, a missing permission, or the portal off in
 // this process: every one is the same concealed 404.
 export class PlatformAccessError extends Error {
@@ -50,10 +48,12 @@ export async function requirePlatformOperator(permission: PlatformPermission, no
     if (error instanceof MfaConfigurationError) throw new PlatformUnavailableError(error.message);
     throw error;
   }
-  const mfa = await prisma.userMfa.findUnique({ where: { userId: user.id }, select: { enabledAt: true } });
-  if (!mfa?.enabledAt) throw new PlatformVerificationRequiredError(false);
   const digest = mfaGrantDigest(user.mfaSessionId);
-  const grant = digest ? await prisma.mfaGrant.findUnique({ where: { sessionDigest: digest }, select: { userId: true, verifiedAt: true, expiresAt: true } }) : null;
+  const [mfa, grant] = await Promise.all([
+    prisma.userMfa.findUnique({ where: { userId: user.id }, select: { enabledAt: true } }),
+    digest ? prisma.mfaGrant.findUnique({ where: { sessionDigest: digest }, select: { userId: true, verifiedAt: true, expiresAt: true } }) : null
+  ]);
+  if (!mfa?.enabledAt) throw new PlatformVerificationRequiredError(false);
   const windowEndsAt = grant ? new Date(grant.verifiedAt.getTime() + ADMIN_WINDOW_MS) : null;
   if (!grant || !windowEndsAt || grant.userId !== user.id || grant.expiresAt <= now || windowEndsAt <= now) {
     throw new PlatformVerificationRequiredError(true);

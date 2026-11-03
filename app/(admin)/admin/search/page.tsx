@@ -11,12 +11,14 @@ import { searchPlatform, type SearchHit } from "@/lib/platform/search";
 
 export const metadata: Metadata = { title: "Admin search" };
 
-// T54 (board H3): one match opens its record; several are grouped by kind; none
-// says what was checked and which environment this is. Each search is logged
-// as a digest only. The callback after sign-in drops the query.
-export default async function AdminSearchPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+// T54 (board H3): the omnibox posts to adminSearch (./actions.ts), which opens a
+// single match and sends an empty result here as ?none=1, so an email never
+// reaches a URL. Several matches for a name or id are grouped here by kind. Each
+// search is logged once, as a digest. The callback after sign-in drops the query.
+export default async function AdminSearchPage({ searchParams }: { searchParams: Promise<{ q?: string; none?: string }> }) {
   const actor = await requirePlatformPage("platform:read", "/admin/search");
-  const query = ((await searchParams).q ?? "").trim().slice(0, 200);
+  const params = await searchParams;
+  const query = (params.q ?? "").trim().slice(0, 200);
   const hits = query ? await searchPlatform(query) : [];
   if (query) await recordPlatformSearch(actor, query, hits.length);
   if (hits.length === 1) redirect(hits[0].href);
@@ -28,7 +30,7 @@ export default async function AdminSearchPage({ searchParams }: { searchParams: 
         <h1 className="text-[22px] font-semibold">{query ? `Results for “${query}”` : "Search"}</h1>
         <p className="text-sm text-ink-soft">Paste an email, an app id, a Stripe id (cs_, pi_, acct_, re_, du_, po_), an order reference or a name.</p>
       </div>
-      {query && hits.length === 0 ? (
+      {(query && hits.length === 0) || params.none ? (
         <EmptyState title="Nothing matches">
           This portal is {environment.label} ({environment.stripe}). An id from another environment or Stripe mode won't be here.
         </EmptyState>

@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { NextRequest } from "next/server";
+import { proxy } from "@/proxy";
 import { prisma } from "@/lib/db";
 import { authorizeCredentials } from "@/lib/auth/credentials";
 import { adminPathFor } from "@/lib/ops/alerts";
@@ -6,7 +8,8 @@ import { recordPlatformSearch, recordPlatformView, searchDigest } from "@/lib/pl
 import { landsInAdmin, PlatformUnavailableError, requirePlatformPage } from "@/lib/platform/authority";
 import { adminHostAllowed } from "@/lib/platform/mode";
 import { grantPlatformOperator, PlatformOperatorError, revokePlatformOperator } from "@/lib/platform/operators";
-import { readUserRecord } from "@/lib/platform/records";
+import { readCounts, readHealth, readNeeds } from "@/lib/platform/overview";
+import { readOrderRecord, readSocietyRecord, readUserRecord } from "@/lib/platform/records";
 import { searchPlatform } from "@/lib/platform/search";
 import { createTestRateLimitBackend, setRateLimitTestBackend, setRateLimitTestEnabled } from "@/lib/security/rate-limit";
 import { cleanUpExpiredTokens } from "@/lib/security/token-cleanup";
@@ -14,7 +17,7 @@ import { acceptOrganisationStaffInvite, createOrganisationStaffInvite, StaffInvi
 import { setMockSession } from "@/tests/helpers/auth";
 import { enrolStaffMfa } from "@/tests/helpers/mfa";
 import { readStaffInviteToken } from "@/tests/helpers/staff-invites";
-import { createEvent, createMember, createOrder, createOrganisationAccount, createOrganisationStaff } from "@/tests/helpers/test-data";
+import { createEvent, createMember, createMembershipGrant, createOrder, createOrganisationAccount, createOrganisationStaff } from "@/tests/helpers/test-data";
 
 vi.mock("next/navigation", () => ({
   redirect: (path: string) => { throw new Error(`REDIRECT:${path}`); },
@@ -81,6 +84,21 @@ describe("who reaches the admin portal", () => {
     await expect(requirePlatformPage("platform:audit_read", "/admin/audit")).rejects.toThrow("NOT_FOUND");
     vi.stubEnv("RATE_LIMIT_ENABLED", "false");
     await expect(requirePlatformPage("platform:read", "/admin/users")).rejects.toBeInstanceOf(PlatformUnavailableError);
+  });
+
+  test("the proxy answers 404 for /admin outside admin mode and to a foreign host", async () => {
+    vi.stubEnv("AUTH_URL", "http://localhost:3091");
+    vi.stubEnv("ADMIN_PORTAL_ENABLED", undefined);
+    for (const path of ["/admin", "/admin/users"]) {
+      expect((await proxy(new NextRequest(`http://localhost:3091${path}`))).status).toBe(404);
+    }
+    vi.stubEnv("ADMIN_PORTAL_ENABLED", "true");
+    expect((await proxy(new NextRequest("http://localhost:3091/admin", { headers: { host: "evil.example:3091" } }))).status).toBe(404);
+    const signIn = await proxy(new NextRequest("http://localhost:3091/admin", { headers: { host: "localhost:3091" } }));
+    expect(signIn.status).toBe(307);
+    expect(signIn.headers.get("location")).toContain("/login?callbackUrl=%2Fadmin");
+    // Society pages never answer the admin 404.
+    expect((await proxy(new NextRequest("http://localhost:3091/dashboard", { headers: { host: "evil.example:3091" } }))).status).toBe(307);
   });
 
   test("only the sign-in host may reach the portal (DNS rebinding)", () => {
@@ -179,6 +197,28 @@ describe("search and records", () => {
     const text = JSON.stringify(record);
     expect(text).not.toContain(user.password);
     expect(text).not.toMatch(/encryptedSecret|codeHash|tokenHash|sessionDigest/);
+  });
+
+  test("a word without a digit finds names before order references", async () => {
+    const jordan = await prisma.user.create({ data: { email: "jordan@example.com", password: "x", emailVerifiedAt: new Date(), firstName: "Jordan", lastName: "Reyes" } });
+    expect((await searchPlatform("jordan")).map((hit) => hit.id)).toEqual([jordan.id]);
+  });
+
+  test("society, membership order and overview readers run against real rows", async () => {
+    const { organisation } = await createOrganisationAccount();
+    const member = await createMember();
+    const grant = await createMembershipGrant(organisation.id, member.id, member.email);
+    const line = await prisma.commerceOrderLine.findUniqueOrThrow({ where: { id: grant.commerceOrderLineId } });
+    const society = await readSocietyRecord(organisation.id);
+    expect(society?.society.id).toBe(organisation.id);
+    expect(society?.society.staff.some((row) => row.role === "owner" && row.status === "active")).toBe(society?.attention.every((item) => item.title !== "No active owner"));
+    const commerce = await readOrderRecord(line.orderId);
+    expect(commerce).toMatchObject({ family: "commerce", society: { id: organisation.id } });
+    expect(commerce?.activity.length).toBeGreaterThan(0);
+    expect(await readOrderRecord("cmissingorder00000000000")).toBeNull();
+    expect(Array.isArray(await readNeeds())).toBe(true);
+    expect((await readCounts()).day.signups).toBeGreaterThan(0);
+    expect(await readHealth()).toMatchObject({ stripeMode: "test", rateLimiting: true });
   });
 
   test("an alert that names a record carries its admin path", () => {

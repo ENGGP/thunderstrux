@@ -11,15 +11,13 @@ import { StatusBadge, type Status } from "@/components/ui/status-badge";
 import { formatMoney, orderReference } from "@/lib/format";
 import { recordPlatformView } from "@/lib/platform/audit";
 import { requirePlatformPage } from "@/lib/platform/authority";
-import { readOrderRecord } from "@/lib/platform/records";
+import { personLabel, readOrderRecord } from "@/lib/platform/records";
 
 export const metadata: Metadata = { title: "Admin order" };
 
 const tabs = ["overview", "activity"] as const;
 const stripePaymentLink = (paymentIntent: string) => `https://dashboard.stripe.com/payments/${encodeURIComponent(paymentIntent)}`;
 const orderStatus = (status: string): Status => (status === "paid" ? "paid" : status === "failed" ? "failed" : status === "expired" ? "expired" : "pending");
-const personName = (user: { firstName: string | null; lastName: string | null; displayName: string | null; email: string }) =>
-  user.displayName || [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email;
 
 // T54 (board H6): one ticket, membership or shop order, read-only. Money moves in
 // Stripe or on the society's own page, never here.
@@ -37,7 +35,7 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
   const reference = orderReference(order.id);
   const kind = record.family === "ticket" ? "Ticket order" : record.order.kind === "membership" ? "Membership order" : "Merchandise order";
   const buyer = order.user
-    ? <Link className={rowLink} href={`/admin/users/${order.user.id}`}>{personName(order.user)}</Link>
+    ? <Link className={rowLink} href={`/admin/users/${order.user.id}`}>{personLabel(order.user)}</Link>
     : <span>{order.buyerEmailSnapshot ?? "Guest"}{record.family === "ticket" && record.order.guestIdentity ? " · guest" : ""}</span>;
   return (
     <AdminShell actor={actor} current="orders">

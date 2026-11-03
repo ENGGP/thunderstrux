@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { orderReference } from "@/lib/format";
+import { personLabel } from "./records";
 
 // T54: the omnibox. Developers paste whatever they have (an email from a
 // support message, an id from a log line, a Stripe id from the Dashboard), so
@@ -12,8 +13,6 @@ const cap = 20;
 const userHref = (id: string) => `/admin/users/${id}`;
 const societyHref = (id: string) => `/admin/societies/${id}`;
 const orderHref = (id: string) => `/admin/orders/${id}`;
-const personName = (user: { firstName: string | null; lastName: string | null; displayName: string | null; email: string }) =>
-  user.displayName || [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email;
 const commerceKind = (kind: string): SearchHit["kind"] => (kind === "membership" ? "Membership order" : "Merchandise order");
 
 const orderHit = (order: { id: string; status: string; event: { title: string; organisation: { name: string } } }): SearchHit =>
@@ -24,7 +23,7 @@ const orderSelect = { id: true, status: true, event: { select: { title: true, or
 const commerceSelect = { id: true, kind: true, status: true, organisation: { select: { name: true } } } as const;
 const userSelect = { id: true, email: true, firstName: true, lastName: true, displayName: true } as const;
 const userHit = (user: { id: string; email: string; firstName: string | null; lastName: string | null; displayName: string | null }): SearchHit =>
-  ({ kind: "User", id: user.id, label: personName(user), detail: user.email, href: userHref(user.id) });
+  ({ kind: "User", id: user.id, label: personLabel(user), detail: user.email, href: userHref(user.id) });
 
 async function byPayment(field: "stripeSessionId" | "stripePaymentIntentId", value: string) {
   const [orders, commerce] = await Promise.all([
@@ -80,13 +79,11 @@ export async function searchPlatform(raw: string): Promise<SearchHit[]> {
     ];
   }
   // An order reference: the last six characters of an id, as buyers and staff see it.
-  if (/^[A-Za-z0-9]{6}$/.test(query)) {
-    const suffix = query.toLowerCase();
-    const [orders, commerce] = await Promise.all([
-      prisma.order.findMany({ where: { id: { endsWith: suffix } }, select: orderSelect, take: cap }),
-      prisma.commerceOrder.findMany({ where: { id: { endsWith: suffix } }, select: commerceSelect, take: cap })
-    ]);
-    if (orders.length || commerce.length) return [...orders.map(orderHit), ...commerce.map(commerceHit)];
+  // No index serves it, so a word without a digit tries names first.
+  const reference = /^[A-Za-z0-9]{6}$/.test(query);
+  if (reference && /\d/.test(query)) {
+    const hits = await byReference(query);
+    if (hits.length) return hits;
   }
   const [users, societies] = await Promise.all([
     prisma.user.findMany({
@@ -98,8 +95,18 @@ export async function searchPlatform(raw: string): Promise<SearchHit[]> {
       orderBy: [{ name: "asc" }, { id: "asc" }], select: { id: true, name: true, slug: true }, take: cap
     })
   ]);
-  return [
+  const named = [
     ...users.map(userHit),
     ...societies.map((society) => ({ kind: "Society" as const, id: society.id, label: society.name, detail: society.slug, href: societyHref(society.id) }))
   ];
+  return named.length || !reference || /\d/.test(query) ? named : byReference(query);
+}
+
+async function byReference(query: string) {
+  const suffix = query.toLowerCase();
+  const [orders, commerce] = await Promise.all([
+    prisma.order.findMany({ where: { id: { endsWith: suffix } }, select: orderSelect, take: cap }),
+    prisma.commerceOrder.findMany({ where: { id: { endsWith: suffix } }, select: commerceSelect, take: cap })
+  ]);
+  return [...orders.map(orderHit), ...commerce.map(commerceHit)];
 }

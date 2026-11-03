@@ -74,9 +74,9 @@ export async function revokePlatformOperator(input: { email: string; reason?: st
   if (reason.length < 8 || reason.length > 500) throw new PlatformOperatorError("--reason must be 8 to 500 characters");
   const result = await prisma.$transaction(async (tx) => {
     const user = await tx.user.findUnique({ where: { email: input.email.trim().toLowerCase() }, select: { id: true } });
+    if (user) await lockAccount(tx, user.id);
     const existing = user ? await tx.platformOperator.findUnique({ where: { userId: user.id } }) : null;
     if (!user || existing?.status !== "active") throw new PlatformOperatorError(`${input.email} isn't an active operator.`);
-    await lockAccount(tx, user.id);
     await tx.platformOperator.update({ where: { userId: user.id }, data: { status: "revoked", revokedAt: now } });
     await tx.platformAuditLog.create({ data: {
       action: "platform.operator_revoked", targetType: "User", targetId: user.id, operatorRole: existing.role, reason,

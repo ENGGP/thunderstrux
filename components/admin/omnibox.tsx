@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/ui/icon";
+import { adminSearch } from "@/app/(admin)/admin/search/actions";
 
 // T54 (board H3): paste an id, an email or a name; Enter searches, and one match
 // opens its record. "/" or Ctrl/⌘+K focuses it from anywhere. Recent records live in
@@ -49,7 +50,7 @@ export function Omnibox() {
   }, []);
 
   return (
-    <form action="/admin/search" className="relative flex max-w-[620px] flex-[1_1_360px] items-center" method="get" role="search">
+    <form action={adminSearch} className="relative flex max-w-[620px] flex-[1_1_360px] items-center" role="search">
       <label className="sr-only" htmlFor="admin-omnibox">Search or paste an id</label>
       <Icon className="pointer-events-none absolute left-2.5 text-ink-muted" name="search" size={18} />
       <input

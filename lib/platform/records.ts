@@ -11,8 +11,9 @@ export type ActivitySource = "SUPPORT" | "SOCIETY" | "STRIPE" | "THUNDERSTRUX" |
 export type ActivityRow = { id: string; source: ActivitySource; text: string; detail?: string; at: Date; facts?: unknown };
 export type Attention = { tone: "danger" | "warning" | "info"; title: string; body: string };
 
-const personName = (user: { firstName: string | null; lastName: string | null; displayName: string | null; email: string } | null) =>
-  user ? user.displayName || [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email : "Thunderstrux";
+// How a person reads in the portal: their chosen name, else first and last, else their email.
+export const personLabel = (user: { firstName: string | null; lastName: string | null; displayName: string | null; email: string }) =>
+  user.displayName || [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email;
 const words = (value: string) => value.replace(/[._]/g, " ");
 const newestFirst = (rows: ActivityRow[]) => rows.sort((a, b) => b.at.getTime() - a.at.getTime());
 
@@ -23,7 +24,7 @@ async function supportRows(targetType: string, targetId: string): Promise<Activi
     orderBy: { createdAt: "desc" }, take: 30,
     select: { id: true, action: true, reason: true, metadata: true, createdAt: true, actor: { select: { email: true, firstName: true, lastName: true, displayName: true } } }
   });
-  return rows.map((row) => ({ id: row.id, source: "SUPPORT", text: `${row.actor ? personName(row.actor) : "The CLI"}: ${words(row.action.replace(/^platform\./, ""))}`,
+  return rows.map((row) => ({ id: row.id, source: "SUPPORT", text: `${row.actor ? personLabel(row.actor) : "The CLI"}: ${words(row.action.replace(/^platform\./, ""))}`,
     detail: row.reason ?? undefined, at: row.createdAt, facts: { action: row.action, ...(row.metadata as object | null ?? {}) } }));
 }
 

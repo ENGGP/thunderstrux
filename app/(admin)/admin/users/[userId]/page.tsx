@@ -7,13 +7,13 @@ import { RememberRecord } from "@/components/admin/omnibox";
 import { ActivityList, AdminTime, AttentionStrip, Breadcrumbs, Facts, Panel, RecordHeader, rowLink, tableClass } from "@/components/admin/record";
 import { LinkTabs } from "@/components/ui/link-tabs";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { roleLabels } from "@/lib/audit/history";
 import { recordPlatformView } from "@/lib/platform/audit";
 import { requirePlatformPage } from "@/lib/platform/authority";
 import { readUserRecord } from "@/lib/platform/records";
 
 export const metadata: Metadata = { title: "Admin user" };
 
-const roleLabels: Record<string, string> = { owner: "Owner", admin: "Admin", event_manager: "Event manager", finance_manager: "Finance manager", check_in_staff: "Check-in staff" };
 const tabs = ["overview", "activity", "raw"] as const;
 
 // T54 (board H4): one person's account, roles, purchases and security, with

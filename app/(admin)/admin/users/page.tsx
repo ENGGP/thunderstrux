@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AdminShell } from "@/components/admin/admin-shell";
+import { adminSearch } from "../search/actions";
 import { AdminTime, Panel, rowLink, tableClass } from "@/components/admin/record";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requirePlatformPage } from "@/lib/platform/authority";
@@ -28,7 +29,7 @@ export default async function AdminUsersPage() {
         <h1 className="text-[22px] font-semibold">Users</h1>
         <p className="text-sm text-ink-soft">Search finds one person. Nothing here lists everyone.</p>
       </div>
-      <form action="/admin/search" className="flex flex-wrap items-end gap-2.5 rounded-[10px] border border-line bg-surface px-4 py-3.5" method="get" role="search">
+      <form action={adminSearch} className="flex flex-wrap items-end gap-2.5 rounded-[10px] border border-line bg-surface px-4 py-3.5" role="search">
         <label className="flex flex-[1_1_420px] flex-col gap-1.5 font-semibold">
           Email, user id or name
           <input className="h-10 rounded-[8px] border border-line-strong bg-surface px-3 font-normal" name="q" placeholder="alex@uq.edu.au" type="search" />

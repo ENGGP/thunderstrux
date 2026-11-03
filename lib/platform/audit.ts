@@ -1,19 +1,21 @@
-import { createHash } from "node:crypto";
+import { createHmac } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import type { PlatformActor } from "./authority";
 
 // T54: every record an operator opens and every search they run leaves a row
-// (Q8). A search keeps only a digest of what was typed, never the text, so
-// buyer emails never land in the trail; an investigator hashes a candidate to
-// check it. Both kinds are pruned after two years (lib/security/token-cleanup.ts).
+// (Q8). A search keeps only a keyed digest of what was typed, never the text, so
+// buyer emails never land in the trail; with the key (the portal's own
+// MFA_ENCRYPTION_KEY) an investigator on the host can check a candidate, and a
+// database or backup reader without it can't hash the User table to learn who was
+// searched. Both kinds are pruned after two years (lib/security/token-cleanup.ts).
 export const accessRetentionMs = 2 * 365 * 24 * 60 * 60 * 1000;
 export const accessActions = ["platform.viewed", "platform.searched"];
 
 export const searchDigest = (query: string) =>
-  createHash("sha256").update(`platform-search:v1:${query.trim().toLowerCase()}`).digest("hex");
+  createHmac("sha256", Buffer.from(process.env.MFA_ENCRYPTION_KEY ?? "", "base64")).update(`platform-search:v2:${query.trim().toLowerCase()}`).digest("hex");
 
-export type PlatformTarget = { type: "User" | "Organisation" | "Order" | "CommerceOrder" | "Event"; id: string; organisationId?: string | null };
+export type PlatformTarget = { type: "User" | "Organisation" | "Order" | "CommerceOrder"; id: string; organisationId?: string | null };
 
 export async function recordPlatformView(actor: PlatformActor, target: PlatformTarget) {
   await prisma.platformAuditLog.create({ data: {

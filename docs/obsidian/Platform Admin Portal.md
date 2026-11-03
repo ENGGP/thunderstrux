@@ -24,7 +24,7 @@ The portal is for Thunderstrux's own developers and operators, never societies o
 | Page guard | `lib/platform/authority.ts`: `requirePlatformOperator`, `requirePlatformPage`, `landsInAdmin` |
 | Roles and permissions | `lib/permissions/platform.ts`: `platformPermissions`, `hasPlatformPermission` |
 | Trail | `lib/platform/audit.ts`: `recordPlatformView`, `recordPlatformSearch`, `searchDigest`, `readPlatformAudit`; pruning in `lib/security/token-cleanup.ts` |
-| Omnibox search | `lib/platform/search.ts`: `searchPlatform` |
+| Omnibox search | `lib/platform/search.ts`: `searchPlatform`; the server action `adminSearch` (`app/(admin)/admin/search/actions.ts`) |
 | Records and overview | `lib/platform/records.ts` (`readUserRecord`, `readSocietyRecord`, `readOrderRecord`, `listNewestUsers`, `listSocieties`), `lib/platform/overview.ts` (`readNeeds`, `readHealth`, `readCounts`) |
 | Shell and parts | `components/admin/admin-shell.tsx`, `components/admin/omnibox.tsx`, `components/admin/verify-window.tsx`, `components/admin/record.tsx`, `components/admin/id-chip.tsx`, `components/admin/admin-sign-out.tsx` |
 | CLI | `scripts/operators.mjs` → `scripts/operators.ts` (`pnpm ops:operator`) |
@@ -79,11 +79,11 @@ Every page is a server page in `app/(admin)/admin/` inside `AdminShell`, which r
 | `/admin/audit` | The platform trail, filtered by action and target |
 | `/admin/operators` | Operators and their authenticator state |
 
-The omnibox (`/` or Ctrl/⌘+K) takes an email (exact), an app id, `cs_` or `pi_` (the order paid with it), `acct_` or `po_` (the society), `re_`, `du_` or `dp_` (the order), a six-character order reference, or a name. Recent records it lists live in the tab's `sessionStorage` only, with display names, never emails.
+The omnibox (`/` or Ctrl/⌘+K) posts to the server action `adminSearch`, so a pasted email never reaches a URL or the browser history: one match opens its record, none opens `/admin/search?none=1`, and only a name or id with several matches goes to `/admin/search?q=`. It takes an email (exact), an app id, `cs_` or `pi_` (the order paid with it), `acct_` or `po_` (the society), `re_`, `du_` or `dp_` (the order), a six-character order reference, or a name. Recent records it lists live in the tab's `sessionStorage` only, with display names, never emails.
 
 ## The trail
 
-- `PlatformAuditLog` rows are written by the CLI and the portal, never by society code. Each detail page writes `platform.viewed`; each search writes `platform.searched` with `searchDigest` of the normalised query and the result count, never the text, so a buyer's email is never stored.
+- `PlatformAuditLog` rows are written by the CLI and the portal, never by society code. Each detail page writes `platform.viewed`; each search writes `platform.searched` once, with `searchDigest` (an HMAC of the normalised query keyed with `MFA_ENCRYPTION_KEY`) and the result count, never the text. With the key, someone on the host can check a candidate; a database or backup reader without it can't hash the User table to learn who was searched.
 - The trigger `PlatformAuditLog_append_only` refuses every update (except the foreign key clearing a deleted society) and every delete except a view or search row over two years old, which `cleanUpExpiredTokens` deletes, 500 a run. The database owner can still drop the trigger, so the alert webhook is the copy outside the database (OPS-002).
 - `adminPathFor` adds `adminPath` (`/admin/orders/…`, `/admin/societies/…` or `/admin/users/…`) to an alert that names a record, so the receiver links straight to it while the portal runs.
 
@@ -93,6 +93,7 @@ The omnibox (`/` or Ctrl/⌘+K) takes an email (exact), an app id, `cs_` or `pi_
 - Don't add `ADMIN_PORTAL_ENABLED` to the base `docker-compose.yml` app service: that is the public app.
 - A query a record page shows must use an allow-listed `select`. Never a password hash, authenticator secret, recovery code, token digest, encrypted payload or raw provider payload.
 - A new `platform.*` action must be named in [[Audit Coverage]]; `history.test.ts` leaves `platform.` actions out of society History on purpose.
+- `pnpm ops:admin` is proven only by its argument test (`tests/runner/operations.test.mjs`) until the preview runs a release with T54 (ADMIN-001): check it starts, answers on `127.0.0.1:3091`, and is gone after Ctrl-C.
 - The fast integration reset truncates `PlatformAuditLog` (`tests/helpers/db-reset.ts`), because the trigger refuses row deletes.
 
 ## Failure and recovery

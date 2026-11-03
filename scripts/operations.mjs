@@ -486,10 +486,14 @@ async function admin(ctx) {
     throw new Error(`The admin portal didn't become ready: ${error.message}`);
   }
   console.log(`Admin portal ready: ${origin}/admin   (Ctrl-C to stop)`);
+  // A signal listener doesn't keep Node running, so without this timer the
+  // command ended at once (exit 13) and left the container up with nobody to stop it.
+  const hold = setInterval(() => {}, 60_000);
   await new Promise((resolvePromise) => {
     process.once("SIGINT", resolvePromise);
     process.once("SIGTERM", resolvePromise);
   });
+  clearInterval(hold);
   await stop();
   console.error("Admin portal stopped and removed.");
 }

@@ -69,6 +69,7 @@ While a page is open, the shell counts the window down; under 10 minutes it offe
 
 - **Dev:** `http://127.0.0.1:3080/admin` (the dev app sets `ADMIN_PORTAL_ENABLED` in `docker-compose.dev.yml`, and it trusts `127.0.0.1:3080`, not `localhost`, for writes such as authenticator set-up).
 - **Preview or production:** `pnpm ops:admin -- --project <ops-…> --env-file <file>` runs this project's current release image (`current-release.json`) as a one-off `app` container beside its database and Redis, published on `127.0.0.1:3091` only, with `ADMIN_PORTAL_ENABLED=true`, `AUTH_URL`, `NEXTAUTH_URL` and `TRUSTED_APP_ORIGINS` set to `http://localhost:3091`. `NEXT_PUBLIC_APP_URL` stays the public site, so any email links there. It refuses a busy port, waits for readiness, prints the URL, and Ctrl-C stops and removes it. From another machine: `ssh -L 3091:127.0.0.1:3091 <host>` first. Never tunnel port 3091.
+- **Granting on the preview:** run the CLI in the release's ops image against that project's database: `OPS_IMAGE=$(node -p "require('./tmp/operations/ops-preview/current-release.json').opsImageId") docker compose --env-file .env.preview -p ops-preview -f docker-compose.yml -f docker-compose.hardened.yml run --rm migration node scripts/operators.mjs grant <email> --role=admin --note="…"`. Without `OPS_IMAGE`, Compose builds a fresh `thunderstrux-ops:local` from the folder instead.
 - The admin session cookie belongs to the loopback origin, so nothing on the public site can use it.
 
 ## Pages
@@ -124,7 +125,7 @@ Account changes never touch your own account or an operator's (`pnpm ops:operato
 - Don't add `ADMIN_PORTAL_ENABLED` to the base `docker-compose.yml` app service: that is the public app.
 - A query a record page shows must use an allow-listed `select`. Never a password hash, authenticator secret, recovery code, token digest, encrypted payload or raw provider payload.
 - A new `platform.*` action must be named in [[Audit Coverage]]; `history.test.ts` leaves `platform.` actions out of society History on purpose.
-- `pnpm ops:admin` is proven only by its argument test (`tests/runner/operations.test.mjs`) until the preview runs a release with T54 (ADMIN-001): check it starts, answers on `127.0.0.1:3091`, and is gone after Ctrl-C.
+- `pnpm ops:admin` keeps a timer while it waits for Ctrl-C: a signal listener alone doesn't keep Node running, and the first real run (preview, 3 Nov 2026) ended at once with exit 13 and left `ops-preview-admin` up unsupervised. If a run ever ends early, `docker stop ops-preview-admin` removes the container.
 - The fast integration reset truncates `PlatformAuditLog` (`tests/helpers/db-reset.ts`), because the trigger refuses row deletes.
 - A change is a `platformWrite`, never a direct write: that is what puts the trail row, the permission recheck and the one-use code in the same transaction. Lock the target after `lockPlatformActor`, in the order User, Organisation, then the request or operator row.
 - `payoutsAllowedWhere` lives in `lib/payouts/payouts.ts`, not `lib/platform/`: the refunds worker must not load the portal's HTTP and session modules.

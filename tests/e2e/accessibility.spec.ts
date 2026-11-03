@@ -92,6 +92,27 @@ test.describe("accessibility scans", () => {
   });
 });
 
+test("the door follows a dark phone with its own palette, and a chosen Light is remembered", async ({ page, data }) => {
+  test.setTimeout(120_000);
+  await login(page, data.owner.email, "/dashboard");
+  await page.emulateMedia({ colorScheme: "dark" });
+  const door = `/dashboard/events/${data.event.id}/tickets`;
+  await auditAll(page, "door-dark", [door]);
+  await page.goto(door);
+  const canvas = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  expect(await canvas()).toBe("rgb(24, 16, 42)");
+  await page.getByRole("button", { name: "Light", exact: true }).click();
+  expect(await canvas()).toBe("rgb(243, 240, 248)");
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Light", exact: true })).toHaveAttribute("aria-pressed", "true");
+  expect(await canvas()).toBe("rgb(243, 240, 248)");
+  // Auto goes back to following the phone, and the rest of the app stays light.
+  await page.getByRole("button", { name: "Auto", exact: true }).click();
+  expect(await canvas()).toBe("rgb(24, 16, 42)");
+  await page.goto("/dashboard");
+  expect(await canvas()).toBe("rgb(243, 240, 248)");
+});
+
 test("keyboard users skip to the page, and a confirmation takes focus and closes on Escape without acting", async ({ page, data }) => {
   await page.goto("/");
   await page.keyboard.press("Tab");

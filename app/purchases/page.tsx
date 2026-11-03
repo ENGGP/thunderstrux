@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PersonalShell } from "@/components/layout/personal-shell";
+import { PurchaseTotal } from "@/components/purchases/purchase-total";
 import { buttonClasses } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LinkTabs, rowLinkClasses } from "@/components/ui/link-tabs";
@@ -11,10 +12,10 @@ import { Pager } from "@/components/ui/pager";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { AuthenticationRequiredError, requireAuthenticatedUser } from "@/lib/auth/access";
 import { getOwnCommerceOrders } from "@/lib/commerce/orders";
-import { formatDateTime, formatPrice, formatTerm } from "@/lib/format";
+import { formatDateTime, formatTerm } from "@/lib/format";
 import { PaginationError, parsePaginationOptionsOrDefault, type ParsedPaginationOptions } from "@/lib/pagination/cursor";
 import { orderReference } from "@/lib/payments/order-refunds";
-import { buyerPurchaseBadge, purchasedTicketTypeLabel, ticketOrderProjection } from "@/lib/purchases/projection";
+import { buyerPurchaseBadge, purchasedTicketTypeLabel } from "@/lib/purchases/projection";
 import { getOwnTicketPurchases, ownPurchaseCounts } from "@/lib/purchases/ticket-purchases";
 
 export const metadata: Metadata = { title: "Purchases" };
@@ -24,17 +25,7 @@ type Family = (typeof families)[number];
 const familyLabels: Record<Family, string> = { tickets: "Tickets", memberships: "Memberships", merchandise: "Merchandise" };
 const pickupBadge = { pending: "preparing", ready: "ready-to-collect", collected: "collected" } as const;
 
-type Payable = Parameters<typeof ticketOrderProjection>[0] & { paymentKind: "free" | "stripe" | "legacy"; totalAmount: number };
 type CommerceRow = Awaited<ReturnType<typeof getOwnCommerceOrders>>["items"][number];
-
-// What the buyer paid, in the words that fit the order's state.
-function PurchaseTotal({ order }: { order: Payable }) {
-  const projection = ticketOrderProjection(order);
-  if (projection === "failed" || projection === "expired") return <span className="text-ink-soft">Not charged</span>;
-  if (order.paymentKind === "free") return <span>Free</span>;
-  if (projection === "refunded" || projection === "refunded-outside") return <s className="text-ink-muted">{formatPrice(order.totalAmount)}</s>;
-  return <span>{formatPrice(order.totalAmount)}</span>;
-}
 
 const rowLink = rowLinkClasses;
 

@@ -5,6 +5,7 @@ import { CheckoutShell, ticketSteps } from "@/components/layout/checkout-shell";
 import { PaymentStatusPoller } from "@/components/purchases/payment-status-poller";
 import { buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Notice } from "@/components/ui/notice";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { buyerPurchaseBadge, justIssued, ticketOrderProjection } from "@/lib/purchases/projection";
@@ -56,23 +57,25 @@ export default async function SuccessPage({ searchParams }: SuccessPageProps) {
           <div><StatusBadge label={badge.label} status={badge.status} /></div>
           {projection === "processing" ? (
             <>
-              <p className="text-ink" role="status">Stripe is telling us about your payment for {order.event.title}. This usually takes under a minute; this page updates by itself.</p>
-              <p className="text-sm text-ink-soft">Your {count} {order.quantity === 1 ? "is" : "are"} held while we wait. You won&apos;t be charged twice.</p>
+              <Notice icon="clock" role="status">
+                <p className="text-ink">Stripe is telling us about your payment for {order.event.title}. This usually takes under a minute; this page updates by itself.</p>
+                <p className="mt-1">Your {count} {order.quantity === 1 ? "is" : "are"} held while we wait. You won&apos;t be charged twice.</p>
+              </Notice>
               <PaymentStatusPoller orderId={order.id} />
               <Link className="font-semibold text-brand underline underline-offset-4" href="/purchases">See all purchases</Link>
             </>
           ) : going ? (
             <div className={`grid gap-4 ${justIssued(order.fulfilledAt) ? "issued-stagger" : ""}`}>
-              <p className="text-ink">
+              <Notice tone="success">
                 {projection === "free" ? "Registration" : "Payment"} confirmed for {count} to {order.event.title}.{" "}
                 {/* The email may still be on its way; only say it was sent once the provider took it. */}
                 {order.ticketEmailSentAt ? `We've emailed them to ${order.buyerEmailSnapshot}.` : `We're emailing them to ${order.buyerEmailSnapshot}; they're in My tickets now.`}
-              </p>
+              </Notice>
               <div><Link className={buttonClasses({ size: "lg" })} href="/tickets">View my tickets</Link></div>
             </div>
           ) : projection === "failed" || projection === "expired" ? (
             <>
-              <p className="text-ink">Nothing was charged.</p>
+              <Notice icon="dash">Nothing was charged.</Notice>
               <div><Link className={buttonClasses({ variant: "secondary", size: "lg" })} href={`/events/${order.event.id}`}>Back to {order.event.title}</Link></div>
             </>
           ) : (

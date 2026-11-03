@@ -6,6 +6,7 @@ import { MembershipCheckoutAction } from "@/components/memberships/membership-ch
 import { MoneySummary } from "@/components/purchases/money-summary";
 import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
+import { buttonClasses } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { formatDate, formatMoney, formatTerm, payLabel } from "@/lib/format";
@@ -74,19 +75,21 @@ export default async function MembershipCheckoutPage({ params }: { params: Promi
             {blocked ? (
               <Notice title={blocked} tone="warning">
                 <p className="mt-0.5">Nothing has been charged.</p>
-                <Link className="inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4" href="/memberships">
+                <Link className={buttonClasses({ variant: "secondary", className: "mt-3" })} href="/memberships">
                   View my memberships
                 </Link>
               </Notice>
             ) : verified ? (
               <MembershipCheckoutAction backHref={back} label={label} organisationId={organisation.id} planId={offer.id} total={offer.priceAmount} />
             ) : (
-              <Notice title="Verify your email to continue">
-                <p>We need to know your address works.</p>
-                <Link className="mt-1 inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4" href={`/verify-email?callbackUrl=${encodeURIComponent(self)}`}>
-                  Verify email
-                </Link>
-              </Notice>
+              <div data-verify-blocker>
+                <Notice title="Verify your email to continue" tone="warning">
+                  <p>We need to know your address works.</p>
+                  <Link className={buttonClasses({ className: "mt-3" })} href={`/verify-email?callbackUrl=${encodeURIComponent(self)}`}>
+                    Verify email
+                  </Link>
+                </Notice>
+              </div>
             )}
             {free ? (
               <p className="text-caption text-ink-muted">Nothing to pay.</p>

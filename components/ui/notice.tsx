@@ -14,6 +14,7 @@ const tones: Record<string, { box: string; heading: string; icon: string; name: 
 // action; guidance that is always on the page needs no live region.
 export function Notice({
   tone = "info",
+  icon,
   title,
   role,
   className = "",
@@ -23,6 +24,8 @@ export function Notice({
   children
 }: {
   tone?: "info" | "success" | "warning" | "danger";
+  // A glyph that says more than the tone's own (a clock while waiting, a dash for "nothing happened").
+  icon?: IconName;
   title?: string;
   role?: "alert" | "status";
   className?: string;
@@ -42,7 +45,7 @@ export function Notice({
       className={`flex items-start gap-3 rounded-card border px-4 py-3 text-sm ${style.box} ${reveal ? "" : className}`}
       role={role}
     >
-      <Icon className={`mt-px ${style.icon}`} name={style.name} size={20} />
+      <Icon className={`mt-px ${style.icon}`} name={icon ?? style.name} size={20} />
       <div className={`min-w-0 flex-1 ${title ? "text-ink-soft" : `font-medium ${style.heading}`}`}>
         {title ? <p className={`text-ui font-semibold ${style.heading}`}>{title}</p> : null}
         {children}

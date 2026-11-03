@@ -91,8 +91,9 @@ export function buyerPurchaseBadge(order: Parameters<typeof ticketOrderProjectio
   // Unpaid until Stripe says otherwise (round E1); the order page asks Stripe and may say Confirming.
   if (projection === "processing") return { status: projection, label: "Waiting for payment" };
   if (projection === "cancelled") return { status: projection, label: releasedByBuyer(order) ? "You cancelled" : "Cancelled by the society" };
-  // Payment review is either a charge awaiting compensation or a partial refund made in Stripe.
-  if (projection === "review") return { status: projection, label: order.requiresCompensationReview ? "Payment issue" : "Partly refunded" };
+  // Payment review is either a charge awaiting compensation or a partial refund made in Stripe;
+  // the partial refund is finished for the buyer, so it reads as money back, not a warning.
+  if (projection === "review") return order.requiresCompensationReview ? { status: projection, label: "Payment issue" } : { status: "refunded", label: "Partly refunded" };
   // A lost dispute is the buyer's money back; staff still see it as disputed.
   if (projection === "disputed" && order.disputeStatus === "lost") return { status: "refunded", label: "Refunded by your bank" };
   // Where the society refunded is staff detail; the buyer was refunded either way.

@@ -46,6 +46,8 @@ test("check-in staff find a ticket on a phone, admit it once, see why others can
   await expect(results.getByRole("listitem")).toHaveCount(1);
   await results.getByRole("button", { name: /^Check in/ }).click();
   await expect(results.getByRole("listitem", { name: "Sam Lee, Checked in" })).toContainText("Checked in just now");
+  // GO is a solid band across the card, read before the name (round G).
+  await expect(results.getByRole("listitem", { name: "Sam Lee, Checked in" }).locator(".bg-go")).toHaveText("Checked in");
   await expect(page.getByText("1 of 2 checked in")).toBeVisible();
 
   // The check-in saves but its answer never arrives: the card says it doesn't know, then reloads the truth.
@@ -128,6 +130,8 @@ test("door staff scan QR codes: a valid ticket is admitted once, and used, refun
   await expect(page.getByText("Not for this event")).toBeVisible();
   await holdUp(valid.id);
   await expect(scanned.getByRole("listitem", { name: "Sam Lee, Already checked in" })).toContainText("Don't admit twice");
+  // A second try at a used ticket is a striped STOP, like a void one: never amber, never green.
+  await expect(scanned.getByRole("listitem", { name: "Sam Lee, Already checked in" }).locator(".stripes")).toHaveText("Already checked in");
   expect(await prisma.auditLog.count({ where: { targetId: valid.id, action: "ticket.checked_in" } })).toBe(1);
   expect((await prisma.ticket.findUniqueOrThrow({ where: { id: elsewhere.id } })).checkedInAt).toBeNull();
   // Door staff don't read orders, so the card names the buyer without their email.

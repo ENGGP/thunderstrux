@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonClasses } from "@/components/ui/button";
 import { PhoneActionBar, useActionBelow, useResetOnRestore } from "@/components/purchases/phone-action-bar";
 import { TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
@@ -249,19 +249,21 @@ export function PublicTicketPurchase({
   const primaryHref = viewer === "anonymous" ? `${checkoutHref}&guest=1` : checkoutHref;
   const action =
     viewer === "society" ? (
-      <Notice title="Society accounts can't buy tickets">
+      <Notice title="Society accounts can't buy tickets" tone="warning">
         <p>Sign in with a member account to buy tickets.</p>
       </Notice>
     ) : viewer === "unverified" ? (
-      <Notice title="Verify your email to get tickets">
-        <p>Tickets are emailed to you, so we need to know the address works.</p>
-        <Link
-          className="mt-1 inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4"
-          href={`/verify-email?callbackUrl=${encodeURIComponent(checkoutHref || `/events/${eventId}`)}`}
-        >
-          Verify email
-        </Link>
-      </Notice>
+      <div data-verify-blocker>
+        <Notice title="Verify your email to get tickets" tone="warning">
+          <p>Tickets are emailed to you, so we need to know the address works.</p>
+          <Link
+            className={buttonClasses({ className: "mt-3" })}
+            href={`/verify-email?callbackUrl=${encodeURIComponent(checkoutHref || `/events/${eventId}`)}`}
+          >
+            Verify email
+          </Link>
+        </Notice>
+      </div>
     ) : viewer === "anonymous" ? (
       <>
         {/* A guest confirms their email in checkout; signing in comes straight back to the same checkout. */}
@@ -416,7 +418,7 @@ export function PublicTicketPurchase({
       {selected ? (
         <>
           {lowered ? (
-            <Notice tone="info">
+            <Notice tone="warning">
               <p>
                 {selected.memberPriced
                   ? `Your member price covers one ticket for this event, so we changed ${lowered} to 1. Get more at the standard price in a second checkout.`

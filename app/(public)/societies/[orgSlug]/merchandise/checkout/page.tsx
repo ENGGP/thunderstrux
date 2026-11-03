@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { CheckoutShell } from "@/components/layout/checkout-shell";
 import { MerchandiseCheckout } from "@/components/merchandise/checkout";
+import { buttonClasses } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { guestCookieName, readGuestSession } from "@/lib/guest/guest-access";
@@ -30,12 +31,14 @@ export default async function MerchandiseCheckoutPage({ params }: { params: Prom
   if (session && !session.user.emailVerifiedAt) {
     return (
       <CheckoutShell lead="Buying from" backHref={basket} backLabel="Back to basket" current={0} society={organisation.name} steps={["Review", "Pay with Stripe", "Pickup"]} title="Review your order">
-        <Notice title="Verify your email to continue">
-          <p className="mt-0.5">We email receipts and pickup notices, so we need to know the address works.</p>
-          <Link className="inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4" href={`/verify-email?callbackUrl=${encodeURIComponent(self)}`}>
-            Verify email
-          </Link>
-        </Notice>
+        <div data-verify-blocker>
+          <Notice title="Verify your email to continue" tone="warning">
+            <p className="mt-0.5">We email receipts and pickup notices, so we need to know the address works.</p>
+            <Link className={buttonClasses({ className: "mt-3" })} href={`/verify-email?callbackUrl=${encodeURIComponent(self)}`}>
+              Verify email
+            </Link>
+          </Notice>
+        </div>
       </CheckoutShell>
     );
   }

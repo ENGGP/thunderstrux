@@ -44,7 +44,7 @@ export function PickupAction({ orgSlug, order, step, stage, wide = false, row = 
     <div className={`grid gap-2 ${wide ? "" : "justify-items-end"}`}>
       {/* The spoken name starts with the visible words, so voice control finds it (WCAG 2.5.3). */}
       {/* relative keeps the hidden words inside the button, so they can't widen a scrolling table. */}
-      <Button className={wide ? "relative w-full" : "relative"} onClick={() => setOpen(true)} size={wide ? "lg" : "sm"} type="button" variant={row ? "secondary" : "primary"}>
+      <Button className={wide ? "relative w-full" : "relative"} onClick={() => setOpen(true)} size={wide ? "lg" : "sm"} type="button" variant={row ? "secondary" : wide ? "subtle" : "primary"}>
         {ready ? "Mark ready" : "Mark collected"}<span className="sr-only"> for order {order.reference}</span>
       </Button>
       {error ? (

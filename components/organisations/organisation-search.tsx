@@ -6,8 +6,10 @@ import { useRouter } from "next/navigation";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { TextInput } from "@/components/ui/input";
+import { rowLinkClasses } from "@/components/ui/link-tabs";
 import { Notice } from "@/components/ui/notice";
 import { ListSkeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 
 type SearchOrganisation = {
@@ -150,14 +152,13 @@ export function OrganisationSearch({ joinedIds, verified = true }: { joinedIds: 
               key={organisation.id}
             >
               <h2 className="font-semibold text-ink [overflow-wrap:anywhere]">
-                <Link className="text-brand underline underline-offset-4" href={`/societies/${organisation.slug}`}>
+                <Link className={rowLinkClasses} href={`/societies/${organisation.slug}`}>
                   {organisation.name}
                 </Link>
               </h2>
               {organisation.joined ? (
-                <Button disabled type="button" variant="secondary">
-                  Joined
-                </Button>
+                // A relationship, not a button: there is nothing to press.
+                <span className="sm:justify-self-end"><StatusBadge status="joined" /></span>
               ) : verified ? (
                 <Button
                   busy={joiningSlug === organisation.slug}

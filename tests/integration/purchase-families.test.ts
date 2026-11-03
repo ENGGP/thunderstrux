@@ -1,10 +1,13 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test, vi } from "vitest";
 import PurchasesPage from "@/app/purchases/page";
+import { PurchaseTotal } from "@/components/purchases/purchase-total";
 import { createCommerceOrder } from "@/lib/commerce/orders";
 import { prisma } from "@/lib/db";
 import { orderReference } from "@/lib/payments/order-refunds";
 import { getOwnCommerceOrders } from "@/lib/commerce/orders";
-import { ticketOrderProjection } from "@/lib/purchases/projection";
+import { buyerPurchaseBadge, ticketOrderProjection } from "@/lib/purchases/projection";
 import { getOwnTicketPurchases, ownPurchaseCounts } from "@/lib/purchases/ticket-purchases";
 import { setMockSession } from "@/tests/helpers/auth";
 import { renderPage } from "@/tests/helpers/render";
@@ -105,6 +108,7 @@ describe("purchase families", () => {
     // A refund before pickup reads Refunded, and the pickup "Not collected".
     expect(merchandise).toContain(`/merchandise/orders/${refunded.id}`);
     expect(merchandise).toContain("Refunded");
+    expect(merchandise).toMatch(/<s class="text-ink-muted">[^<]*10\.00<\/s>/);
     expect(merchandise).toContain("Not collected");
     expect(merchandise).not.toContain(theirs.id);
     expect(merchandise).not.toContain("Somebody else");
@@ -119,5 +123,29 @@ describe("purchase families", () => {
       expect(html).toContain("No purchases yet");
       expect(html).toContain('href="/purchases?family=merchandise"');
     }
+  });
+
+  // Round G: money that went back is struck wherever it went back; a partial
+  // refund keeps its total and reads as money back, not a warning.
+  test("a returned amount is struck through, a partial refund is kept whole, and a checkout that didn't complete charged nothing", () => {
+    const base = { status: "paid" as const, paymentKind: "stripe" as const, requiresCompensationReview: false, totalAmount: 1500 };
+    const total = (data: Record<string, unknown>) => renderToStaticMarkup(createElement(PurchaseTotal, { order: { ...base, ...data } }));
+    const struck = /<s class="text-ink-muted">[^<]*15\.00<\/s><span class="sr-only"> refunded<\/span>/;
+
+    expect(total({ refundStatus: "refunded" })).toMatch(struck);
+    expect(total({ isManuallyRefunded: true })).toMatch(struck);
+    expect(total({ disputeStatus: "lost" })).toMatch(struck);
+    expect(buyerPurchaseBadge({ ...base, disputeStatus: "lost" })).toEqual({ status: "refunded", label: "Refunded by your bank" });
+
+    const partial = { externalRefundedAmount: 500 };
+    expect(buyerPurchaseBadge({ ...base, ...partial })).toEqual({ status: "refunded", label: "Partly refunded" });
+    expect(total(partial)).not.toContain("<s ");
+    expect(total(partial)).toMatch(/15\.00<span class="[^"]*">\$5\.00 refunded<\/span>/);
+    // A charge awaiting compensation is still a warning for the buyer.
+    expect(buyerPurchaseBadge({ ...base, requiresCompensationReview: true })).toEqual({ status: "review", label: "Payment issue" });
+
+    expect(total({})).not.toContain("<s ");
+    expect(total({ status: "failed" })).toContain("Not charged");
+    expect(total({ paymentKind: "free", totalAmount: 0 })).toBe("<span>Free</span>");
   });
 });

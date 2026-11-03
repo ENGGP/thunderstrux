@@ -8,6 +8,7 @@ import { CheckoutAction } from "@/components/purchases/checkout-action";
 import { MoneySummary } from "@/components/purchases/money-summary";
 import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
+import { buttonClasses } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { getEventForViewer, priceForViewer, priceWithTicketCode } from "@/lib/events/public-events";
@@ -137,15 +138,17 @@ export default async function CheckoutPage({
                 code={usedCode?.code}
               />
             ) : (
-              <Notice title="Verify your email to continue">
-                <p>Tickets are emailed to you, so we need to know the address works.</p>
-                <Link
-                  className="mt-1 inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4"
-                  href={`/verify-email?callbackUrl=${encodeURIComponent(callback)}`}
-                >
-                  Verify email
-                </Link>
-              </Notice>
+              <div data-verify-blocker>
+                <Notice title="Verify your email to continue" tone="warning">
+                  <p>Tickets are emailed to you, so we need to know the address works.</p>
+                  <Link
+                    className={buttonClasses({ className: "mt-3" })}
+                    href={`/verify-email?callbackUrl=${encodeURIComponent(callback)}`}
+                  >
+                    Verify email
+                  </Link>
+                </Notice>
+              </div>
             )}
             {free ? null : <p className="text-caption text-ink-muted">You pay on Stripe&apos;s secure page, then come back here.</p>}
           </div>

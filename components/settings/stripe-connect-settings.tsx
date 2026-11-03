@@ -116,7 +116,7 @@ function payoutsPaused(status: ConnectStatus | null) {
 }
 
 function readinessBadge(status: ConnectStatus | null, timeZone: string): [Status, string] {
-  if (status?.state === "READY" && !status.currently_due.length) return status.payouts_enabled ? ["active", "Ready"] : ["pending", payoutsPaused(status) ? "Payouts paused" : "Payouts not set up"];
+  if (status?.state === "READY" && !status.currently_due.length) return status.payouts_enabled ? ["ready", "Ready"] : ["pending", payoutsPaused(status) ? "Payouts paused" : "Payouts not set up"];
   return stateContent(status, timeZone)?.badge ?? ["draft", "Not connected"];
 }
 

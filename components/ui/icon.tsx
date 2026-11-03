@@ -27,7 +27,12 @@ const paths = {
   calendarDays: "M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM3 10h18M8 3v4M16 3v4M7 14h2M11 14h2M15 14h2M7 18h2M11 18h2",
   chevronLeft: "m15 6-6 6 6 6",
   chevronRight: "m9 6 6 6-6 6",
-  badge: "M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM9 9.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4zM6 17c.5-1.3 1.6-2 3-2s2.5.7 3 2M14.5 10h3.5M14.5 13.5h3.5"
+  badge: "M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM9 9.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4zM6 17c.5-1.3 1.6-2 3-2s2.5.7 3 2M14.5 10h3.5M14.5 13.5h3.5",
+  // Status glyphs (round G): money went back, over or closed, a normal standing, yours.
+  return: "M9 5 4 10l5 5M4 10h10.5a5.5 5.5 0 0 1 0 11H11",
+  dash: "M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zM8 12h8",
+  circle: "M12 4a8 8 0 1 1 0 16 8 8 0 0 1 0-16z",
+  yours: "M12 4a8 8 0 1 1 0 16 8 8 0 0 1 0-16zM12 10.25a1.75 1.75 0 1 1 0 3.5 1.75 1.75 0 0 1 0-3.5z"
 } as const;
 
 export type IconName = keyof typeof paths;

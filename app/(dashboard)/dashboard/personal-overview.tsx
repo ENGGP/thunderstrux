@@ -3,13 +3,14 @@ import { formatDay, formatTime, localDay } from "@/components/calendar/layout";
 import { DateRail } from "@/components/events/date-rail";
 import { buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { PurchaseTotal } from "@/components/purchases/purchase-total";
 import { Placeholder } from "@/components/ui/placeholder";
 import { quietLinkClasses, rowLinkClasses } from "@/components/ui/link-tabs";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getAccessibleOrganisationsForCurrentAccount } from "@/lib/auth/access";
 import { readMemberProfile } from "@/lib/auth/account-settings";
 import { getOwnCommerceOrders } from "@/lib/commerce/orders";
-import { formatDate, formatDateRange, formatMonthYear, formatPrice, formatTerm, membershipLabel } from "@/lib/format";
+import { formatDate, formatDateRange, formatMonthYear, formatTerm, membershipLabel } from "@/lib/format";
 import { myMemberships } from "@/lib/memberships/offers";
 import { upcomingEventCounts } from "@/lib/organisations/overview";
 import { buyerPurchaseBadge, purchasedTicketTypeLabel, ticketOrderProjection } from "@/lib/purchases/projection";
@@ -182,7 +183,7 @@ export async function PersonalOverview({ userId }: { userId: string }) {
                         <Link className={titleLink} href={purchase.href}>{purchase.title}</Link>
                         <span className="text-sm text-ink-soft [overflow-wrap:anywhere]">{purchase.kind} · {purchase.society} · {formatDate(purchase.createdAt, purchase.timeZone)}</span>
                       </div>
-                      <span className="text-sm font-semibold tabular-nums text-ink">{purchase.order.paymentKind === "free" ? "Free" : formatPrice(purchase.order.totalAmount)}</span>
+                      <span className="text-sm font-semibold tabular-nums text-ink"><PurchaseTotal order={purchase.order} /></span>
                       {purchase.pickup ? <StatusBadge status={purchase.pickup === "ready" ? "ready-to-collect" : "preparing"} /> : <StatusBadge label={badge.label} status={badge.status} />}
                     </li>
                   );

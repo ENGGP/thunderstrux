@@ -252,7 +252,7 @@ export async function MerchandiseTab({ organisationId, range, access, canFulfil 
           { label: "Net sales", value: money(t.net), note: "Before the Thunderstrux fee. Not a payout." }
         ]}
       />
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         {t.fulfilledOrders === 0 && t.refunds === 0 ? (
           <EmptyState icon="bag" title={`No merchandise sales between ${span(range)}`}>Sales show here on the day the order is paid.</EmptyState>
         ) : (
@@ -322,7 +322,7 @@ export async function EngagementTab({ organisationId, range, asOf }: { organisat
           { label: "People who bought", value: t.buyers.total, note: "Tickets, memberships or merchandise" }
         ]}
       />
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <ChartCard title={`Joins by ${range.bucket}`}>
           <BarChart bars={series.map((row) => ({ key: row.start, label: bucketLabel(row.start, range), primary: row.joins, value: String(row.joins) }))} label={`Joins by ${range.bucket}`} />
         </ChartCard>

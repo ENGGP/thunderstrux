@@ -74,6 +74,7 @@ export default async function MyTicketsPage({ searchParams }: { searchParams: Pr
                 {eventTickets.map((ticket) => (
                   <TicketFace
                     ended={view === "past"}
+                    event={event.title}
                     free={ticket.order.paymentKind === "free"}
                     key={ticket.id}
                     of={ticket.order.quantity}

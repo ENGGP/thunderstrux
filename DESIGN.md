@@ -42,6 +42,15 @@ colors:
   neutral-bg: "#f3f1f6"
   neutral-border: "#e2dde9"
   neutral-icon: "#8e869b"
+  on-brand: "#ffffff"
+  subtle-edge: "#b7a3f4"
+  go: "#0b6b55"
+  go-text: "#ffffff"
+  stop: "#9e122f"
+  stop-stripe: "#6c0a1f"
+  stop-text: "#ffffff"
+  hold: "#f4cc64"
+  hold-text: "#24143b"
 typography:
   display:
     fontFamily: "Space Grotesk, DM Sans, ui-sans-serif, system-ui, sans-serif"
@@ -121,6 +130,11 @@ components:
   button-quiet:
     textColor: "{colors.ink-soft}"
     height: "44px"
+  button-subtle:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.brand-hover}"
+    rounded: "{rounded.control}"
+    height: "44px"
   button-danger-text:
     textColor: "{colors.danger}"
     height: "44px"
@@ -160,6 +174,9 @@ components:
     textColor: "{colors.surface}"
     rounded: "{rounded.control}"
     size: "68px"
+  door-band:
+    height: "72px"
+    typography: "24px bold Space Grotesk"
   org-sidebar:
     backgroundColor: "{colors.night}"
     textColor: "{colors.surface}"
@@ -168,7 +185,7 @@ components:
 
 # Design System: Thunderstrux
 
-> **Generated from the shipped code** (`app/globals.css`, `components/ui/`, `components/layout/`, `components/events/`, and computed styles on the dev app) by `/impeccable document` on 2026-10-28, and brought to the night violet palette (round G, PR 1) on 2026-11-03. It records what is built, not what is intended. Intent lives in the [visual design specification](docs/THUNDERSTRUX_COMPLETE_VISUAL_DESIGN_SPEC.md) and [UI Architecture Rules](docs/obsidian/UI%20Architecture%20Rules.md); they win on any conflict (visual spec 16.8 lists the built values kept on purpose), and any other difference is drift to register, not a new rule. Regenerate it after a token or primitive change.
+> **Generated from the shipped code** (`app/globals.css`, `components/ui/`, `components/layout/`, `components/events/`, and computed styles on the dev app) by `/impeccable document` on 2026-10-28, and brought to the night violet palette and its status, door and money rules (round G, PRs 1 and 2) on 2026-11-03. It records what is built, not what is intended. Intent lives in the [visual design specification](docs/THUNDERSTRUX_COMPLETE_VISUAL_DESIGN_SPEC.md) and [UI Architecture Rules](docs/obsidian/UI%20Architecture%20Rules.md); they win on any conflict (visual spec 16.8 lists the built values kept on purpose), and any other difference is drift to register, not a new rule. Regenerate it after a token or primitive change.
 
 ## Overview
 
@@ -176,7 +193,7 @@ components:
 
 A student culture magazine, a polished ticket window and an operations desk sharing one purple-first system. In the built product the magazine shows in the public pages: a night violet hero on the home page with one glow word and the soonest event as a ticket stub, Space Grotesk headings, the night date tile on every event card, and a 3px brand rule under the current tab. The ticket window is quieter: white surfaces, hairline borders, one purple action. The desk is the organiser shell: a 244px night violet navigation column beside dense, neutral pages.
 
-The system is light-only, flat and hairline-led. Depth is a border, not a shadow; shadows appear only on hover for event cards and on floating panels. Motion is small and earned: menus and dialogs pop in, phone sheets slide, a result eases open under the action that caused it, freshly issued tickets rise in once, and everything else stays still.
+The system is light, flat and hairline-led; only the door has a dark mode. Depth is a border, not a shadow; shadows appear only on hover for event cards and on floating panels. Motion is small and earned: menus and dialogs pop in, phone sheets slide, a result eases open under the action that caused it, freshly issued tickets rise in once, and everything else stays still.
 
 **Key Characteristics:**
 - Violet has three jobs: night violet owns surfaces, action violet marks the one thing to do, selected lilac marks what you chose. Status colours carry meaning and never decorate.
@@ -202,6 +219,9 @@ Night violet on a lavender canvas, with jade, ochre and crimson reserved for sta
 
 ### Status roles
 Success (jade), warning (ochre), danger (crimson), info (slate, in the neutral family, so purple stays out of notices) and neutral each come as text, `-bg` wash, `-border` hairline and `-icon` mark. Text is at least 5.7:1 and icons at least 3:1 on their own wash.
+
+### Door verdicts
+The check-in door reads at arm's length in a bright or dark room, so its decisions are solid bands, not washes: **Go** (`go`, jade, white text) for a check-in just made; **Stop** (`stop`, crimson, with `stop-stripe` stripes and white text) for Don't admit and Already checked in; **Hold** (`hold`, ochre, ink text) for Under review and Status unknown. 72px with 24px text on phones. A dark door (Auto follows the phone; Light or Dark is remembered) redeclares the tokens: canvas `#18102a`, card `#261d3e`, text `#f5f4fd`, Check in `#a494f6`, Go `#37d59f`, Stop `#f97770` with `#ffaba6` stripes.
 
 ### Charts
 Series one is Campus Violet and series two **Chart Lilac** (`chart-2`), stacked with a 2px gap. Money going out is hatched **Chart Grey** (`chart-out`, the `hatch` utility) below the axis with its amount in crimson; on phones it runs left from zero. A cancelled event's bars are Chart Grey.
@@ -237,11 +257,12 @@ Named containers set every page width: auth 440px, read 760px, checkout 1060px, 
 
 ## Elevation & Depth
 
-Flat by default: surfaces separate by tone (paper vs surface) and hairlines. Two shadows exist and both are conditional.
+Flat by default: surfaces separate by tone (paper vs surface) and hairlines. Three shadows exist, each for something above the page or under the pointer.
 
 ### Shadow Vocabulary
 - **Card hover** (`box-shadow: 0 4px 18px rgba(36,20,59,.055)`): event cards on hover only, switching instantly.
 - **Float** (`box-shadow: 0 14px 44px rgba(36,20,59,.12)`): the event More menu, the navbar menu, the confirm dialog and the phone buy bar.
+- **Lift** (`shadow-lift`, `0 -8px 24px rgba(36,20,59,.1)`): sticky bottom bars on phones (the purchase action bar, the event form's save bar), so they read as above the page they cover.
 
 ### Named Rules
 **The Flat-At-Rest Rule.** Nothing casts a shadow at rest except something floating above the page.
@@ -256,12 +277,12 @@ Moderately squared: 6px tags and badges, 9px controls and buttons, 14px cards an
 - **Shape:** gently squared (9px).
 - **Primary:** Campus Violet fill, white 14px semibold label, 44px tall (36px `sm`, 48px `lg`).
 - **Hover / Focus / Press:** colour cross-fades over 150ms; press scales to 97%; focus is the ink 2px ring with a 2px white gap.
-- **Secondary:** white with a Control Edge border and Plum Ink label, inset on hover. **Tertiary:** a brand text link that underlines on hover. **Quiet:** soft ink text for a way out (a dialog's Cancel, Leave society). **Danger:** crimson outline; **Danger text** for a destructive action repeated down a list (Revoke access); solid crimson only on a dialog's confirm button. **On night:** a white button and a glow-edged ghost (`onNight`, `ghostNight`).
+- **Secondary:** white with a Control Edge border and Plum Ink label, inset on hover. **Tertiary:** a brand text link that underlines on hover. **Quiet:** soft ink text for a way out (a dialog's Cancel, Leave society). **Danger:** crimson outline; **Danger text** for a destructive action repeated down a list (Revoke access); solid crimson only on a dialog's confirm button. **Subtle:** a white button with a lilac edge and violet text, for a second action beside the one filled button (Mark ready on phones). **On night:** a white button and a glow-edged ghost (`onNight`, `ghostNight`).
 - **Disabled:** neutral wash, neutral border, muted text.
 - **Busy:** keeps its colour and its width; the label reads the busy label ("Saving…", "Opening Stripe…") in the same space, with no spinner. Every variant carries a border, transparent where none shows, so no state changes the button's size.
 
 ### Chips (pills and badges)
-- **Status badge:** 24px, 6px radius, wash + hairline + coloured dot + word, 12px semibold.
+- **Status badge:** 24px, 6px radius, wash + hairline + 14px glyph + word, 12px semibold. The glyph tells families apart without colour: a tick (money moved, admitted), a clock (waiting), a triangle (look at this), a cross (failed, an event called off), a return arrow (money back), a dash (closed), a circle (a normal state), a mark for what is yours, a bag (ready to collect).
 - **Filter pills:** 40px, fully round; active is lilac wash with a brand border and plum text. Counts sit in a small 6px-radius chip.
 
 ### Cards / Containers
@@ -289,7 +310,10 @@ Moderately squared: 6px tags and badges, 9px controls and buttons, 14px cards an
 A fixed night violet square (68px in cards, 56px in lists) with the day in white Space Grotesk over the three-letter month in 12px uppercase glow, leading every event card and list. It anchors "what's happening" before the title, and never stretches with the text beside it. A cancelled event's tile is grey.
 
 ### Notice
-A 14px-radius toned panel: wash, hairline, 20px icon, toned title, ink body, optional action on the right and a close button when dismissible.
+A 14px-radius toned panel: wash, hairline, 20px icon, toned title, ink body, optional action on the right and a close button when dismissible. Anything that stops or changes a purchase is a warning with a real button.
+
+### Ticket face
+A band leads the buyer's ticket: the event and its state, night violet while it admits, otherwise the wash of its state. The QR code follows while it admits; a used ticket shows "Used at the door at {time}" instead.
 
 ## Do's and Don'ts
 
@@ -303,5 +327,5 @@ A 14px-radius toned panel: wash, hairline, 20px icon, toned title, ink body, opt
 ### Don't:
 - **Don't** use raw palette classes (`bg-neutral-900`, `text-purple-600`) or hex values in components.
 - **Don't** use `rounded-md`, `rounded-lg` or `rounded-xl`; use the four named radii.
-- **Don't** add a dark mode, an icon library or a shadow at rest.
+- **Don't** add a dark mode outside the door, an icon library or a shadow at rest.
 - **Don't** use status colours or a society's own colours for buttons, payment or security cues.

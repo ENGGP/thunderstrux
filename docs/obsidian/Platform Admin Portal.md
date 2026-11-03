@@ -40,7 +40,7 @@ Every check below must pass, in this order, on every page:
 2. **A signed-in, live account** (`requireAuthenticatedUser`), else `/login`.
 3. **An active `PlatformOperator` row** on an account that isn't disabled (`livePlatformRole`), else the same 404 a missing page gives.
 4. **Staff MFA settings present** (`MFA_ENCRYPTION_KEY`, `RATE_LIMIT_ENABLED=true`), else the page errors.
-5. **An authenticator, verified in the last 60 minutes** on this login (`MfaGrant.verifiedAt`), else `/mfa?callbackUrl=`. This never reads `MFA_ENFORCEMENT_MODE`: the preview runs `off` for society staff, and the portal still asks.
+5. **An authenticator, verified in the last 60 minutes** on this login (`MfaGrant.verifiedAt`), else `/mfa?callbackUrl=`. This never reads `MFA_ENFORCEMENT_MODE`: the preview runs `off` for society staff, and the portal still asks. The one exception is the dev app: `docker-compose.dev.yml` sets `ADMIN_PORTAL_MFA=off`, and `adminMfaOff` (`lib/platform/mode.ts`) honours it only under `NODE_ENV=development`, so steps 4 and 5 and the change dialog's code are skipped there (the shell shows "No code (dev)"). Built images run `NODE_ENV=production`, so the preview and production always ask.
 6. **The page's permission**, else 404.
 7. **The read limit** `platform_read` (600 pages an hour per operator, fail open so an incident can still be investigated without Redis).
 
@@ -67,7 +67,7 @@ While a page is open, the shell counts the window down; under 10 minutes it offe
 
 ## Running it
 
-- **Dev:** `http://127.0.0.1:3080/admin` (the dev app sets `ADMIN_PORTAL_ENABLED` in `docker-compose.dev.yml`, and it trusts `127.0.0.1:3080`, not `localhost`, for writes such as authenticator set-up).
+- **Dev:** `http://127.0.0.1:3080/admin` (the dev app sets `ADMIN_PORTAL_ENABLED` in `docker-compose.dev.yml`, and it trusts `127.0.0.1:3080`, not `localhost`, for writes such as authenticator set-up). The dev portal asks for no authenticator (`ADMIN_PORTAL_MFA=off`).
 - **Preview or production:** `pnpm ops:admin -- --project <ops-…> --env-file <file>` runs this project's current release image (`current-release.json`) as a one-off `app` container beside its database and Redis, published on `127.0.0.1:3091` only, with `ADMIN_PORTAL_ENABLED=true`, `AUTH_URL`, `NEXTAUTH_URL` and `TRUSTED_APP_ORIGINS` set to `http://localhost:3091`. `NEXT_PUBLIC_APP_URL` stays the public site, so any email links there. It refuses a busy port, waits for readiness, prints the URL, and Ctrl-C stops and removes it. From another machine: `ssh -L 3091:127.0.0.1:3091 <host>` first. Never tunnel port 3091.
 - **Granting on the preview:** run the CLI in the release's ops image against that project's database: `OPS_IMAGE=$(node -p "require('./tmp/operations/ops-preview/current-release.json').opsImageId") docker compose --env-file .env.preview -p ops-preview -f docker-compose.yml -f docker-compose.hardened.yml run --rm migration node scripts/operators.mjs grant <email> --role=admin --note="…"`. Without `OPS_IMAGE`, Compose builds a fresh `thunderstrux-ops:local` from the folder instead.
 - The admin session cookie belongs to the loopback origin, so nothing on the public site can use it.

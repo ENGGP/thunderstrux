@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { authorizeCredentials } from "@/lib/auth/credentials";
 import { adminPathFor } from "@/lib/ops/alerts";
 import { recordPlatformSearch, recordPlatformView, searchDigest } from "@/lib/platform/audit";
-import { landsInAdmin, PlatformUnavailableError, requirePlatformPage } from "@/lib/platform/authority";
+import { landsInAdmin, lockPlatformActor, PlatformUnavailableError, requirePlatformPage } from "@/lib/platform/authority";
 import { adminHostAllowed } from "@/lib/platform/mode";
 import { grantPlatformOperator, PlatformOperatorError, revokePlatformOperator } from "@/lib/platform/operators";
 import { readCounts, readHealth, readNeeds } from "@/lib/platform/overview";
@@ -76,6 +76,21 @@ describe("who reaches the admin portal", () => {
     await operator();
     await prisma.mfaGrant.updateMany({ data: { verifiedAt: new Date(Date.now() - 61 * 60_000) } });
     await expect(requirePlatformPage("platform:read", "/admin/users")).rejects.toThrow("REDIRECT:/mfa?callbackUrl=%2Fadmin%2Fusers");
+  });
+
+  test("ADMIN_PORTAL_MFA=off skips the authenticator only in the dev app, for reads and changes", async () => {
+    const fresh = await createMember();
+    await grantPlatformOperator({ email: fresh.email, role: "admin", note: "Integration test operator", by: "cli:test" });
+    setMockSession({ userId: fresh.id, email: fresh.email, accountRole: "member" });
+    vi.stubEnv("ADMIN_PORTAL_MFA", "off");
+    vi.stubEnv("NODE_ENV", "development");
+    const actor = await requirePlatformPage("platform:monitor", "/admin");
+    expect(actor).toMatchObject({ role: "admin", mfaOff: true });
+    await expect(prisma.$transaction((tx) => lockPlatformActor(tx, actor, "platform:monitor", ""))).resolves.toMatchObject({ role: "admin" });
+    // Any other NODE_ENV (built images are production) ignores the flag.
+    vi.stubEnv("NODE_ENV", "production");
+    await expect(requirePlatformPage("platform:monitor", "/admin")).rejects.toThrow("REDIRECT:/mfa?callbackUrl=%2Fadmin");
+    await expect(prisma.$transaction((tx) => lockPlatformActor(tx, actor, "platform:monitor", ""))).rejects.toThrow("6-digit");
   });
 
   test("support can't open admin-only pages, and missing MFA settings stop the portal", async () => {

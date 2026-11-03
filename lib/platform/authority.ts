@@ -9,7 +9,7 @@ import { mfaGrantDigest } from "@/lib/security/csrf";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { assertStaffMfaMutationConfiguration, consumeStaffMfaCode, MfaConfigurationError, MfaInputError } from "@/lib/security/staff-mfa";
-import { ADMIN_WINDOW_MS, isAdminPortalEnabled } from "./mode";
+import { ADMIN_WINDOW_MS, adminMfaOff, isAdminPortalEnabled } from "./mode";
 import { livePlatformRole } from "./operators";
 
 // Not an operator, a revoked one, a missing permission, or the portal off in
@@ -49,11 +49,16 @@ export type PlatformActor = Awaited<ReturnType<typeof requirePlatformOperator>>;
 // Admin MFA is always on: it never reads MFA_ENFORCEMENT_MODE, which the
 // preview runs "off" for society staff. A change (T55) skips the 60-minute
 // window: its own fresh code verifies, so a change never bounces to /mfa.
+// The one exception is the dev app with ADMIN_PORTAL_MFA=off (adminMfaOff).
 export async function requirePlatformOperator(permission: PlatformPermission, now = new Date(), { freshCode = false } = {}) {
   if (!isAdminPortalEnabled()) throw new PlatformAccessError();
   const user = await requireAuthenticatedUser();
   const role = await livePlatformRole(prisma, user);
   if (!role) throw new PlatformAccessError();
+  if (adminMfaOff()) {
+    if (!hasPlatformPermission(role, permission)) throw new PlatformAccessError();
+    return { user, role, windowEndsAt: now, mfaOff: true };
+  }
   try {
     assertStaffMfaMutationConfiguration();
   } catch (error) {
@@ -71,7 +76,7 @@ export async function requirePlatformOperator(permission: PlatformPermission, no
     throw new PlatformVerificationRequiredError(true);
   }
   if (!hasPlatformPermission(role, permission)) throw new PlatformAccessError();
-  return { user, role, windowEndsAt: windowEndsAt ?? now };
+  return { user, role, windowEndsAt: windowEndsAt ?? now, mfaOff: false };
 }
 
 // T55: an admin API route. Origin and CSRF first on a change, then the same
@@ -96,6 +101,7 @@ export async function lockPlatformActor(tx: Prisma.TransactionClient, actor: Pla
   if (!user || user.disabledAt || user.closedAt || user.authVersion !== actor.user.authVersion) throw new PlatformAccessError();
   const role = await livePlatformRole(tx, user);
   if (!role || !hasPlatformPermission(role, permission)) throw new PlatformAccessError();
+  if (adminMfaOff()) return { user, role };
   const digest = mfaGrantDigest(actor.user.mfaSessionId);
   if (!digest) throw new PlatformAccessError();
   if (!/^\d{6}$/.test(code)) throw new PlatformRefusal("Enter the 6-digit code from your authenticator app.");

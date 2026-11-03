@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { createContext, useContext, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -15,12 +15,19 @@ import type { ActionSpec } from "@/lib/platform/specs";
 // sits under the button that started it, with Undo where there is an opposite.
 // What each dialog says comes from lib/platform/specs.ts.
 
+// The dev app with ADMIN_PORTAL_MFA=off needs no code, so the shell drops step 3.
+const CodeOff = createContext(false);
+export function AdminCodeOff({ children }: { children: ReactNode }) {
+  return <CodeOff value>{children}</CodeOff>;
+}
+
 type Failure = { kind: "refused"; message: string } | { kind: "broken"; at: string };
 
 export function ActionDialog({ env, spec, onClose, onDone }: { env: string; spec: ActionSpec; onClose: () => void; onDone: (reason: string) => void }) {
   const [choice, setChoice] = useState(spec.defaultReason ? "Other" : spec.reasons[0] ?? "Other");
   const [details, setDetails] = useState(spec.defaultReason ?? "");
   const [until, setUntil] = useState("");
+  const codeOff = useContext(CodeOff);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
@@ -32,7 +39,7 @@ export function ActionDialog({ env, spec, onClose, onDone }: { env: string; spec
     event?.preventDefault();
     if (busy) return;
     if (reason.length < 8) return setFailure({ kind: "refused", message: "Give a reason of at least 8 characters. Pick one, or add details." });
-    if (!/^\d{6}$/.test(code)) return setFailure({ kind: "refused", message: "Enter the 6-digit code from your authenticator app." });
+    if (!codeOff && !/^\d{6}$/.test(code)) return setFailure({ kind: "refused", message: "Enter the 6-digit code from your authenticator app." });
     setBusy(true);
     setFailure(null);
     try {
@@ -77,11 +84,11 @@ export function ActionDialog({ env, spec, onClose, onDone }: { env: string; spec
             maxLength={400} onChange={(event) => setDetails(event.target.value)} value={details} />
           {spec.untilField ? <TextInput hint="Leave empty to hold until released." label="Hold until (optional)" onChange={(event) => setUntil(event.target.value)} type="datetime-local" value={until} /> : null}
         </section>
-        <section aria-label="Code" className="grid gap-2">
+        {codeOff ? null : <section aria-label="Code" className="grid gap-2">
           <h3 className="text-xs font-bold uppercase tracking-wider text-ink-muted">3 · Code</h3>
           <TextInput autoComplete="one-time-code" hint="It also renews your 60 minutes." inputMode="numeric" label="Authenticator code" maxLength={6}
             onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} autoFocus pattern="\d{6}" value={code} />
-        </section>
+        </section>}
         {failure?.kind === "broken" ? <BrokenNotice at={failure.at} operation={operation} /> : null}
         {/* Enter in any field submits once the code is filled. */}
         <button className="hidden" type="submit" />

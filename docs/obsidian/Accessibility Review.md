@@ -39,7 +39,7 @@ A new page joins the matching journey list in the spec.
 ## Rules the UI follows
 
 - **Skip link:** every page's `<main id="main" tabIndex={-1}>` is the Skip to content target.
-- **Labels:** each control has a `<label>` holding only its label; hints and errors are tied with `aria-describedby`; an error sets `aria-invalid` (`components/ui/input.tsx`, `components/ui/date-field.tsx`).
+- **Labels:** each control has a `<label>` holding only its label; hints and errors are tied with `aria-describedby`; an error sets `aria-invalid` (`components/ui/input.tsx`, `components/ui/date-field.tsx`, `components/ui/select.tsx`).
 - **Label in name (2.5.3):** a button whose accessible name adds context starts with its visible words and adds the rest as screen-reader text ("Check in" + name, "Mark ready" + " for order ABC123"). Hidden text inside a scrolling table needs a `relative` button, or it escapes the scroll area and widens the page.
 - **Focus:** the ring is an unlayered 2px ink `--ts-focus` outline that no utility removes, with a 2px white `--ts-focus-gap` between it and the control; on night surfaces (`surface-night`) it turns white with a night gap.
 - **Live regions:** results are `Notice`s with `role="status"` or `role="alert"`; nothing permanent on a page is a live region.
@@ -51,6 +51,7 @@ A new page joins the matching journey list in the spec.
 - **Target size:** default controls are 44px (`Button` `md`, link tabs `min-h-11`); compact controls are smaller: `Button size="sm"` is 36px (`h-9`) and filter pills are 40px (`min-h-10`). Both clear WCAG 2.2 AA's 24px minimum. Row checkboxes are 20px boxes inside a 44px label (Pickups).
 - **Motion:** `prefers-reduced-motion` turns transitions and entry animations off (`0s`, [[UI Architecture Rules#Motion]]). The browser campaign runs with `reducedMotion: 'reduce'` (`playwright.config.ts`), so axe never scans a half-faded dialog or a sliding buy bar; check motion itself by hand.
 - **Date picker:** fully keyboard operable ([[UI Architecture Rules#Primitives]]).
+- **Dropdowns:** the house `Select` is the ARIA select-only combobox, keyboard operable with type-ahead ([[UI Architecture Rules#Primitives]]); axe is clean with its list open and closed. No native `<select>` remains.
 - **Link names** are unique on a page (the header owns `Explore events` and `Explore societies`).
 
 ## Still needs a person

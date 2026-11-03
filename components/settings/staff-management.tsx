@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Select, TextInput } from "@/components/ui/input";
+import { TextInput } from "@/components/ui/input";
+import { Select, SelectControl } from "@/components/ui/select";
 import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/ui/notice";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -203,7 +204,7 @@ export function StaffManagement({
             <Select
               hint={roleHints[role]}
               label="Invitation role"
-              onChange={(event) => setRole(event.target.value as StaffRole)}
+              onChange={(value) => setRole(value as StaffRole)}
               value={role}
             >
               {roles.filter(item => canManageOwners || item !== "owner").map((item) => (
@@ -262,13 +263,11 @@ export function StaffManagement({
                   <td className="grid gap-1 md:table-cell md:py-3 md:pr-4">
                     {/* Phones show rows as cards, with no column header above the select. */}
                     <span aria-hidden="true" className="text-xs font-semibold text-ink-soft md:hidden">Role</span>
-                    <select
-                      className="h-9 rounded-control border border-line-strong bg-surface px-2 text-sm text-ink disabled:cursor-not-allowed disabled:border-line disabled:bg-inert disabled:text-ink-soft"
+                    <SelectControl
+                      className="h-9 min-w-32 rounded-control border border-line-strong bg-surface px-2 text-sm text-ink aria-disabled:border-line aria-disabled:bg-inert aria-disabled:text-ink-soft"
                       aria-label={`Role for ${row.user.email}`}
                       disabled={isSubmitting || lastOwner || row.status !== "active" || (!canManageOwners && row.role === "owner")}
-                      onChange={(event) =>
-                        setPending({ row, role: event.target.value as StaffRole })
-                      }
+                      onChange={(value) => setPending({ row, role: value as StaffRole })}
                       value={row.role}
                     >
                       {roles.filter(item => canManageOwners || item !== "owner" || row.role === "owner").map((item) => (
@@ -276,7 +275,7 @@ export function StaffManagement({
                           {roleLabels[item]}
                         </option>
                       ))}
-                    </select>
+                    </SelectControl>
                   </td>
                   <td className="md:py-3 md:pr-4">
                     <StatusBadge

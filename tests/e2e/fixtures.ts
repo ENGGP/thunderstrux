@@ -79,6 +79,12 @@ export async function submitTwice(page: Page, form: Locator, path: string) {
   expect(sent).toBe(1);
 }
 
+// The house Select is an ARIA combobox: open it, then pick an option by its label.
+export async function choose(field: Locator, option: string) {
+  await field.click();
+  await field.page().getByRole('option', { name: option, exact: true }).click();
+}
+
 export async function selectStaffContext(page: Page, organisationId: string) {
   const { token } = await (await page.request.get('/api/security/csrf')).json();
   const response = await page.request.post('/api/me/context', { headers: { Origin: 'http://localhost:3100', 'x-thunderstrux-csrf-token': token }, data: { mode: 'staff', organisationId } });

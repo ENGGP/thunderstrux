@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Select, TextArea, TextInput } from "@/components/ui/input";
+import { TextArea, TextInput } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Notice } from "@/components/ui/notice";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 import { newKey } from "@/lib/client/checkout";
@@ -167,7 +168,7 @@ export function RecordReturn({ orgSlug, orderId, reference, lines }: { orgSlug: 
       <ConfirmDialog busy={busy} confirmLabel="Record return" onCancel={() => setShow(false)} onConfirm={confirm} open={show} title={`Record a return for order ${reference}`}>
         <p>For items someone handed back. This doesn&apos;t refund anything.</p>
         <div className="mt-3 grid gap-3">
-          <Select label="Item" onChange={(event) => setForm({ ...form, lineId: event.target.value })} value={line.id}>
+          <Select label="Item" onChange={(value) => setForm({ ...form, lineId: value })} value={line.id}>
             {open.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.label} ({item.bought} bought, {item.returned} returned)

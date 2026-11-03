@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { SelectControl } from "@/components/ui/select";
 import type { ContextChoices } from "@/lib/auth/context";
 import { getClientErrorMessage } from "@/lib/client/api";
 import { switchContext } from "@/lib/client/context";
@@ -28,14 +29,16 @@ export function ContextSelector({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The choice being switched to; a failed switch goes back to the server's.
+  const [picked, setPicked] = useState<string | null>(null);
   const current = contexts.selectedId ?? "personal";
 
   if (contexts.organisations.length === 0) {
     return null;
   }
 
-  async function select(target: HTMLSelectElement) {
-    const value = target.value;
+  async function select(value: string) {
+    setPicked(value);
     setBusy(true);
     setError(null);
 
@@ -44,7 +47,7 @@ export function ContextSelector({
       router.push("/dashboard");
       router.refresh();
     } catch (failure) {
-      target.value = current;
+      setPicked(null);
       setError(getClientErrorMessage(failure, "Could not switch context."));
     } finally {
       setBusy(false);
@@ -55,16 +58,14 @@ export function ContextSelector({
 
   return (
     <div className={`grid gap-1.5 text-sm ${tone === "dark" ? "text-white" : "text-ink"}`}>
-      <label className={`grid gap-1.5 text-xs font-semibold ${tone === "dark" ? "text-white/75" : "text-ink-soft"}`}>
-        Workspace
-        {/* Keyed so the control follows the server value after a refresh. */}
-        <select
+      <div className={`grid gap-1.5 text-xs font-semibold ${tone === "dark" ? "text-white/75" : "text-ink-soft"}`}>
+        <span aria-hidden="true">Workspace</span>
+        <SelectControl
           aria-label="Workspace"
-          className={`h-11 w-full rounded-control border px-2 text-sm font-medium ${tone === "dark" ? "border-glow bg-night-raised text-white [&>option]:bg-surface [&>option]:text-ink" : "border-line-strong bg-surface text-ink"}`}
-          defaultValue={current}
+          className={`h-11 w-full rounded-control border px-2 text-sm font-medium ${tone === "dark" ? "border-glow bg-night-raised text-white" : "border-line-strong bg-surface text-ink"}`}
           disabled={busy}
-          key={current}
-          onChange={(event) => select(event.target)}
+          onChange={(value) => void select(value)}
+          value={picked ?? current}
         >
           <option value="personal">
             {contexts.accountRole === "member" ? "Personal" : "Choose a society"}
@@ -74,8 +75,8 @@ export function ContextSelector({
               {organisation.name}
             </option>
           ))}
-        </select>
-      </label>
+        </SelectControl>
+      </div>
       {/* The role sits outside the select so the society name isn't cut off in the sidebar. */}
       {currentRole ? <p className={`text-xs ${tone === "dark" ? "text-white/75" : "text-ink-soft"}`}>Your role: {roleLabels[currentRole]}</p> : null}
       {error ? (

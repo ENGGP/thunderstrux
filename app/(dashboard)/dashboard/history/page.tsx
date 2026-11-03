@@ -8,7 +8,7 @@ import { DateField } from "@/components/ui/date-field";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { Icon } from "@/components/ui/icon";
-import { Select } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Notice } from "@/components/ui/notice";
 import { Pager } from "@/components/ui/pager";
 import { Skeleton } from "@/components/ui/skeleton";

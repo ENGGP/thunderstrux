@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { DateField } from "@/components/ui/date-field";
-import { Select } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Icon } from "@/components/ui/icon";
 import { whenOptions, type ExploreErrors, type ExploreFilters } from "@/lib/events/explore-filters";
 
@@ -37,7 +37,7 @@ export function ExploreFilterFields({
         </span>
       </button>
       <div className={`${open ? "grid" : "hidden"} gap-4 md:grid md:grid-cols-2`} id="explore-filters">
-        <Select error={errors.when} label="When" name="when" onChange={(event) => setWhen(event.target.value as typeof when)} value={when}>
+        <Select error={errors.when} label="When" name="when" onChange={(value) => setWhen(value as typeof when)} value={when}>
           {whenOptions.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}

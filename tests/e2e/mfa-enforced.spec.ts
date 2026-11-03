@@ -1,4 +1,4 @@
-import { test, expect, login, prisma, selectStaffContext } from './fixtures';
+import { test, expect, login, prisma, selectStaffContext, choose } from './fixtures';
 import { totpCode } from '@/lib/security/staff-mfa';
 import { decode, encode } from 'next-auth/jwt';
 
@@ -130,8 +130,8 @@ test('committee handover with enforced MFA retires legacy ownership and removes 
     await page.getByRole('button', { name: 'I saved my codes' }).click();
     await expect(page).toHaveURL('http://localhost:3100/dashboard');
     await page.goto('/dashboard/settings/staff');
-    await page.getByLabel('Incoming owner', { exact: true }).selectOption(data.staff.id);
-    await page.getByLabel('Your access after handover', { exact: true }).selectOption('revoked');
+    await choose(page.getByRole('combobox', { name: 'Incoming owner', exact: true }), data.manager.email);
+    await choose(page.getByRole('combobox', { name: 'Your access after handover', exact: true }), 'Revoke my staff access');
     await expect(page.locator('main').getByRole('status')).toContainText(data.manager.email);
     await page.getByLabel('Current password for handover').fill('password123');
     await page.getByLabel('Type HAND OVER OWNERSHIP to confirm').fill('HAND OVER OWNERSHIP');

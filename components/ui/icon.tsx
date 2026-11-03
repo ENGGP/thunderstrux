@@ -24,6 +24,7 @@ const paths = {
   bag: "M5 8h14l-1.2 11a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8zM9 8V6.5a3 3 0 0 1 6 0V8",
   lock: "M7 11h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2zM8 11V8a4 4 0 0 1 8 0v3",
   chevronDown: "m6 9 6 6 6-6",
+  check: "m5 12.5 4.5 4.5L19 7",
   calendarDays: "M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM3 10h18M8 3v4M16 3v4M7 14h2M11 14h2M15 14h2M7 18h2M11 18h2",
   chevronLeft: "m15 6-6 6 6 6",
   chevronRight: "m9 6 6 6-6 6",

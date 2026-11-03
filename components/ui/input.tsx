@@ -2,7 +2,6 @@ import {
   useId,
   type InputHTMLAttributes,
   type ReactNode,
-  type SelectHTMLAttributes,
   type TextareaHTMLAttributes
 } from "react";
 
@@ -16,7 +15,8 @@ export const control =
   "w-full rounded-control border border-line-strong bg-surface px-3 text-base text-ink placeholder:text-ink-muted disabled:cursor-not-allowed disabled:border-line disabled:bg-inert disabled:text-ink-soft aria-invalid:border-danger";
 
 // The <label> holds only the label text so its accessible name stays exact;
-// hint and error are tied to the control through aria-describedby.
+// hint and error are tied to the control through aria-describedby. Its id lets
+// a control that isn't a form element (the house Select) name itself by it.
 export function Field({
   id,
   label,
@@ -33,7 +33,7 @@ export function Field({
 
   return (
     <div className="grid gap-1.5">
-      <label className="text-sm font-semibold text-ink" htmlFor={id}>
+      <label className="text-sm font-semibold text-ink" htmlFor={id} id={`${id}-label`}>
         {label}
       </label>
       {children(describedBy)}
@@ -95,32 +95,6 @@ export function TextArea({
           aria-describedby={describedBy}
           aria-invalid={error ? true : undefined}
           className={`min-h-28 py-2 ${control} ${className}`}
-          id={fieldId}
-          {...props}
-        />
-      )}
-    </Field>
-  );
-}
-
-export function Select({
-  label,
-  hint,
-  error,
-  id,
-  className = "",
-  ...props
-}: FieldProps & SelectHTMLAttributes<HTMLSelectElement>) {
-  const generatedId = useId();
-  const fieldId = id ?? generatedId;
-
-  return (
-    <Field error={error} hint={hint} id={fieldId} label={label}>
-      {(describedBy) => (
-        <select
-          aria-describedby={describedBy}
-          aria-invalid={error ? true : undefined}
-          className={`h-11 ${control} ${className}`}
           id={fieldId}
           {...props}
         />

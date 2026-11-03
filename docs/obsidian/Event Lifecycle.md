@@ -60,6 +60,7 @@ An event has four independent settings ([[Database and Multi Tenancy#Models]]):
 - `createOrganisationEvent` always writes `status = draft`, so a direct API call can't skip publish checks (EVT-003).
 - `salesCloseAt` defaults to `startTime`; `visibility` defaults to `public`; `compensationRefundMode` defaults to `automatic_full` (see Compensation below).
 - Writes the event, its ticket types and `event.created` in one transaction.
+- **Builder end:** a new event's end fills in two hours after its start and follows it, keeping its length, until the organiser picks one; a chosen end moves only once the start passes it. Its calendar starts at the start day (`endAfterStart`, `lib/date-input.ts`).
 
 ### Validation limits (`lib/validators/events.ts`)
 

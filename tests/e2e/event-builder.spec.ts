@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import sharp from "sharp";
-import { test, expect, prisma, login, submitTwice } from "./fixtures";
+import { test, expect, prisma, login, submitTwice, choose } from "./fixtures";
 import { formatDayInput } from "@/lib/date-input";
 import { toZonedInput, zonedCandidates } from "@/lib/zoned-time";
 import { createOrder } from "@/tests/helpers/test-data";
@@ -18,7 +18,10 @@ test("organisers build an event in the society's time zone with a dollar price a
   // Typed into the house date picker, then picked from its calendar by keyboard.
   await when("Starts").getByLabel("Date", { exact: true }).fill(day);
   await when("Starts").getByLabel("Date", { exact: true }).press("Enter");
-  await when("Starts").getByLabel("Time").selectOption("18:00");
+  await choose(when("Starts").getByRole("combobox", { name: "Time", exact: true }), "6:00 pm");
+  // The end follows the start: two hours later, until it is chosen.
+  await expect(when("Ends").getByLabel("Date", { exact: true })).toHaveValue(formatDayInput(day));
+  await expect(when("Ends").getByRole("combobox", { name: "Time", exact: true })).toHaveText("8:00 pm");
   await when("Ends").getByLabel("Date", { exact: true }).fill(day);
   await when("Ends").getByLabel("Date", { exact: true }).press("Enter");
   await when("Ends").getByRole("button", { name: "Choose date from a calendar" }).click();
@@ -28,11 +31,11 @@ test("organisers build an event in the society's time zone with a dollar price a
   await page.keyboard.press("ArrowLeft");
   await page.keyboard.press("Enter");
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await when("Ends").getByLabel("Time").selectOption("21:00");
+  await choose(when("Ends").getByRole("combobox", { name: "Time", exact: true }), "9:00 pm");
   await expect(when("Ends").getByLabel("Date", { exact: true })).toHaveValue(formatDayInput(day));
   // The close time follows the start until it is changed.
   await expect(when("Ticket sales close").getByLabel("Date", { exact: true })).toHaveValue(formatDayInput(day));
-  await expect(when("Ticket sales close").getByLabel("Time")).toHaveValue("18:00");
+  await expect(when("Ticket sales close").getByRole("combobox", { name: "Time", exact: true })).toHaveText("6:00 pm");
   await page.getByLabel("Name", { exact: true }).fill("General");
   await page.getByLabel("Price", { exact: true }).fill("15.5");
   await page.getByLabel("Quantity", { exact: true }).fill("40");
@@ -83,7 +86,7 @@ test("organisers build an event in the society's time zone with a dollar price a
   await expect(page.getByLabel("Image description (optional)")).toHaveValue("Teal banner with the society logo");
   await expect(page.getByLabel("Price", { exact: true })).toHaveValue("15.50");
   await expect(when("Starts").getByLabel("Date", { exact: true })).toHaveValue(formatDayInput(day));
-  await expect(when("Starts").getByLabel("Time")).toHaveValue("18:00");
+  await expect(when("Starts").getByRole("combobox", { name: "Time", exact: true })).toHaveText("6:00 pm");
   await expect(page.getByText("No sales yet")).toBeVisible();
   await expect(page.getByRole("group", { name: "Ticket 1 · General" })).toBeVisible();
 

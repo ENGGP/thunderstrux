@@ -9,11 +9,13 @@ import { Button, buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DateTimeField } from "@/components/ui/date-field";
 import { Icon } from "@/components/ui/icon";
-import { MoneyInput, Select, TextArea, TextInput } from "@/components/ui/input";
+import { MoneyInput, TextArea, TextInput } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Notice } from "@/components/ui/notice";
 import { defaultHoldMinutes, maxHoldMinutes, minHoldMinutes } from "@/lib/checkout-hold";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
 import { useLeaveGuard } from "@/lib/client/leave-guard";
+import { endAfterStart } from "@/lib/date-input";
 import { formatMoney, formatMoneyInput, parseMoneyInput } from "@/lib/format";
 import { isBelowPaidMinimum, paidPriceMinimum } from "@/lib/stripe/fees";
 import { MAX_TICKET_TYPES } from "@/lib/validators/events";
@@ -158,7 +160,9 @@ function initialState(event: EventFormData | undefined, timeZone: string, startD
     choices,
     ticketTypes,
     // A close time equal to the start is the default and moves with it.
-    closeFollowsStart: !event || event.salesCloseAt === event.startTime
+    closeFollowsStart: !event || event.salesCloseAt === event.startTime,
+    // A new event's end is filled in from its start until the organiser picks one.
+    endFollowsStart: !event
   };
 }
 
@@ -449,10 +453,15 @@ export function CreateEventForm({
           hint={hint}
           id={field}
           label={timeLabels[field]}
+          min={field === "endTime" ? form.startTime.slice(0, 10) || undefined : undefined}
           onChange={(next) =>
             field === "salesCloseAt"
               ? change((current) => ({ form: { ...current.form, salesCloseAt: next }, closeFollowsStart: false }))
-              : setField(field, next)
+              : field === "endTime"
+                ? change((current) => ({ form: { ...current.form, endTime: next }, endFollowsStart: false }))
+                : change((current) => ({
+                    form: { ...current.form, startTime: next, endTime: endAfterStart(next, current.form.startTime, current.form.endTime, current.endFollowsStart) }
+                  }))
           }
           value={value}
         />
@@ -584,7 +593,8 @@ export function CreateEventForm({
               <h2 className="text-lg font-semibold text-ink">Schedule</h2>
               <p className="mt-1 text-sm text-ink-soft">Times are in {zoneLabel(timeZone, referenceDate)}, the society&apos;s time zone.</p>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            {/* Side by side from md: narrower, a date field overflows its column and its calendar button covers the time. */}
+            <div className="grid gap-4 md:grid-cols-2">
               {timeInput("startTime")}
               {timeInput("endTime")}
             </div>
@@ -770,7 +780,7 @@ export function CreateEventForm({
               <Select
                 hint="For example, if the event sold out while the buyer was paying. Each new order keeps the policy it was made under."
                 label="When a payment arrives but tickets cannot be issued"
-                onChange={(event) => setField("compensationRefundMode", event.target.value as RefundMode)}
+                onChange={(value) => setField("compensationRefundMode", value as RefundMode)}
                 value={form.compensationRefundMode}
               >
                 <option value="automatic_full">Refund the buyer automatically in full</option>

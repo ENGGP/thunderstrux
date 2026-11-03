@@ -65,3 +65,18 @@ export function monthWeeks(day: string) {
 export function localTodayInBrowser(now = new Date()) {
   return isoDay(now.getFullYear(), now.getMonth() + 1, now.getDate());
 }
+
+// Local wall times written "YYYY-MM-DDTHH:MM", moved by whole minutes.
+const wallMinutes = (time: string) => Date.parse(`${time}:00Z`) / 60_000;
+const addWallMinutes = (time: string, minutes: number) => new Date((wallMinutes(time) + minutes) * 60_000).toISOString().slice(0, 16);
+
+// The end an event gets when its start changes. An end the form filled in
+// (`follows`) moves with the start and keeps its length, like Luma and Google
+// Calendar; an end the organiser chose stays unless it is no longer after the
+// start, when it moves too. With no length to keep, events run two hours, the
+// calendar's 6 to 8 pm default.
+export function endAfterStart(start: string, previousStart: string, end: string, follows: boolean) {
+  if (!start || (!follows && end > start)) return end;
+  const length = previousStart && end > previousStart ? wallMinutes(end) - wallMinutes(previousStart) : 120;
+  return addWallMinutes(start, length);
+}

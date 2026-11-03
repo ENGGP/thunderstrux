@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "*",
+        "files": [
+          "components/admin/omnibox.tsx"
+        ],
+        "createdAt": "2026-11-03T12:34:24.644Z",
+        "reason": "Claude: the 2px bottom border is the keycap look of the / shortcut hint, drawn on approved round H board H3 (.kbd in admin-h.css)"
+      }
+    ]
+  }
+}

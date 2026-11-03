@@ -5,6 +5,8 @@ export const notificationTemplateSchema = z.enum([
   "verify_account", "reset_password", "password_changed", "email_change_requested",
   "email_changed", "account_closed", "staff_invite", "business_notice", "guest_access", "guest_order_link", "event_cancelled",
   "society_enquiry",
+  // A sign-up with an address that already has an account tells the owner, never the form.
+  "signup_existing_account",
   // T55: what Thunderstrux support changed. Account and recovery notices go to each
   // person (security); a restriction is the society's own notice (business).
   "account_signed_out_by_support", "account_disabled", "account_reenabled", "mfa_reset_requested", "mfa_reset_completed",
@@ -39,6 +41,7 @@ const subjects: Record<NotificationTemplate, string> = {
   event_cancelled: "Event cancelled",
   // DEBT-002: "Contact {society}", sent to the society; the subject names the event and sender.
   society_enquiry: "Enquiry",
+  signup_existing_account: "You already have a Thunderstrux account",
   account_signed_out_by_support: "Thunderstrux support signed you out",
   account_disabled: "Your Thunderstrux account is disabled",
   account_reenabled: "Your Thunderstrux account is enabled again",

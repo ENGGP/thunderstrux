@@ -30,10 +30,28 @@ async function rawToken() {
 test("generic normalized signup races create one unverified identity and encrypted intent", async () => {
   const responses = await Promise.all([signup(jsonRequest("http://localhost:3000/api/auth/signup", { ...input, email: " Verify@Example.com " })), signup(jsonRequest("http://localhost:3000/api/auth/signup", input))]);
   for (const response of responses) { expect(response.status).toBe(202); expect(await response.json()).toEqual({ accepted: true }); }
-  expect(await prisma.user.count()).toBe(1); expect(await prisma.authToken.count()).toBe(1); expect(await prisma.notificationOutbox.count()).toBe(1);
+  expect(await prisma.user.count()).toBe(1); expect(await prisma.authToken.count()).toBe(1); expect(await prisma.notificationOutbox.count({ where: { template: "verify_account" } })).toBe(1);
   const user = await prisma.user.findFirstOrThrow(); expect(user.emailVerifiedAt).toBeNull();
   const raw = await rawToken(); expect((await prisma.authToken.findFirstOrThrow()).tokenHash).not.toContain(raw);
   await signupAccount(input); expect(await prisma.authToken.count()).toBe(1);
+});
+test("a taken address answers the same and tells its owner instead, once an hour, never a disabled account", async () => {
+  const owner = await createUser({ email: "taken@example.com" });
+  const response = await signup(jsonRequest("http://localhost:3000/api/auth/signup", { ...input, email: " Taken@Example.com " }));
+  expect(response.status).toBe(202); expect(await response.json()).toEqual({ accepted: true });
+  await signupAccount({ ...input, email: "taken@example.com", password: "another-pass-333" });
+  const notices = await prisma.notificationOutbox.findMany();
+  expect(notices).toHaveLength(1);
+  expect(notices[0]).toMatchObject({ template: "signup_existing_account", userId: owner.id, recipient: "taken@example.com", privacy: "security", authTokenId: null });
+  const sent = decryptNotification(notices[0].encryptedPayload, notices[0].id) as { subject: string; text: string };
+  expect(sent.subject).toBe("You already have a Thunderstrux account");
+  expect(sent.text).toContain("/forgot-password");
+  expect(await prisma.authToken.count()).toBe(0);
+  expect((await prisma.user.findUniqueOrThrow({ where: { id: owner.id } })).password).toBe(owner.password);
+  await prisma.notificationOutbox.deleteMany();
+  await prisma.user.update({ where: { id: owner.id }, data: { disabledAt: new Date() } });
+  await signupAccount({ ...input, email: "taken@example.com" });
+  expect(await prisma.notificationOutbox.count()).toBe(0);
 });
 test("notification configuration failure rolls signup/token back", async () => {
   vi.stubEnv("EMAIL_FROM", ""); await expect(signupAccount(input)).rejects.toThrow();

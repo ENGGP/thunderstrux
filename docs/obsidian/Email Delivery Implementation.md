@@ -92,6 +92,7 @@ One email per ticket order with every `active` ticket. Text and HTML, with each 
 | Template | Sent for |
 | --- | --- |
 | `verify_account` | Signup and resend of email verification |
+| `signup_existing_account` | A sign-up with an address that already has an account: tells the owner to sign in or reset (link to `/forgot-password`), since the form never says the address is taken |
 | `reset_password` | Password reset request (30-minute link) |
 | `password_changed` | Password reset or change notice |
 | `email_change_requested` | Email change: the link to the new address, and a notice to the old one |
@@ -125,6 +126,7 @@ One email per ticket order with every `active` ticket. Text and HTML, with each 
 | Trigger | Key | Template | Test |
 | --- | --- | --- | --- |
 | Signup, verification resend | `auth/{tokenId}` | `verify_account` | `tests/integration/account-verification.test.ts` |
+| Sign-up with a taken address (at most one an hour; never a disabled account) | `signup-existing/{userId}/{hour}` | `signup_existing_account` | `tests/integration/account-verification.test.ts` |
 | Password reset request | `auth/{tokenId}` | `reset_password` | `tests/integration/password-recovery.test.ts` |
 | Password reset or change | `account-security/{eventId}` | `password_changed` | `tests/integration/password-recovery.test.ts` |
 | Email change request | `auth/{tokenId}` (new address), `account-security/{eventId}` (old) | `email_change_requested` | `tests/integration/email-change.test.ts` |

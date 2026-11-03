@@ -66,9 +66,20 @@ export async function signupAccount(input: { email: string; password: string; ac
       await issueVerification(tx, user, input.callbackUrl);
     });
   } catch (error) {
-    if (typeof error === "object" && error !== null && "code" in error && error.code === "P2002") return;
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "P2002") return await noticeExistingAccount(input.email);
     throw error;
   }
+}
+// The form answers the same for a taken address (no enumeration), so the owner hears
+// instead: at most once an hour, and never a disabled or closed account. A reset also
+// verifies the address, so the link serves an account that was never verified too.
+async function noticeExistingAccount(email: string, now = new Date()) {
+  const user = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() }, select: { id: true, email: true, disabledAt: true, closedAt: true } });
+  if (!user || user.disabledAt || user.closedAt) return;
+  await prisma.$transaction(tx => enqueueNotification(tx, {
+    eventKey: `signup-existing/${user.id}/${Math.floor(now.getTime() / 3_600_000)}`, userId: user.id, recipient: user.email, template: "signup_existing_account",
+    payload: { message: "Someone, maybe you, tried to sign up to Thunderstrux with this email. You already have an account, so nothing changed: sign in with your password. Forgot it? Reset it with the link below. If this wasn't you, you can ignore this email.", link: new URL("/forgot-password", appUrl()).toString() }
+  }));
 }
 export async function requestVerification(email: string, callbackUrl?: string) {
   assertIssuanceConfiguration();

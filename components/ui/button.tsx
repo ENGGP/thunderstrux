@@ -1,7 +1,7 @@
 import type { ButtonHTMLAttributes } from "react";
 
 type ButtonStyle = {
-  variant?: "primary" | "secondary" | "tertiary" | "onNight" | "ghostNight" | "quiet" | "danger" | "dangerText" | "dangerSolid";
+  variant?: "primary" | "secondary" | "subtle" | "tertiary" | "onNight" | "ghostNight" | "quiet" | "danger" | "dangerText" | "dangerSolid";
   size?: "sm" | "md" | "lg";
   className?: string;
   // Working on a request: keeps its colour and shows progress, not the neutral "unavailable" look.
@@ -11,10 +11,13 @@ type ButtonStyle = {
 // Every variant carries a border (transparent where none shows), so turning
 // disabled or busy never adds one and the button never changes width.
 const variants = {
-  primary: "border border-transparent bg-brand text-white hover:bg-brand-hover active:bg-night",
+  primary: "border border-transparent bg-brand text-on-brand hover:bg-brand-hover active:bg-night",
   // Lilac means "chosen", so a hovered secondary button takes the inset tone instead.
   secondary:
     "border border-line-strong bg-surface text-brand-ink hover:bg-surface-subtle",
+  // A violet outline for an action repeated down a list or a header on phones, so the screen keeps
+  // one filled violet button. Never the lilac fill: lilac means "you chose this".
+  subtle: "border border-subtle-edge bg-surface text-brand-hover hover:bg-surface-subtle",
   tertiary: "border border-transparent text-brand underline-offset-4 hover:underline",
   // On a night violet surface: the white primary, and a glow-edged ghost beside it.
   onNight: "border border-transparent bg-surface text-night hover:bg-surface-subtle",

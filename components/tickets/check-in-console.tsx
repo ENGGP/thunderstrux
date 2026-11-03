@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { buttonClasses } from "@/components/ui/button";
+import { DoorThemeSwitch } from "@/components/tickets/door-theme";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { formatClock, formatDayMonth, ticketReference } from "@/lib/format";
 import { fetchWithCsrf } from "@/lib/client/api";
@@ -62,13 +63,14 @@ async function conflictReason(response: Response) {
   }
 }
 
-// What the door should do with this ticket, in words, an icon and colour (ORG-06):
-// only a check-in just made is green, and only a second try at a used ticket is
-// amber, so neither can be mistaken for the other; a ticket waiting to come in is neutral.
+// What the door should do with this ticket, in words, an icon and colour (ORG-06,
+// round G): GO is only a check-in just made; STOP (striped) is any ticket that must
+// not come in, a second try at a used one included; HOLD asks a person to decide.
+// A ticket waiting to come in, or checked in earlier, is neutral: never green.
 function verdict(ticket: ConsoleTicket, timeZone: string, outcome: Outcome) {
   const day = (value: Date | string | null) => (value ? formatDayMonth(value, timeZone) : null);
   if (ticket.validity === "refund_review") {
-    return { tone: "warning", label: "Under review", detail: "The payment is disputed. Ask an owner or finance manager before admitting." };
+    return { tone: "hold", label: "Under review", detail: "The payment is disputed. Ask an owner or finance manager before admitting." };
   }
   if (ticket.validity === "void") {
     const on = day(ticket.validityChangedAt);
@@ -79,28 +81,30 @@ function verdict(ticket: ConsoleTicket, timeZone: string, outcome: Outcome) {
         : ticket.validityReason === "dispute_lost"
           ? "The buyer's bank reversed the payment. This ticket is no longer valid."
           : "This ticket is no longer valid.";
-    return { tone: "danger", label: "Don't admit", detail };
+    return { tone: "stop", label: "Don't admit", detail };
   }
   // Active until its refund lands, which can take a while, and check-in refuses it.
-  if (ticket.eventCancelled) return { tone: "danger", label: "Don't admit", detail: "This event is cancelled." };
+  if (ticket.eventCancelled) return { tone: "stop", label: "Don't admit", detail: "This event is cancelled." };
   if (ticket.checkedInAt) {
     const time = formatClock(ticket.checkedInAt, timeZone);
     const by = ticket.checkedInBy ? ` by ${ticket.checkedInBy}` : "";
     // Admitted by this tap, or a second person on one ticket: the door must tell them apart.
-    if (outcome === "checked-in") return { tone: "success", label: "Checked in", detail: "Checked in just now." };
-    if (outcome === "already-used") return { tone: "warning", label: "Already checked in", detail: `At ${time}${by}. Don't admit twice.` };
-    return { tone: "neutral", label: "Checked in", detail: `At ${time}${by}.` };
+    if (outcome === "checked-in") return { tone: "go", label: "Checked in", detail: "Checked in just now." };
+    if (outcome === "already-used") return { tone: "stop", label: "Already checked in", detail: `At ${time}${by}. Don't admit twice.` };
+    return { tone: "earlier", label: "Checked in", detail: `At ${time}${by}.` };
   }
   // Every state has a detail line, so admitting someone never pushes the button down.
   return { tone: "neutral", label: "Not checked in", detail: "Valid ticket. Check the name, then check them in." };
 }
 
-const tones: Record<string, { card: string; label: string; icon: IconName }> = {
-  success: { card: "border-success-border bg-success-bg", label: "text-success", icon: "success" },
-  neutral: { card: "border-line bg-surface", label: "text-ink", icon: "ticket" },
-  warning: { card: "border-warning-border bg-warning-bg", label: "text-warning", icon: "warning" },
-  danger: { card: "border-danger-border bg-danger-bg", label: "text-danger", icon: "error" },
-  unknown: { card: "border-line-strong bg-surface", label: "text-ink-soft", icon: "info" }
+// A decision gets a solid band across the card, read before the name; a ticket
+// waiting to come in, or in already, has a plain heading instead.
+const tones: Record<string, { band?: string; label: string; icon: IconName }> = {
+  go: { band: "bg-go text-go-text", label: "", icon: "success" },
+  stop: { band: "stripes text-stop-text", label: "", icon: "error" },
+  hold: { band: "bg-hold text-hold-text", label: "", icon: "warning" },
+  neutral: { label: "text-ink", icon: "ticket" },
+  earlier: { label: "text-ink", icon: "clock" }
 };
 
 // One ticket at the door. After any answer from the server the card re-reads
@@ -166,7 +170,7 @@ function CheckInCard({ eventId, timeZone, initial, initialOutcome = null, group 
 
   const admits = ticket.validity === "active" && !ticket.eventCancelled;
   const name = ticket.buyerName ?? ticket.buyerEmail ?? "Unknown buyer";
-  const state = unknown ? { tone: "unknown", label: "Status unknown", detail: "We didn't hear back, so we can't say whether that saved." } : verdict(ticket, timeZone, outcome);
+  const state = unknown ? { tone: "hold", label: "Status unknown", detail: "We didn't hear back, so we can't say whether that saved." } : verdict(ticket, timeZone, outcome);
   const tone = tones[state.tone];
   const big = "min-h-14 w-full text-lg md:w-auto md:min-h-11 md:text-ui";
   const detail = refusal ?? state.detail;
@@ -174,14 +178,24 @@ function CheckInCard({ eventId, timeZone, initial, initialOutcome = null, group 
   const contact = [ticket.guest ? "guest" : null, ticket.buyerName ? ticket.buyerEmail : null].filter(Boolean).join(" · ");
 
   return (
-    <li aria-label={`${name}, ${state.label}`} className={`grid gap-3 rounded-card border-2 p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center md:gap-4 ${tone.card}`}>
-      {group ? <div className="md:col-span-3">{group}</div> : null}
-      <div className="grid min-w-0 gap-1">
-        {/* The verdict is the loudest thing on the card, read before the name in a bright room. */}
-        <p className={`flex items-center gap-2 font-display text-2xl font-semibold leading-tight ${tone.label}`}>
-          <Icon name={tone.icon} size={24} />
+    <li aria-label={`${name}, ${state.label}`} className="overflow-hidden rounded-card border border-line bg-surface">
+      {/* The verdict is the loudest thing on the card, read before the name in a bright room:
+          a 72px band on phones, so it reads at arm's length. */}
+      {tone.band ? (
+        <p className={`flex min-h-[72px] items-center gap-3 px-4 font-display text-2xl font-bold leading-tight md:min-h-14 md:text-xl ${tone.band}`}>
+          <Icon name={tone.icon} size={28} />
           {state.label}
         </p>
+      ) : null}
+      <div className="grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center md:gap-4">
+      {group ? <div className="md:col-span-3">{group}</div> : null}
+      <div className="grid min-w-0 gap-1">
+        {tone.band ? null : (
+          <p className={`flex items-center gap-2 font-display text-xl font-semibold leading-tight ${tone.label}`}>
+            <Icon className="text-ink-soft" name={tone.icon} size={22} />
+            {state.label}
+          </p>
+        )}
         <h3 className="text-lg font-semibold leading-snug text-ink [overflow-wrap:anywhere]">{name}</h3>
         <p className="text-sm text-ink">
           {ticket.ticketTypeName} · <span className="font-mono font-bold tracking-[0.06em]" title={ticket.id}>{ticketReference(ticket.id)}</span> · {ticket.issueSequence} of {ticket.orderQuantity}
@@ -189,7 +203,7 @@ function CheckInCard({ eventId, timeZone, initial, initialOutcome = null, group 
         {contact ? <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">{contact}</p> : null}
       </div>
       <div className="grid gap-0.5">
-        {detail ? <p className={`text-ui font-semibold ${refusal || state.tone === "danger" ? "text-danger" : "text-ink"}`} role={refusal ? "alert" : unknown ? "status" : undefined}>{detail}</p> : null}
+        {detail ? <p className={`text-ui font-semibold ${refusal ? "text-danger" : "text-ink"}`} role={refusal ? "alert" : unknown ? "status" : undefined}>{detail}</p> : null}
       </div>
       <div className={admits || unknown ? "flex min-h-14 items-center justify-end md:min-h-11" : undefined}>
         {unknown ? (
@@ -200,7 +214,7 @@ function CheckInCard({ eventId, timeZone, initial, initialOutcome = null, group 
           </span>
         ) : ticket.checkedInAt ? (
           // Small and to the side, away from where Check in was tapped.
-          <button className={buttonClasses({ variant: "tertiary", size: "sm" })} disabled={busy} onClick={() => act("check-out")} type="button">
+          <button className={buttonClasses({ variant: "quiet", size: "sm" })} disabled={busy} onClick={() => act("check-out")} type="button">
             Undo check-in<span className="sr-only"> for {name}</span>
           </button>
         ) : (
@@ -209,6 +223,7 @@ function CheckInCard({ eventId, timeZone, initial, initialOutcome = null, group 
             Check in<span className="sr-only"> {name}</span>
           </button>
         )}
+      </div>
       </div>
     </li>
   );
@@ -321,10 +336,10 @@ function Camera({ onCode }: { onCode: (text: string) => boolean }) {
 
 type ScanOutcome =
   | { ticket: ConsoleTicket; outcome: Outcome }
-  | { tone: "warning" | "danger" | "unknown"; label: string; detail: string; ticketId?: string; again?: boolean };
+  | { tone: "hold" | "stop"; label: string; detail: string; ticketId?: string; again?: boolean };
 
-const notThisEvent = { tone: "danger", label: "Not for this event", detail: "This code isn't a ticket for this event. Don't admit: check the event on their ticket." } as const;
-const noAnswer = { tone: "unknown", label: "Status unknown", detail: "We didn't hear back, so we can't say whether that saved. Reload the ticket before admitting." } as const;
+const notThisEvent = { tone: "stop", label: "Not for this event", detail: "This code isn't a ticket for this event. Don't admit: check the event on their ticket." } as const;
+const noAnswer = { tone: "hold", label: "Status unknown", detail: "We didn't hear back, so we can't say whether that saved. Reload the ticket before admitting." } as const;
 
 // Scanning checks the ticket in straight away, as door apps do, then shows it
 // as the server has it: admitted, already used, refunded, under review, or
@@ -348,7 +363,7 @@ function ScanPanel({ eventId, timeZone }: { eventId: string; timeZone: string })
       return { ...noAnswer, ticketId: text };
     }
     const refused = refusals[response.status];
-    if (refused) return { tone: "warning", label: "Not saved", detail: refused, again: true };
+    if (refused) return { tone: "hold", label: "Not saved", detail: refused, again: true };
     // Another event's ticket, another society's, or no ticket at all: the same 404.
     if (response.status === 404) return notThisEvent;
     const outcome: Outcome = response.ok ? "checked-in" : response.status === 409 && (await conflictReason(response)) === "already_checked_in" ? "already-used" : null;
@@ -389,8 +404,12 @@ function ScanPanel({ eventId, timeZone }: { eventId: string; timeZone: string })
             <CheckInCard eventId={eventId} initial={result.ticket} initialOutcome={result.outcome} key={result.id} timeZone={timeZone} />
           </ul>
         ) : result ? (
-          <div className={`grid max-w-2xl gap-2 rounded-card border-2 p-4 ${tones[result.tone].card}`} key={result.id}>
-            <strong className={`font-display text-[22px] font-semibold leading-tight ${tones[result.tone].label}`}>{result.label}</strong>
+          <div className="grid max-w-2xl overflow-hidden rounded-card border border-line bg-surface" key={result.id}>
+            <strong className={`flex min-h-[72px] items-center gap-3 px-4 font-display text-2xl font-bold leading-tight md:min-h-14 md:text-xl ${tones[result.tone].band}`}>
+              <Icon name={tones[result.tone].icon} size={28} />
+              {result.label}
+            </strong>
+            <div className="grid gap-2 p-4">
             <p className="text-sm font-semibold text-ink">{result.detail}</p>
             {result.ticketId ? (
               <div>
@@ -401,6 +420,7 @@ function ScanPanel({ eventId, timeZone }: { eventId: string; timeZone: string })
                 <button className={buttonClasses({})} onClick={() => { setResult(null); setCamera(camera + 1); }} type="button">Scan again</button>
               </div>
             ) : null}
+            </div>
           </div>
         ) : (
           <p className="text-sm text-ink-soft">Point the camera at a ticket&apos;s QR code. A valid ticket is checked in as soon as it&apos;s read.</p>
@@ -502,6 +522,7 @@ export function CheckInConsole({ eventId, timeZone, initialTickets, footer }: { 
   }
 
   const modes = (
+    <div className="flex flex-wrap items-center justify-between gap-3">
     <div aria-label="Find tickets by" className="flex w-full max-w-md rounded-control border border-line-strong bg-surface p-1" role="group">
       {(["search", "scan"] as const).map((value) => (
         <button
@@ -514,6 +535,8 @@ export function CheckInConsole({ eventId, timeZone, initialTickets, footer }: { 
           {value === "search" ? "Search" : "Scan QR codes"}
         </button>
       ))}
+    </div>
+    <DoorThemeSwitch />
     </div>
   );
   if (mode === "scan") return (
@@ -553,7 +576,7 @@ export function CheckInConsole({ eventId, timeZone, initialTickets, footer }: { 
             const group = order[0].id === ticket.id && waiting.length >= 2 ? (
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
                 <p className="text-ui font-semibold text-ink [overflow-wrap:anywhere]">{name} · {waiting.length} tickets on this order</p>
-                <button className={buttonClasses({ size: "lg", busy: groupBusy === ticket.orderId, className: "min-h-14 w-full text-lg md:min-h-11 md:w-auto md:text-ui" })} disabled={groupBusy !== null} onClick={() => void checkInAll(ticket.orderId, waiting)} type="button">
+                <button className={buttonClasses({ variant: "secondary", size: "lg", busy: groupBusy === ticket.orderId, className: "min-h-14 w-full text-lg md:min-h-11 md:w-auto md:text-ui" })} disabled={groupBusy !== null} onClick={() => void checkInAll(ticket.orderId, waiting)} type="button">
                   Check in all {waiting.length}<span className="sr-only"> for {name}</span>
                 </button>
                 {groupStopped?.orderId === ticket.orderId ? <p className="w-full text-ui font-semibold text-danger" role="alert">{groupStopped.text}</p> : null}

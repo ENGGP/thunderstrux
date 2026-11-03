@@ -24,7 +24,7 @@ export function useActionBelow<T extends Element>() {
 export function PhoneActionBar({ show, summary, children }: { show: boolean; summary: ReactNode; children: ReactNode }) {
   return (
     <div
-      className={`fixed inset-x-0 bottom-0 z-40 flex items-center gap-3 border-t border-line bg-surface px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-float transition-[translate,visibility] duration-240 ease-drawer lg:hidden ${show ? "visible translate-y-0" : "invisible translate-y-full"}`}
+      className={`fixed inset-x-0 bottom-0 z-40 flex items-center gap-3 border-t border-line bg-surface px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-lift transition-[translate,visibility] duration-240 ease-drawer lg:hidden ${show ? "visible translate-y-0" : "invisible translate-y-full"}`}
       inert={!show}
     >
       <p className="grid min-w-0 flex-1">{summary}</p>

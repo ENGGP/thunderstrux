@@ -154,7 +154,8 @@ describe("dashboards (T34)", () => {
     const { organisation } = await createOrganisationAccount();
     for (const [index, title] of ["Real one", "Real two", "Real three"].entries()) {
       const event = await eventAt(organisation.id, title, at((index + 2) * day));
-      await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, userId: member.id, status: "paid", paidAt: at(-day), createdAt: at(-day - index) });
+      const order = await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, userId: member.id, status: "paid", paidAt: at(-day), createdAt: at(-day - index) });
+      if (title === "Real three") await prisma.order.update({ where: { id: order.id }, data: { refundStatus: "refunded" } });
     }
     const lapsed = await eventAt(organisation.id, "Lapsed checkout", at(5 * day));
     for (let index = 0; index < 10; index += 1) await createOrder({ organisationId: organisation.id, eventId: lapsed.id, ticketTypeId: lapsed.ticketTypes[0].id, userId: member.id, status: "expired" });
@@ -163,5 +164,7 @@ describe("dashboards (T34)", () => {
     const html = await page();
     for (const title of ["Real one", "Real two", "Real three", "See all 6"]) expect(html).toContain(title);
     expect(html).not.toContain("Lapsed checkout");
+    // The refunded one is struck through here too, as on Purchases (round G).
+    expect(html.match(/<s class="text-ink-muted">/g)).toHaveLength(1);
   });
 });

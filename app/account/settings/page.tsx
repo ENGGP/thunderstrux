@@ -88,7 +88,7 @@ export default async function AccountSettingsPage() {
             </p>
           </div>
           {account.user.emailVerifiedAt ? (
-            <StatusBadge label="Email verified" status="active" />
+            <StatusBadge label="Email verified" status="ready" />
           ) : (
             <div className="flex flex-wrap items-center gap-3">
               <StatusBadge label="Email not verified" status="pending" />

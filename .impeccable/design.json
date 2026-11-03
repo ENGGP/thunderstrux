@@ -55,9 +55,9 @@
       "name": "Status Badge",
       "kind": "chip",
       "refersTo": "status-badge",
-      "description": "Wash, hairline, dot and word for every status.",
-      "html": "<span class=\"ds-badge\"><span class=\"ds-badge-dot\"></span>Sales open</span>",
-      "css": ".ds-badge { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border: 1px solid #a9dcc8; border-radius: 6px; background: #e6f5ee; color: #0b6b55; font: 600 12px 'DM Sans', system-ui, sans-serif; } .ds-badge-dot { width: 6px; height: 6px; border-radius: 999px; background: #12866a; }"
+      "description": "Wash, hairline, glyph and word for every status; the glyph tells families apart without colour.",
+      "html": "<span class=\"ds-badge\"><svg class=\"ds-badge-glyph\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"m5 12 4.5 4.5L19 7\"/></svg>Sales open</span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border: 1px solid #a9dcc8; border-radius: 6px; background: #e6f5ee; color: #0b6b55; font: 600 12px 'DM Sans', system-ui, sans-serif; } .ds-badge-glyph { width: 14px; height: 14px; fill: none; stroke: #12866a; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }"
     },
     {
       "name": "Date Rail",
@@ -70,7 +70,7 @@
   ],
   "narrative": {
     "northStar": "The Campus Edition",
-    "overview": "A student culture magazine, a polished ticket window and an operations desk sharing one purple-first system. Light-only, flat and hairline-led; motion is small and earned.",
+    "overview": "A student culture magazine, a polished ticket window and an operations desk sharing one purple-first system. Light, flat and hairline-led, with a dark mode only at the door; motion is small and earned.",
     "keyCharacteristics": [
       "Purple carries actions, current state and identity; status colours carry meaning and never decorate.",
       "Two typefaces: Space Grotesk for h1/h2 and display, DM Sans for everything else.",
@@ -92,7 +92,7 @@
     "donts": [
       "Don't use raw palette classes (bg-neutral-900, text-purple-600) or hex values in components.",
       "Don't use rounded-md, rounded-lg or rounded-xl; use the four named radii.",
-      "Don't add a dark mode, an icon library or a shadow at rest.",
+      "Don't add a dark mode outside the door, an icon library or a shadow at rest.",
       "Don't use status colours or a society's own colours for buttons, payment or security cues."
     ]
   }

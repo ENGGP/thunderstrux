@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { AuthSessionProvider } from "@/components/layout/auth-session-provider";
 import Navbar from "@/components/layout/navbar";
 import { VerifyEmailBanner } from "@/components/layout/verify-email-banner";
+import { CurrentTabIntoView } from "@/components/ui/current-tab-into-view";
 import { accountLinkCaptureScript } from "@/lib/auth/account-link-capture";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { verifyBannerCookie } from "@/lib/auth/verify-banner";
@@ -60,6 +61,7 @@ export default async function RootLayout({
             {children}
           </div>
         </AuthSessionProvider>
+        <CurrentTabIntoView />
       </body>
     </html>
   );

@@ -65,13 +65,15 @@ test('signup, duplicate email, incorrect password, logout and protected callback
   expect(identity.emailVerifiedAt).toBeNull();
   // Paid tickets are only offered once the society can take payments (T15a).
   await prisma.organisation.update({ where: { id: data.organisation.id }, data: { stripeAccountId: 'acct_e2e_verify', stripeChargesEnabled: true } });
-  await login(page, email, `/events/${data.event.id}`);
+  // The banner shows where nothing else asks; a page with its own verify prompt (the buy box) hides it.
+  await login(page, email, '/');
   await expect(page.getByText('Verify your email to use purchases and society features.')).toBeVisible();
   // Dismissing hides the reminder across navigation and reloads, and verification is still enforced below.
   await page.getByRole('button', { name: 'Dismiss email verification reminder' }).click();
   await expect(page.getByText('Verify your email to use purchases and society features.')).toHaveCount(0);
   await page.reload();
   await expect(page.getByText('Verify your email to use purchases and society features.')).toHaveCount(0);
+  await page.goto(`/events/${data.event.id}`);
   // The ticket box asks for verification before offering to buy (T15a).
   await expect(page.getByText('Verify your email to get tickets')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Get tickets', exact: true })).toHaveCount(0);

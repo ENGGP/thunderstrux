@@ -33,6 +33,16 @@
   /* A chart's second series, and money going out (drawn hatched). */
   --color-chart-2: var(--ts-chart-2);
   --color-chart-out: var(--ts-chart-out);
+  /* Text on a brand fill (white; dark on the door's dark violet), and the subtle button's edge. */
+  --color-on-brand: var(--ts-on-brand);
+  --color-subtle-edge: var(--ts-subtle-edge);
+  /* The door's verdict bands: GO admits, STOP (striped) refuses, HOLD asks a person. */
+  --color-go: var(--ts-go);
+  --color-go-text: var(--ts-go-text);
+  --color-stop: var(--ts-stop);
+  --color-stop-text: var(--ts-stop-text);
+  --color-hold: var(--ts-hold);
+  --color-hold-text: var(--ts-hold-text);
   /* Status roles: text (words), -bg (wash), -border (hairline), -icon (marks). */
   --color-success: var(--ts-success);
   --color-success-bg: var(--ts-success-bg);
@@ -67,6 +77,8 @@
 
   --shadow-card: 0 4px 18px rgba(36, 20, 59, 0.055);
   --shadow-float: 0 14px 44px rgba(36, 20, 59, 0.12);
+  /* A bar pinned to the bottom edge casts upward, off the content it covers. */
+  --shadow-lift: 0 -8px 24px rgba(36, 20, 59, 0.1);
 
   --container-auth: 440px;
   --container-read: 760px;
@@ -180,6 +192,116 @@
   box-shadow: inset 0 0 0 1px var(--ts-chart-out);
 }
 
+/* The door's STOP band: crimson stripes, so a refusal reads before the words do,
+   without relying on colour, and the stripes hold up in sunlight (1.5:1 apart). */
+@utility stripes {
+  background: repeating-linear-gradient(135deg, var(--ts-stop) 0 12px, var(--ts-stop-stripe) 12px 24px);
+}
+
+/* A page with its own verify prompt (the buy box, the checkouts) carries
+   data-verify-blocker, so the site-wide banner steps aside: one Verify button. */
+body:has([data-verify-blocker]) [data-verify-banner] {
+  display: none;
+}
+
+/* The door in the dark (round G): its own palette, never an inverted light theme.
+   The door page renders data-door-theme="system", so this follows the phone with no
+   script; a remembered Light or Dark overrides it. Only the door page carries it. */
+:root:has([data-door-theme="dark"]) {
+  color-scheme: dark;
+  --ts-paper: #18102a;
+  --ts-surface: #261d3e;
+  --ts-surface-subtle: #1f1733;
+  --ts-night-raised: #30264c;
+  --ts-ink: #f5f4fd;
+  --ts-ink-soft: #b9aecb;
+  --ts-ink-muted: #b9aecb;
+  --ts-border: #3d3259;
+  --ts-input-border: #8a7cab;
+  --ts-brand: #a494f6;
+  --ts-brand-hover: #b7aafa;
+  --ts-brand-ink: #f5f4fd;
+  --ts-brand-tint: #352a5e;
+  --ts-brand-200: #4a3f66;
+  --ts-on-brand: #18102a;
+  --ts-inert: #2b2340;
+  --ts-focus: #f5f4fd;
+  --ts-focus-gap: #18102a;
+  --ts-go: #37d59f;
+  --ts-go-text: #18102a;
+  --ts-stop: #f97770;
+  --ts-stop-stripe: #ffaba6;
+  --ts-stop-text: #18102a;
+  --ts-success: #6fe3b8;
+  --ts-success-bg: #11352c;
+  --ts-success-border: #1f6b55;
+  --ts-success-icon: #6fe3b8;
+  --ts-warning: #f4cc64;
+  --ts-warning-bg: #36290f;
+  --ts-warning-border: #7a5d1c;
+  --ts-warning-icon: #f4cc64;
+  --ts-danger: #ff9d97;
+  --ts-danger-bg: #3d1520;
+  --ts-danger-border: #86303f;
+  --ts-danger-icon: #ff9d97;
+  --ts-info: #d4cce2;
+  --ts-info-bg: #2b2340;
+  --ts-info-border: #4a3f66;
+  --ts-info-icon: #b9aecb;
+  --ts-neutral: #d4cce2;
+  --ts-neutral-bg: #2b2340;
+  --ts-neutral-border: #4a3f66;
+  --ts-neutral-icon: #b9aecb;
+}
+@media (prefers-color-scheme: dark) {
+  :root:has([data-door-theme="system"]) {
+    color-scheme: dark;
+    --ts-paper: #18102a;
+    --ts-surface: #261d3e;
+    --ts-surface-subtle: #1f1733;
+    --ts-night-raised: #30264c;
+    --ts-ink: #f5f4fd;
+    --ts-ink-soft: #b9aecb;
+    --ts-ink-muted: #b9aecb;
+    --ts-border: #3d3259;
+    --ts-input-border: #8a7cab;
+    --ts-brand: #a494f6;
+    --ts-brand-hover: #b7aafa;
+    --ts-brand-ink: #f5f4fd;
+    --ts-brand-tint: #352a5e;
+    --ts-brand-200: #4a3f66;
+    --ts-on-brand: #18102a;
+    --ts-inert: #2b2340;
+    --ts-focus: #f5f4fd;
+    --ts-focus-gap: #18102a;
+    --ts-go: #37d59f;
+    --ts-go-text: #18102a;
+    --ts-stop: #f97770;
+    --ts-stop-stripe: #ffaba6;
+    --ts-stop-text: #18102a;
+    --ts-success: #6fe3b8;
+    --ts-success-bg: #11352c;
+    --ts-success-border: #1f6b55;
+    --ts-success-icon: #6fe3b8;
+    --ts-warning: #f4cc64;
+    --ts-warning-bg: #36290f;
+    --ts-warning-border: #7a5d1c;
+    --ts-warning-icon: #f4cc64;
+    --ts-danger: #ff9d97;
+    --ts-danger-bg: #3d1520;
+    --ts-danger-border: #86303f;
+    --ts-danger-icon: #ff9d97;
+    --ts-info: #d4cce2;
+    --ts-info-bg: #2b2340;
+    --ts-info-border: #4a3f66;
+    --ts-info-icon: #b9aecb;
+    --ts-neutral: #d4cce2;
+    --ts-neutral-bg: #2b2340;
+    --ts-neutral-border: #4a3f66;
+    --ts-neutral-icon: #b9aecb;
+  }
+}
+
 @layer base {
   :root {
     color-scheme: light;
@@ -205,6 +327,16 @@
     --ts-inert: #f0eff2;
     --ts-chart-2: #8b72e8;
     --ts-chart-out: #8a8296;
+    --ts-on-brand: #ffffff;
+    --ts-subtle-edge: #b7a3f4;
+    /* The door's bands: GO 6.46:1 and STOP 8.14:1 with white text, HOLD 11:1 with ink. */
+    --ts-go: #0b6b55;
+    --ts-go-text: #ffffff;
+    --ts-stop: #9e122f;
+    --ts-stop-stripe: #6c0a1f;
+    --ts-stop-text: #ffffff;
+    --ts-hold: #f4cc64;
+    --ts-hold-text: #24143b;
     /* An ink ring with a white gap; surface-night turns it white on night. */
     --ts-focus: #24143b;
     --ts-focus-gap: #ffffff;

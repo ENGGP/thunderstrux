@@ -782,7 +782,7 @@ export function CreateEventForm({
 
         {/* One opaque row at every width: the status line gives way (truncates) before the buttons do.
             Phones show the short words, so it fits whole; screen readers always hear the full phrase. */}
-        <div className="sticky bottom-0 z-10 -mx-4 flex items-center justify-end gap-3 border-t border-line bg-surface px-4 py-3 sm:mx-0 sm:rounded-card sm:border">
+        <div className="sticky bottom-0 z-10 -mx-4 flex items-center justify-end gap-3 border-t border-line bg-surface px-4 py-3 shadow-lift sm:mx-0 sm:rounded-card sm:border">
           <span className="mr-auto w-0 min-w-0 flex-1 truncate text-sm text-ink-soft">
             {notice && notice.tone !== "success" ? (
               <>

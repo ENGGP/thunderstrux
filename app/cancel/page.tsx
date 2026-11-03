@@ -8,6 +8,7 @@ import { AuthShell } from "@/components/layout/auth-shell";
 import { PaymentStatusPoller } from "@/components/purchases/payment-status-poller";
 import { UnpaidOrderActions } from "@/components/purchases/unpaid-order-actions";
 import { buttonClasses } from "@/components/ui/button";
+import { Notice } from "@/components/ui/notice";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { guestCookieName, readGuestSession } from "@/lib/guest/guest-access";
 import { guestCsrfToken } from "@/lib/guest/guest-csrf";
@@ -60,13 +61,13 @@ export default async function CancelPage({ searchParams }: { searchParams: Promi
   if (own && checkout?.state === "waiting") {
     const what = `${own.quantity} ${own.quantity === 1 ? "ticket" : "tickets"}`;
     return (
-      <AuthShell
-        description={`You left Stripe before paying, so nothing was charged. We're holding your ${what} until ${formatTime(checkout.holdEndsAt, own.event.organisation.timeZone)}.`}
-        title="You haven't paid yet"
-      >
-        <p className="text-ink">
-          Time left on your hold: <HoldCountdown endsAt={checkout.holdEndsAt.toISOString()} />
-        </p>
+      <AuthShell title="You haven't paid yet">
+        <Notice tone="warning">
+          You left Stripe before paying, so nothing was charged. We&apos;re holding your {what} until {formatTime(checkout.holdEndsAt, own.event.organisation.timeZone)}.
+          <p className="mt-2 font-normal text-ink">
+            Time left on your hold: <HoldCountdown endsAt={checkout.holdEndsAt.toISOString()} />
+          </p>
+        </Notice>
         <UnpaidOrderActions
           cancelUrl={`/api/purchases/tickets/${own.id}/cancel`}
           guestCsrf={!own.userId && sessionId ? guestCsrfToken(sessionId) : undefined}
@@ -79,10 +80,10 @@ export default async function CancelPage({ searchParams }: { searchParams: Promi
     );
   }
   return (
-    <AuthShell
-      description={own ? "Nothing was charged, and the tickets you were holding are back on sale." : "You left the payment page before paying. You can start again from the event."}
-      title="No payment taken"
-    >
+    <AuthShell title="No payment taken">
+      <Notice icon="dash">
+        {own ? "Nothing was charged, and the tickets you were holding are back on sale." : "You left the payment page before paying. You can start again from the event."}
+      </Notice>
       <div>
         {own ? (
           <Link className={buttonClasses({ variant: "secondary" })} href={`/events/${own.event.id}`}>Back to {own.event.title}</Link>

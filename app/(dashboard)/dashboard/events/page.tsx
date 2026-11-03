@@ -228,7 +228,7 @@ async function EventsResults({
                     <td className="whitespace-nowrap px-3 py-4">{formatDateTime(event.startTime, { timeZone: event.timeZone })}</td>
                     <td className="px-3 py-4">
                       <span className="flex flex-wrap gap-1.5">
-                        <StatusBadge status={event.status} />
+                        {event.cancelledAt ? null : <StatusBadge status={event.status} />}
                         <SaleBadge event={event} />
                       </span>
                     </td>
@@ -256,7 +256,7 @@ async function EventsResults({
                     {event.title}
                   </Link>
                   <span className="flex flex-wrap justify-end gap-1.5">
-                    <StatusBadge status={event.status} />
+                    {event.cancelledAt ? null : <StatusBadge status={event.status} />}
                     <SaleBadge event={event} />
                   </span>
                 </div>

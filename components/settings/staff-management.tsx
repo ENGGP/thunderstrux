@@ -281,7 +281,7 @@ export function StaffManagement({
                   <td className="md:py-3 md:pr-4">
                     <StatusBadge
                       label={row.status === "invited" ? "Invited" : undefined}
-                      status={row.status === "invited" ? "pending" : row.status}
+                      status={row.status === "invited" ? "pending" : row.status === "active" ? "staff-active" : row.status}
                     />
                   </td>
                   <td className="md:py-3">

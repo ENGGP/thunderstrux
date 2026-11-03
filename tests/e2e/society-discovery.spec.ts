@@ -56,7 +56,7 @@ test("anonymous society discovery and verified join/leave show fresh personal st
       }),
     });
   await expect(
-    searchCard.getByRole("button", { name: "Joined", exact: true }),
+    searchCard.getByText("Joined", { exact: true }),
   ).toBeVisible();
   const card = page
     .locator("section")

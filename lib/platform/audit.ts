@@ -15,7 +15,7 @@ export const accessActions = ["platform.viewed", "platform.searched"];
 export const searchDigest = (query: string) =>
   createHmac("sha256", Buffer.from(process.env.MFA_ENCRYPTION_KEY ?? "", "base64")).update(`platform-search:v2:${query.trim().toLowerCase()}`).digest("hex");
 
-export type PlatformTarget = { type: "User" | "Organisation" | "Order" | "CommerceOrder"; id: string; organisationId?: string | null };
+export type PlatformTarget = { type: "User" | "Organisation" | "Order" | "CommerceOrder" | "Recovery"; id: string; organisationId?: string | null };
 
 export async function recordPlatformView(actor: PlatformActor, target: PlatformTarget) {
   await prisma.platformAuditLog.create({ data: {

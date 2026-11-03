@@ -40,7 +40,9 @@ export type RateLimitPolicy =
   | "data_export"
   | "society_enquiry"
   | "ticket_code_check"
-  | "platform_read";
+  | "platform_read"
+  | "platform_write"
+  | "platform_integrity_audit";
 
 type RateLimitPolicyConfig = {
   limit: number;
@@ -118,7 +120,10 @@ export const policies: Record<RateLimitPolicy, RateLimitPolicyConfig> = {
   ticket_code_check: { limit: 600, windowSeconds: 10 * 60, failureMode: "open" },
   // T54: admin pages an operator opens. A brake on reading the platform out page by
   // page; open, so an incident can still be investigated while Redis is down.
-  platform_read: { limit: 600, windowSeconds: 60 * 60, failureMode: "open" }
+  platform_read: { limit: 600, windowSeconds: 60 * 60, failureMode: "open" },
+  // T55: changes an operator makes, wrong codes included; closed, so a guessed code can't be retried freely.
+  platform_write: { limit: 30, windowSeconds: 60 * 60, failureMode: "closed" },
+  platform_integrity_audit: { limit: 5, windowSeconds: 60 * 60, failureMode: "closed" }
 };
 
 const REDIS_CONNECT_TIMEOUT_MS = 1_500;

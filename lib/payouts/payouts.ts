@@ -1,4 +1,4 @@
-import type { SocietyPayoutStatus } from "@prisma/client";
+import type { Prisma, SocietyPayoutStatus } from "@prisma/client";
 import type Stripe from "stripe";
 import { prisma } from "@/lib/db";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
@@ -123,9 +123,15 @@ async function payOut(stripe: Stripe, organisation: { id: string; stripeAccountI
 // Worker: each society that can be paid, at most once an hour. The payouts flag
 // decides, not the state: a failed refresh (ERROR) or paused card payments
 // (RESTRICTED) don't stop money the society is owed.
+// T55: payouts wait while support has restricted a society, or held them with no end or an end still to come.
+export const payoutsAllowedWhere = (now: Date): Prisma.OrganisationWhereInput => ({
+  restrictedAt: null, OR: [{ payoutsHeldAt: null }, { payoutsHeldUntil: { lte: now } }]
+});
+
 export async function processPayoutBatch(limit = 25, now = new Date()) {
   const due = await prisma.organisation.findMany({
-    where: { stripeAccountId: { not: null }, stripePayoutsEnabled: true, OR: [{ payoutCheckedAt: null }, { payoutCheckedAt: { lt: new Date(now.getTime() - checkEveryMs) } }] },
+    // T55: a restricted or held society waits (payoutsAllowedWhere).
+    where: { stripeAccountId: { not: null }, stripePayoutsEnabled: true, AND: [payoutsAllowedWhere(now), { OR: [{ payoutCheckedAt: null }, { payoutCheckedAt: { lt: new Date(now.getTime() - checkEveryMs) } }] }] },
     orderBy: [{ payoutCheckedAt: { sort: "asc", nulls: "first" } }, { id: "asc" }],
     take: Math.max(1, Math.min(limit, 100)),
     select: { id: true, stripeAccountId: true, payoutCheckedAt: true }
@@ -135,7 +141,8 @@ export async function processPayoutBatch(limit = 25, now = new Date()) {
   const results: Array<{ organisationId: string; sent: number; error?: true }> = [];
   for (const organisation of due) {
     // The check time is the claim: a second worker skips a society already taken.
-    const claimed = await prisma.organisation.updateMany({ where: { id: organisation.id, payoutCheckedAt: organisation.payoutCheckedAt }, data: { payoutCheckedAt: now } });
+    // The claim rechecks the hold, so one set since the list was read still stops this payout.
+    const claimed = await prisma.organisation.updateMany({ where: { id: organisation.id, payoutCheckedAt: organisation.payoutCheckedAt, ...payoutsAllowedWhere(now) }, data: { payoutCheckedAt: now } });
     if (claimed.count !== 1) continue;
     try {
       results.push({ organisationId: organisation.id, ...(await payOut(stripe, { id: organisation.id, stripeAccountId: organisation.stripeAccountId as string }, now)) });

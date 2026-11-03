@@ -136,7 +136,7 @@ const dashboardEventSelect = {
   heroAssetId: true,
   cancelledAt: true,
   ticketTypes: { select: { id: true, price: true, quantity: true } },
-  organisation: { select: { stripeAccountId: true, stripeChargesEnabled: true, timeZone: true } },
+  organisation: { select: { stripeAccountId: true, stripeChargesEnabled: true, timeZone: true, restrictedAt: true } },
   _count: { select: { orders: true, tickets: true } }
 } satisfies Prisma.EventSelect;
 
@@ -149,7 +149,7 @@ function toDashboardEvent(
   now = new Date()
 ) {
   const remaining = event.ticketTypes.reduce((total, ticketType) => total + ticketType.quantity, 0);
-  const readiness = eventReadiness(event, { chargesReady: isOrganisationStripeReady(event.organisation), membersOnlyReady, now });
+  const readiness = eventReadiness(event, { chargesReady: isOrganisationStripeReady(event.organisation), membersOnlyReady, restricted: Boolean(event.organisation.restrictedAt), now });
 
   return {
     id: event.id,
@@ -783,7 +783,7 @@ const transitionSelect = {
   visibility: true,
   cancelledAt: true,
   ticketTypes: { select: { id: true, price: true, quantity: true } },
-  organisation: { select: { stripeAccountId: true, stripeChargesEnabled: true } },
+  organisation: { select: { stripeAccountId: true, stripeChargesEnabled: true, restrictedAt: true } },
   _count: { select: { orders: true } }
 } satisfies Prisma.EventSelect;
 
@@ -820,7 +820,8 @@ export async function setOrganisationEventPublication(
     if (targetStatus === "published") {
       const readiness = eventReadiness(event, {
         chargesReady: isOrganisationStripeReady(event.organisation),
-        membersOnlyReady: await membersOnlyReadyFor(organisationId, [event])
+        membersOnlyReady: await membersOnlyReadyFor(organisationId, [event]),
+        restricted: Boolean(event.organisation.restrictedAt)
       });
 
       if (!readiness.publishable) {
@@ -889,6 +890,12 @@ export async function setOrganisationEventSaleState(
     refuseCancelled(event);
     if (event.version !== version) {
       throw new EventLifecycleConflictError();
+    }
+
+    if (saleState === "open" && event.organisation.restrictedAt) {
+      throw new EventLifecycleValidationError("This society is restricted", [
+        { path: ["saleState"], message: "Thunderstrux support has restricted this society, so sales can't reopen. The owners were emailed." }
+      ]);
     }
 
     if (saleState === "open" && !salesOpen({ saleState, salesCloseAt: event.salesCloseAt })) {

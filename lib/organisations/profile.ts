@@ -48,6 +48,11 @@ export const profileSelect = {
 } as const;
 
 // The zone event times are entered and shown in.
+// T55: support's holds, for the society's Payments page.
+export function readSupportHolds(organisationId: string) {
+  return prisma.organisation.findUniqueOrThrow({ where: { id: organisationId }, select: { restrictedAt: true, payoutsHeldAt: true, payoutsHeldUntil: true } });
+}
+
 export async function readTimeZone(organisationId: string) {
   return (await prisma.organisation.findUniqueOrThrow({ where: { id: organisationId }, select: { timeZone: true } })).timeZone;
 }

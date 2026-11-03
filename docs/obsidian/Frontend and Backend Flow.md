@@ -170,7 +170,7 @@ Product rules: [[Memberships and Merchandise]].
 
 ## Admin portal
 
-[[Platform Admin Portal#Pages]] owns these: `/admin`, `/admin/search`, `/admin/users`, `/admin/users/[userId]`, `/admin/societies`, `/admin/societies/[organisationId]`, `/admin/orders`, `/admin/orders/[orderId]`, `/admin/operations`, `/admin/audit`, `/admin/operators`.
+[[Platform Admin Portal#Pages]] owns these: `/admin`, `/admin/search`, `/admin/users`, `/admin/users/[userId]`, `/admin/societies`, `/admin/societies/[organisationId]`, `/admin/orders`, `/admin/orders/[orderId]`, `/admin/operations`, `/admin/audit`, `/admin/operators`, `/admin/recovery/[requestId]`.
 
 ## Legacy slug routes
 

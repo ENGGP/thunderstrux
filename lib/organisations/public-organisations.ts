@@ -19,7 +19,8 @@ export const publicProfileSelect = {
 export const societyEventsShown = 6;
 // Once per request: a society page and its metadata both read it before the page decides its 404.
 export const publicOrganisation = cache(async (slug: string) => {
-  const upcoming = { status: "published" as const, visibility: "public" as const, cancelledAt: null, endTime: { gt: new Date() } };
+  // A restricted society's events leave its page (T55); the page itself stays.
+  const upcoming = { status: "published" as const, visibility: "public" as const, cancelledAt: null, endTime: { gt: new Date() }, organisation: { restrictedAt: null } };
   return prisma.organisation.findUnique({
     where: { slug },
     select: {

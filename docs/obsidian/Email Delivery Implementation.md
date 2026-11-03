@@ -69,7 +69,7 @@ One email per ticket order with every `active` ticket. Text and HTML, with each 
 `NotificationOutbox` carries every other email. `enqueueNotification(tx, …)` runs inside the business transaction; the worker calls the provider after commit.
 
 - **Unique intent:** `(eventKey, recipient, templateVersion)`. A repeat insert does nothing, so each key below is sent at most once per recipient. A key holds only while its row exists ([[#Retention]]).
-- **Privacy:** `business_notice`, `event_cancelled` and `society_enquiry` jobs (`businessTemplates`) are `business` and must name a society; every other template is `security` and must not. Security jobs never show to societies and have no tenant requeue.
+- **Privacy:** `business_notice`, `event_cancelled`, `society_enquiry`, `society_restricted` and `society_unrestricted` jobs (`businessTemplates`) are `business` and must name a society; every other template is `security` and must not. Security jobs never show to societies and have no tenant requeue.
 - **Frozen content:** subject, text, HTML and sender (`EMAIL_FROM`) are rendered once at enqueue and encrypted with AES-256-GCM (`encryptNotification`). The key is `NOTIFICATION_ENCRYPTION_KEY`, 32 bytes in base64; the job id is the authenticated data, and decryption requires the full 16-byte tag. Readiness (`lib/ops/readiness.ts`) and every token-issuing path refuse a missing or invalid key. Hosted services read it through `NOTIFICATION_ENCRYPTION_KEY_FILE`.
 - **Links** (`payload.link`) must be on the configured app origin, `https` (or `http` on localhost), without credentials.
 - **Statuses** (a string with a database check): `pending`, `processing`, `sent`, `failed`, `cancelled`.
@@ -103,6 +103,11 @@ One email per ticket order with every `active` ticket. Text and HTML, with each 
 | `guest_order_link` | Find your purchase, and a guest's merchandise receipt (24-hour link) |
 | `event_cancelled` | A society cancelled an event: one to each ticket holder, with the society's message and what happens to their money (EVT-004) |
 | `society_enquiry` | "Contact {society}" (DEBT-002): a buyer's message to the society, the only template with a `replyTo` (the sender; anything else refuses one), so the society answers by replying. Line breaks kept |
+| `account_signed_out_by_support`, `account_disabled`, `account_reenabled` | Thunderstrux support signed the account out, disabled it or enabled it again (T55), to the account's address. Never the operator's reason |
+| `mfa_reset_requested`, `mfa_reset_completed` | An authenticator reset, to the person and, when they own a society, its other owners and admins; the request names when it can be completed |
+| `ownership_recovery_requested`, `ownership_recovered` | An ownership recovery, to every active staff member, the society's contact address and the new owner |
+| `recovery_cancelled` | A recovery request was cancelled, to everyone the request told (read back from its `platform-recovery/{id}/requested` jobs) |
+| `society_restricted`, `society_unrestricted` | Support restricted a society or lifted it, to its owners (business) |
 
 ## Notification worker
 

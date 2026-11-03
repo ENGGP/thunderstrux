@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AdminShell } from "@/components/admin/admin-shell";
+import { AdminActions } from "@/components/admin/action-dialog";
+import { AdminShell, adminEnvironment } from "@/components/admin/admin-shell";
+import { RecoveryWizard } from "@/components/admin/recovery-wizard";
 import { IdChip } from "@/components/admin/id-chip";
 import { RememberRecord } from "@/components/admin/omnibox";
 import { ActivityList, AdminTime, AttentionStrip, Breadcrumbs, Facts, Panel, RecordHeader, rowLink, tableClass } from "@/components/admin/record";
@@ -10,14 +12,17 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { roleLabels } from "@/lib/audit/history";
 import { recordPlatformView } from "@/lib/platform/audit";
 import { requirePlatformPage } from "@/lib/platform/authority";
+import { hasPlatformPermission } from "@/lib/permissions/platform";
+import { previewRecipients } from "@/lib/platform/recovery";
 import { readUserRecord } from "@/lib/platform/records";
+import { userActionSpecs } from "@/lib/platform/specs";
 
 export const metadata: Metadata = { title: "Admin user" };
 
 const tabs = ["overview", "activity", "raw"] as const;
 
 // T54 (board H4): one person's account, roles, purchases and security, with
-// every view logged. Changes (Actions) arrive in T55.
+// every view logged. T55: the Actions menu and the authenticator reset wizard.
 export default async function AdminUserPage({ params, searchParams }: { params: Promise<{ userId: string }>; searchParams: Promise<{ tab?: string }> }) {
   const { userId } = await params;
   const path = `/admin/users/${encodeURIComponent(userId)}`;
@@ -30,6 +35,19 @@ export default async function AdminUserPage({ params, searchParams }: { params: 
   const tab = tabs.find((name) => name === requested) ?? "overview";
   const name = user.displayName || [user.firstName, user.lastName].filter(Boolean).join(" ") || "No name";
   const activeStaff = user.organisationStaff.filter((row) => row.status === "active").length;
+  const env = adminEnvironment().label;
+  const operator = user.platformOperator?.status === "active";
+  const specs = userActionSpecs({
+    role: actor.role, self: actor.user.id === user.id,
+    user: { id: user.id, name, email: user.email, verified: Boolean(user.emailVerifiedAt), disabled: Boolean(user.disabledAt), closed: Boolean(user.closedAt), operator },
+    staff: user.organisationStaff.filter((row) => row.status === "active").map((row) => ({
+      society: row.organisation.name, role: row.role, soleOwner: row.role === "owner" && row.organisation.staff.every((owner) => owner.userId === user.id)
+    }))
+  });
+  const canRecover = hasPlatformPermission(actor.role, "platform:recovery");
+  const resetBlocked = actor.user.id === user.id ? "This is your own account" : operator ? "Operator authenticators are reset on the host"
+    : user.closedAt || user.disabledAt || !user.emailVerifiedAt ? "Needs a verified, enabled account" : !user.mfa?.enabledAt ? "No authenticator set up"
+    : record.recoveries.some((request) => request.kind === "mfa_reset") ? "A reset is already open" : undefined;
   return (
     <AdminShell actor={actor} current="users">
       <RememberRecord href={path} kind="User" label={user.firstName || user.displayName ? name : `User …${user.id.slice(-6)}`} />
@@ -43,6 +61,11 @@ export default async function AdminUserPage({ params, searchParams }: { params: 
           {user.platformOperator?.status === "active" ? <StatusBadge label={`Operator · ${user.platformOperator.role}`} status="upcoming" /> : null}
         </>}
         facts={[user.email, user.accountRole === "organisation" ? "Society login" : "Member account", <>Signed up <AdminTime key="c" value={user.createdAt} /></>, <>Last sign-in <AdminTime key="s" value={user.lastSignInAt} /></>]}
+        actions={<>
+          {canRecover ? <RecoveryWizard disabledReason={resetBlocked} env={env} kind="mfa_reset" label="Reset authenticator…" recipients={resetBlocked ? [] : await previewRecipients("mfa_reset", user.id)}
+            target={{ id: user.id, name }} title={`Reset ${name}'s authenticator`} /> : null}
+          <AdminActions env={env} specs={specs} />
+        </>}
         ids={<IdChip label="user id" value={user.id} />}
         title={name}
         type="User"

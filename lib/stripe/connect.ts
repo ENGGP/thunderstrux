@@ -79,6 +79,9 @@ export class StripeDisconnectBlockedError extends Error {
   }
 }
 
+// T55: a restricted society can't change where its money goes until support lifts it.
+const societyRestricted = "Thunderstrux support has restricted this society, so its Stripe account can't be changed or opened. The owners were emailed.";
+
 export class StripeDisconnectUnavailableError extends Error {
   constructor() {
     super("Stripe couldn't be reached to disconnect this account. Nothing was changed. Try again later.");
@@ -587,7 +590,8 @@ export async function disconnectAccount(
   // PAY-005: before unlinking, Stripe takes payouts back, so the money still
   // held for events isn't left waiting. A disconnect then refused under the lock
   // below is put back on manual payouts by the payouts worker's next check.
-  const linked = await prisma.organisation.findUnique({ where: { id: orgId }, select: { stripeAccountId: true } });
+  const linked = await prisma.organisation.findUnique({ where: { id: orgId }, select: { stripeAccountId: true, restrictedAt: true } });
+  if (linked?.restrictedAt) throw new StripeDisconnectBlockedError(0, societyRestricted);
   if (linked?.stripeAccountId) {
     const open = await countOpenObligations(prisma, orgId, linked.stripeAccountId);
     if (open > 0) throw new StripeDisconnectBlockedError(open);
@@ -615,10 +619,11 @@ export async function disconnectAccount(
 
   await prisma.$transaction(async (tx) => {
     // Locked so a concurrent connect or disconnect sees one outcome.
-    const [organisation] = await tx.$queryRaw<Array<{ id: string; stripeAccountId: string | null }>>`
-      SELECT "id", "stripeAccountId" FROM "Organisation" WHERE "id" = ${orgId} FOR UPDATE
+    const [organisation] = await tx.$queryRaw<Array<{ id: string; stripeAccountId: string | null; restrictedAt: Date | null }>>`
+      SELECT "id", "stripeAccountId", "restrictedAt" FROM "Organisation" WHERE "id" = ${orgId} FOR UPDATE
     `;
     if (!organisation) throw new OrganisationStripeConnectNotFoundError();
+    if (organisation.restrictedAt) throw new StripeDisconnectBlockedError(0, societyRestricted);
 
     // No account (for example PLATFORM_NOT_READY): only the local state is reset.
     if (organisation.stripeAccountId) {
@@ -727,8 +732,11 @@ export async function continueOrganisationStripeOnboarding(orgId: string, { acto
 export async function createOrganisationDashboardLink(orgId: string, { actor, mfaCode }: FreshCode) {
   await requireFreshStaffMfa(actor, mfaCode, "Enter your authenticator code to open the Stripe dashboard");
   const actorUserId = actor.id;
-  const organisation = await prisma.organisation.findUnique({ where: { id: orgId }, select: { stripeAccountId: true, stripeDetailsSubmitted: true } });
+  const organisation = await prisma.organisation.findUnique({ where: { id: orgId }, select: { stripeAccountId: true, stripeDetailsSubmitted: true, restrictedAt: true } });
   if (!organisation) throw new OrganisationStripeConnectNotFoundError();
+  if (organisation.restrictedAt) {
+    throw new OrganisationStripeConnectValidationError(societyRestricted, [{ path: ["organisationId"], message: societyRestricted }]);
+  }
   if (!organisation.stripeAccountId || !organisation.stripeDetailsSubmitted) {
     throw new OrganisationStripeConnectValidationError("Stripe setup is not finished", [
       { path: ["organisationId"], message: "Finish Stripe setup before opening the Stripe dashboard" }

@@ -56,7 +56,9 @@ export type OperationalAlertName =
   // T54: an operator verified for the admin portal (a sign-in you didn't make shows at
   // once), and an operator granted, changed or revoked.
   | "platform_operator_verified"
-  | "platform_operator_changed";
+  | "platform_operator_changed"
+  // T55: every change an operator makes in the portal.
+  | "platform_admin_action";
 
 export type OperationalAlertPayload = {
   orderId: string;

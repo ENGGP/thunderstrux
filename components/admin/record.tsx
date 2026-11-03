@@ -45,7 +45,8 @@ export function AttentionStrip({ items }: { items: Attention[] }) {
   return (
     <div className="grid gap-2">
       {[...items].sort((a, b) => order[a.tone] - order[b.tone]).map((item) => (
-        <Notice key={item.title} title={item.title} tone={item.tone}>{item.body}</Notice>
+        <Notice action={item.href ? <Link className="whitespace-nowrap text-sm font-semibold underline underline-offset-4" href={item.href}>{item.link}</Link> : undefined}
+          key={item.title} title={item.title} tone={item.tone}>{item.body}</Notice>
       ))}
     </div>
   );

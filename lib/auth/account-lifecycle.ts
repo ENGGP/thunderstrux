@@ -50,6 +50,10 @@ async function issueAccountToken(tx: Prisma.TransactionClient, user: User, purpo
 export function issueVerification(tx: Prisma.TransactionClient, user: User, callbackUrl?: string, now = new Date()) {
   return issueAccountToken(tx, user, "verify_account", callbackUrl, now);
 }
+// T55: support sends the same reset link the forgot-password page does.
+export function issuePasswordReset(tx: Prisma.TransactionClient, user: User, now = new Date()) {
+  return issueAccountToken(tx, user, "reset_password", undefined, now);
+}
 export async function signupAccount(input: { email: string; password: string; accountRole: "member" | "organisation"; firstName?: string; lastName?: string; callbackUrl?: string }) {
   assertIssuanceConfiguration();
   // Perform the expensive hash for existing addresses too; never overwrite them.

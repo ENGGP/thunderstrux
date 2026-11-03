@@ -17,7 +17,8 @@ export const historyCategories = {
   checkins: "Check-ins",
   staff: "Staff and security",
   payments: "Payments setup",
-  profile: "Profile and images"
+  profile: "Profile and images",
+  support: "Thunderstrux support"
 } as const;
 export type HistoryCategory = keyof typeof historyCategories;
 
@@ -29,7 +30,9 @@ const prefixes: Record<HistoryCategory, string[]> = {
   checkins: ["ticket.checked_"],
   staff: ["staff.", "staff_mfa."],
   payments: ["stripe_connect."],
-  profile: ["organisation.", "asset."]
+  profile: ["organisation.", "asset."],
+  // T55: what Thunderstrux support changed in the society, never who in support did it.
+  support: ["platform."]
 };
 // Automatic steps Thunderstrux takes; any other row without a person came from Stripe.
 // Outcomes Stripe reports (refunds settling, disputes closing) stay Stripe's even when a worker reads them.
@@ -56,7 +59,7 @@ function filterWhere(organisationId: string, filters: HistoryFilters, timeZone: 
   if (filters.category) and.push({ OR: prefixes[filters.category].map((prefix) => ({ action: { startsWith: prefix } })) });
   else and.push({ NOT: { action: { startsWith: prefixes.checkins[0] } } });
   if (filters.who === "thunderstrux") and.push({ actorUserId: null, action: { in: automaticActions } });
-  else if (filters.who === "stripe") and.push({ actorUserId: null, action: { notIn: automaticActions } });
+  else if (filters.who === "stripe") and.push({ actorUserId: null, action: { notIn: automaticActions }, NOT: { action: { startsWith: "platform." } } });
   else if (filters.who) and.push({ actorUserId: filters.who });
   if (filters.from) and.push({ createdAt: { gte: startOfZonedDay(filters.from, timeZone) } });
   if (filters.to) and.push({ createdAt: { lt: startOfZonedDay(nextDay(filters.to), timeZone) } });
@@ -188,7 +191,8 @@ export function describe(row: Row, targets: Targets, timeZone: string): HistoryE
 
   // Who.
   let actor: HistoryEntry["actor"];
-  if (row.actorUserId) {
+  if (row.action.startsWith("platform.")) actor = { kind: "thunderstrux", name: "Thunderstrux support", role: null, initials: "TS" };
+  else if (row.actorUserId) {
     const name = personName(row.actor);
     actor = { kind: name === "A former staff member" ? "former" : "person", name, role: row.actorRole ? roleLabels[row.actorRole] ?? null : null, initials: initialsOf(name) };
   } else if (automaticActions.includes(row.action)) actor = { kind: "thunderstrux", name: "Thunderstrux", role: null, initials: "T" };
@@ -402,9 +406,33 @@ export function describe(row: Row, targets: Targets, timeZone: string): HistoryE
   }
   else if (a === "asset.deleted") sentence = [`removed ${assetKinds[text(m.kind) ?? ""] ?? "an image"}`];
   else if (a === "asset.orphan_removed") sentence = ["removed an unused image"];
+  else if (a.startsWith("platform.")) ({ sentence, facts } = supportSentence(a, m, when));
   else sentence = [`recorded “${a.replace(/[._]/g, " ")}”`];
 
   return { id: row.id, at: row.createdAt, category: categoryOf(a), actor, sentence, facts, detailUnavailable };
+}
+
+// T55: support's changes. The person is named from the row (support has no staff page to link to).
+function supportSentence(action: string, m: Record<string, unknown>, when: (iso: unknown) => string): { sentence: Part[]; facts: Fact[] } {
+  const who = text(m.name) ?? "a staff member";
+  const role = text(m.role) ? roleLabels[text(m.role) as string] ?? text(m.role) : null;
+  const sentences: Record<string, Part[]> = {
+    "platform.member_disabled": [`disabled ${who}'s account, so their ${role ? `${role} ` : ""}access is paused`],
+    "platform.member_reenabled": [`enabled ${who}'s account again`],
+    "platform.society_restricted": ["restricted the society: new sales, publishing, Stripe changes and payouts are paused"],
+    "platform.society_unrestricted": ["lifted the society's restriction"],
+    "platform.payouts_held": ["held the society's payouts"],
+    "platform.payouts_released": ["released the society's payouts"],
+    "platform.ownership_recovery_requested": [`was asked to make ${who} an owner`],
+    "platform.ownership_recovered": [`made ${who} an owner`],
+    "platform.ownership_recovery_cancelled": [`cancelled the request to make ${who} an owner`]
+  };
+  const facts: Fact[] = [
+    ...(text(m.until) ? [{ label: "Until", value: when(m.until) }] : []),
+    ...(text(m.executeAfter) ? [{ label: "Can happen from", value: when(m.executeAfter) }] : []),
+    ...(text(m.payoutsHeldUntil) ? [{ label: "Payouts wait until", value: when(m.payoutsHeldUntil) }] : [])
+  ];
+  return { sentence: sentences[action] ?? [`recorded “${action.replace(/[._]/g, " ")}”`], facts };
 }
 
 function eventChangeFact(change: Record<string, unknown>, when: (iso: unknown) => string): Fact[] {

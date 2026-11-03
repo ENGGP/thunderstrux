@@ -1,13 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AdminShell } from "@/components/admin/admin-shell";
+import { AdminActions } from "@/components/admin/action-dialog";
+import { AdminShell, adminEnvironment } from "@/components/admin/admin-shell";
+import { RecoveryWizard } from "@/components/admin/recovery-wizard";
 import { IdChip } from "@/components/admin/id-chip";
 import { RememberRecord } from "@/components/admin/omnibox";
 import { ActivityList, AdminTime, AttentionStrip, Breadcrumbs, Facts, Panel, RecordHeader, rowLink, tableClass } from "@/components/admin/record";
 import { LinkTabs } from "@/components/ui/link-tabs";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { formatMoney } from "@/lib/format";
+import { formatDateTime, formatMoney } from "@/lib/format";
+import { hasPlatformPermission } from "@/lib/permissions/platform";
+import { societyActionSpecs } from "@/lib/platform/specs";
 import { roleLabels } from "@/lib/audit/history";
 import { recordPlatformView } from "@/lib/platform/audit";
 import { requirePlatformPage } from "@/lib/platform/authority";
@@ -18,7 +22,8 @@ export const metadata: Metadata = { title: "Admin society" };
 const tabs = ["overview", "activity"] as const;
 const stripeAccountLink = (account: string) => `https://dashboard.stripe.com/connect/accounts/${encodeURIComponent(account)}`;
 
-// T54 (board H5): one society's staff, payments, events and History.
+// T54 (board H5): one society's staff, payments, events and History. T55:
+// restrict, hold payouts and recover ownership.
 export default async function AdminSocietyPage({ params, searchParams }: { params: Promise<{ organisationId: string }>; searchParams: Promise<{ tab?: string }> }) {
   const { organisationId } = await params;
   const path = `/admin/societies/${encodeURIComponent(organisationId)}`;
@@ -32,13 +37,32 @@ export default async function AdminSocietyPage({ params, searchParams }: { param
   const owners = society.staff.filter((row) => row.role === "owner" && row.status === "active").length;
   const activeStaff = society.staff.filter((row) => row.status === "active").length;
   const zone = society.timeZone;
+  const env = adminEnvironment().label;
+  const held = Boolean(society.payoutsHeldAt && (!society.payoutsHeldUntil || society.payoutsHeldUntil > new Date()));
+  const liveOwners = society.staff.filter((row) => row.role === "owner" && row.status === "active" && !row.user.disabledAt);
+  const specs = societyActionSpecs({
+    role: actor.role, owners: liveOwners.map((row) => row.user.email),
+    society: { id: society.id, name: society.name, restricted: Boolean(society.restrictedAt), held, heldUntil: society.payoutsHeldUntil, timeZone: zone }
+  });
+  const lastSignIns = liveOwners.map((row) => `${personLabel(row.user)} last signed in ${row.user.lastSignInAt ? formatDateTime(row.user.lastSignInAt, { timeZone: zone }) : "never"}`);
   return (
     <AdminShell actor={actor} current="societies">
       <RememberRecord href={path} kind="Society" label={society.name} />
       <Breadcrumbs items={[{ label: "Societies", href: "/admin/societies" }, { label: society.name }]} />
       <RecordHeader
-        actions={society.stripeAccountId ? <a className="inline-flex min-h-[38px] items-center gap-2 rounded-[8px] border border-line-strong bg-surface px-3.5 font-semibold" href={stripeAccountLink(society.stripeAccountId)} rel="noreferrer" target="_blank">Open in Stripe</a> : null}
-        badges={society.stripeChargesEnabled && society.stripePayoutsEnabled ? <StatusBadge label="Stripe ready" status="ready" /> : <StatusBadge label="Stripe not set up" status="expired" />}
+        actions={<>
+          {society.stripeAccountId ? <a className="inline-flex h-9 items-center gap-2 rounded-[8px] border border-line-strong bg-surface px-3 text-sm font-semibold" href={stripeAccountLink(society.stripeAccountId)} rel="noreferrer" target="_blank">Open in Stripe</a> : null}
+          {hasPlatformPermission(actor.role, "platform:recovery") ? (
+            <RecoveryWizard disabledReason={record.recoveries.some((request) => request.kind === "ownership") ? "A recovery is already open" : undefined} env={env} kind="ownership" label="Recover ownership…"
+              organisationId={society.id} ownersNote={lastSignIns.length ? `${lastSignIns.join("; ")}. The trail keeps these dates with the request.` : "The society has no live owner."} title={`Recover ownership of ${society.name}`} />
+          ) : null}
+          <AdminActions env={env} specs={specs} />
+        </>}
+        badges={<>
+          {society.stripeChargesEnabled && society.stripePayoutsEnabled ? <StatusBadge label="Stripe ready" status="ready" /> : <StatusBadge label="Stripe not set up" status="expired" />}
+          {society.restrictedAt ? <StatusBadge label="Restricted" status="failed" /> : null}
+          {held ? <StatusBadge label="Payouts held" status="on-hold" /> : null}
+        </>}
         facts={[`${zone.split("/").pop()?.replace(/_/g, " ")} time`, <>Created <AdminTime key="c" value={society.createdAt} timeZone={zone} /></>, `${owners} ${owners === 1 ? "owner" : "owners"}, ${activeStaff} staff`, society.supportEmail || "No contact email"]}
         ids={<><IdChip label="society id" value={society.id} /><IdChip label="society link name" value={society.slug} /></>}
         title={society.name}

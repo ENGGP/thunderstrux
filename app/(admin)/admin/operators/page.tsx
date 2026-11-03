@@ -1,17 +1,23 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AdminShell } from "@/components/admin/admin-shell";
+import { AdminActions } from "@/components/admin/action-dialog";
+import { AdminShell, adminEnvironment } from "@/components/admin/admin-shell";
 import { AdminTime, Panel, rowLink, tableClass } from "@/components/admin/record";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requirePlatformPage } from "@/lib/platform/authority";
 import { listPlatformOperators } from "@/lib/platform/operators";
+import { personLabel } from "@/lib/platform/records";
+import { revokeSpec } from "@/lib/platform/specs";
 
 export const metadata: Metadata = { title: "Admin operators" };
 
-// T54: who can use this portal. Granting is CLI only (Q7); revoking from here arrives with T55.
+// T54: who can use this portal. Granting is CLI only (Q7); T55 revokes from
+// here, never yourself and never the last active admin.
 export default async function AdminOperatorsPage() {
   const actor = await requirePlatformPage("platform:operators", "/admin/operators");
   const operators = await listPlatformOperators();
+  const env = adminEnvironment().label;
+  const admins = operators.filter((row) => row.status === "active" && row.role === "admin").length;
   return (
     <AdminShell actor={actor} current="operators">
       <div className="flex flex-col gap-1">
@@ -23,7 +29,7 @@ export default async function AdminOperatorsPage() {
       <Panel title={`Operators · ${operators.length}`}>
         <div className="overflow-x-auto">
           <table className={tableClass}>
-            <thead><tr><th scope="col">Account</th><th scope="col">Role</th><th scope="col">Status</th><th scope="col">Authenticator</th><th scope="col">Last sign-in</th><th scope="col">Granted</th><th scope="col">By</th></tr></thead>
+            <thead><tr><th scope="col">Account</th><th scope="col">Role</th><th scope="col">Status</th><th scope="col">Authenticator</th><th scope="col">Last sign-in</th><th scope="col">Granted</th><th scope="col">By</th><th scope="col"><span className="sr-only">Action</span></th></tr></thead>
             <tbody>
               {operators.map((row) => (
                 <tr key={row.id}>
@@ -34,6 +40,11 @@ export default async function AdminOperatorsPage() {
                   <td><AdminTime value={row.user.lastSignInAt} /></td>
                   <td><AdminTime value={row.grantedAt} /></td>
                   <td className="font-mono text-[12.5px]">{row.grantedBy}</td>
+                  <td>{(() => {
+                    const spec = revokeSpec({ role: actor.role, self: row.user.id === actor.user.id, lastAdmin: row.role === "admin" && admins <= 1,
+                      operator: { id: row.user.id, name: personLabel(row.user), email: row.user.email, role: row.role, active: row.status === "active" } });
+                    return spec && row.status === "active" ? <AdminActions env={env} specs={[spec]} /> : null;
+                  })()}</td>
                 </tr>
               ))}
             </tbody>

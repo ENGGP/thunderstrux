@@ -251,28 +251,36 @@ export async function verifyStaffMfa(userId: string, code: string, sessionDigest
     throw new MfaInputError("Invalid MFA or recovery code");
   }
   await requireStaffEligibility(userId, true);
-  const mfa = await prisma.userMfa.findUnique({ where: { userId } });
+  const { operatorRole, recovery } = await prisma.$transaction((tx) => consumeStaffMfaCode(tx, userId, code, sessionDigest, now));
+  if (operatorRole) emitOperationalAlert("platform_operator_verified", { userId, role: operatorRole, recoveryCode: recovery });
+}
+
+// One code, used once, inside the caller's transaction: verifyStaffMfa, and every
+// admin portal change (T55), whose code also renews the 60-minute window.
+export async function consumeStaffMfaCode(tx: Prisma.TransactionClient, userId: string, code: string, sessionDigest: string, now = new Date()) {
+  const recoveryCode = code.toUpperCase().replace(/-/g, "");
+  await lockMfaAccount(tx, userId, true);
+  const mfa = await tx.userMfa.findUnique({ where: { userId } });
   if (!mfa?.enabledAt || !mfa.encryptedSecret) throw new MfaRequiredError("Staff MFA enrollment required");
-  const step = acceptedStep(decrypt(mfa.encryptedSecret), code, now, mfa.lastAcceptedStep);
+  const secret = decrypt(mfa.encryptedSecret);
+  const step = acceptedStep(secret, code, now, mfa.lastAcceptedStep);
   const codeHash = /^\d{6}$/.test(code) ? null : recoveryHash(userId, recoveryCode);
-  const operatorRole = await prisma.$transaction(async (tx) => {
-    await lockMfaAccount(tx, userId, true);
-    if (step !== null) {
-      const changed = await tx.userMfa.updateMany({ where: { userId,
-        OR: [{ lastAcceptedStep: null }, { lastAcceptedStep: { lt: BigInt(step) } }] },
-        data: { lastAcceptedStep: BigInt(step) } });
-      if (changed.count !== 1) throw new MfaInputError("Authenticator code was already used");
-    } else {
-      if (!codeHash) throw new MfaInputError("Invalid MFA or recovery code");
-      const deleted = await tx.mfaRecoveryCode.deleteMany({ where: { userId, codeHash } });
-      if (deleted.count !== 1) throw new MfaInputError("Invalid MFA or recovery code");
-    }
-    await tx.mfaGrant.upsert({ where: { sessionDigest },
-      create: { sessionDigest, userId, verifiedAt: now, expiresAt: new Date(now.getTime() + grantLifetimeMs) },
-      update: { userId, verifiedAt: now, expiresAt: new Date(now.getTime() + grantLifetimeMs) } });
-    return auditStaffMfa(tx, userId, step === null ? "staff_mfa.recovery_used" : "staff_mfa.verified");
-  });
-  if (operatorRole) emitOperationalAlert("platform_operator_verified", { userId, role: operatorRole, recoveryCode: step === null });
+  // Read under the lock, so a replay says so rather than looking like a typo.
+  if (step === null && !codeHash && acceptedStep(secret, code, now, null) !== null) throw new MfaInputError("Authenticator code was already used");
+  if (step !== null) {
+    const changed = await tx.userMfa.updateMany({ where: { userId,
+      OR: [{ lastAcceptedStep: null }, { lastAcceptedStep: { lt: BigInt(step) } }] },
+      data: { lastAcceptedStep: BigInt(step) } });
+    if (changed.count !== 1) throw new MfaInputError("Authenticator code was already used");
+  } else {
+    if (!codeHash) throw new MfaInputError("Invalid MFA or recovery code");
+    const deleted = await tx.mfaRecoveryCode.deleteMany({ where: { userId, codeHash } });
+    if (deleted.count !== 1) throw new MfaInputError("Invalid MFA or recovery code");
+  }
+  await tx.mfaGrant.upsert({ where: { sessionDigest },
+    create: { sessionDigest, userId, verifiedAt: now, expiresAt: new Date(now.getTime() + grantLifetimeMs) },
+    update: { userId, verifiedAt: now, expiresAt: new Date(now.getTime() + grantLifetimeMs) } });
+  return { operatorRole: await auditStaffMfa(tx, userId, step === null ? "staff_mfa.recovery_used" : "staff_mfa.verified"), recovery: step === null };
 }
 
 // A new set of recovery codes replaces every unused one (UI-018). It takes the

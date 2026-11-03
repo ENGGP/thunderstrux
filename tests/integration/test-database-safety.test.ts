@@ -73,6 +73,7 @@ test.each(["1", ""])("reset clears every current model including dependent and u
   // T54: the platform trail refuses row deletes, so the reset must truncate it.
   await prisma.platformOperator.create({ data: { userId: member.id, role: "support", grantedBy: "cli:reset-fixture" } });
   await prisma.platformAuditLog.create({ data: { actorUserId: member.id, action: "platform.viewed", targetType: "Organisation", targetId: organisation.id, organisationId: organisation.id } });
+  await prisma.platformRecoveryRequest.create({ data: { kind: "ownership", targetUserId: owner.id, organisationId: organisation.id, requestedByUserId: member.id, reason: "Synthetic reset fixture", evidence: "Synthetic reset fixture", executeAfter: new Date() } });
 
   await prisma.notificationOutbox.create({ data: { eventKey: "reset-fixture", recipient: "synthetic@example.com", template: "password_changed", privacy: "security", encryptedPayload: "synthetic", userId: member.id } });
 

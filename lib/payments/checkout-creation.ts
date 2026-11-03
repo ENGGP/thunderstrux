@@ -131,7 +131,7 @@ function lockedEventSelect(ticketTypeId: string) {
     checkoutHoldMinutes: true,
     organisationId: true,
     organisation: {
-      select: { id: true, name: true, timeZone: true, stripeAccountId: true, stripeChargesEnabled: true }
+      select: { id: true, name: true, timeZone: true, stripeAccountId: true, stripeChargesEnabled: true, restrictedAt: true }
     },
     ticketTypes: {
       where: { id: ticketTypeId },
@@ -212,7 +212,8 @@ export async function createEventCheckout({
           ]);
         }
 
-        if (!salesOpen(event, reservationNow)) {
+        // A society support restricted (T55) sells nothing, free registration included; the buyer sees closed sales, no reason.
+        if (!salesOpen(event, reservationNow) || event.organisation.restrictedAt) {
           throw new CheckoutCreationError("sales_closed", "Ticket sales are closed", [
             { path: ["eventId"], message: "Ticket sales for this event have closed" }
           ]);

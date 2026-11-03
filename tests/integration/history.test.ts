@@ -180,7 +180,10 @@ describe("History (T38)", () => {
     "staff.updated", "staff.ownership.handed_over", ...["created", "resent", "revoked", "accepted"].map((step) => `staff.invite.${step}`),
     "staff_mfa.enabled", "staff_mfa.verified", "staff_mfa.recovery_used", "staff_mfa.recovery_codes_replaced",
     "stripe_connect.account_created", "stripe_connect.disconnected", "stripe_connect.dashboard_opened", "stripe_connect.payout_account_changed",
-    "organisation.created", "organisation.profile_updated", "asset.uploaded", "asset.deleted", "asset.orphan_removed"
+    "organisation.created", "organisation.profile_updated", "asset.uploaded", "asset.deleted", "asset.orphan_removed",
+    // T55: support's changes a society sees, as "Thunderstrux support".
+    "platform.member_disabled", "platform.member_reenabled", "platform.society_restricted", "platform.society_unrestricted", "platform.payouts_held",
+    "platform.payouts_released", "platform.ownership_recovery_requested", "platform.ownership_recovered", "platform.ownership_recovery_cancelled"
   ];
 
   test("every action the app records has its own sentence in a History family, never the raw action name", async () => {
@@ -191,7 +194,7 @@ describe("History (T38)", () => {
         for (const match of (await readFile(`${root}/${file}`, "utf8")).matchAll(/action: "([a-z_]+\.[a-z_.]+)"/g)) literal.add(match[1]);
       }
     }
-    // platform.* rows go to the operators' own trail (PlatformAuditLog, T54), never a society's History.
+    // Most platform.* actions stay in the operators' own trail (PlatformAuditLog); the ones a society sees are listed above.
     expect([...literal].filter((action) => !action.startsWith("platform.") && !recordedActions.includes(action))).toEqual([]);
 
     const none = new Map();

@@ -593,7 +593,8 @@ export function CreateEventForm({
               <h2 className="text-lg font-semibold text-ink">Schedule</h2>
               <p className="mt-1 text-sm text-ink-soft">Times are in {zoneLabel(timeZone, referenceDate)}, the society&apos;s time zone.</p>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            {/* Side by side from md: narrower, a date field overflows its column and its calendar button covers the time. */}
+            <div className="grid gap-4 md:grid-cols-2">
               {timeInput("startTime")}
               {timeInput("endTime")}
             </div>

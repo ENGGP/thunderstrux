@@ -206,7 +206,7 @@ The system is light, flat and hairline-led; only the door has a dark mode. Depth
 Night violet on a lavender canvas, with jade, ochre and crimson reserved for status.
 
 ### Primary
-- **Night Violet** (`night`): owns surfaces. The home hero, the organiser navigation column, the date tile, image placeholders and the app icons. **Night Raised** (`night-raised`) marks the current nav item and holds the workspace select; **Glow** (`glow`) is its accent and appears only on night (one hero word, the nav marker, the date tile's month, placeholder initials).
+- **Night Violet** (`night`): owns surfaces. The home hero, the organiser navigation column, the date tile, image placeholders. The brand mark and app icons are the owner's own mark: a bolt in Campus Violet and Plum Ink on a lavender `#f0eafe` tile. **Night Raised** (`night-raised`) marks the current nav item and holds the workspace select; **Glow** (`glow`) is its accent and appears only on night (one hero word, the nav marker, the date tile's month, placeholder initials).
 - **Campus Violet** (`brand`): the one thing to do. Primary buttons, action links and links inside a sentence, the active-tab rule, today's mark and the calendar's now line. Hover deepens to **Pressed Violet** (`brand-hover`), press to Night Violet.
 - **Selected Lilac** (`brand-tint`) and **Lilac Outline** (`brand-200`): what you chose. Active pills and segments, published calendar chips, accent badges; an interactive selection always carries a brand edge.
 - **Plum Ink** (`brand-ink`): active tab and secondary-button text.
@@ -298,7 +298,8 @@ Moderately squared: 6px tags and badges, 9px controls and buttons, 14px cards an
 - **Quantity stepper:** one Control Edge frame holding 44px − and + buttons around a centred, typable count; an error replaces the hint.
 
 ### Navigation
-- **Header:** white, 60/72px, brand wordmark left; links in Soft Ink, the current one in Ink with a 3px brand rule on the header's bottom edge. Below `md` the links sit in a `Menu` popover (44px rows, the current page marked with a 3px brand edge); a member's My tickets stays outside it and Sign out moves in.
+- **Header:** white, 60/72px, brand mark and wordmark left (the mark alone from `md` to `lg`); links in Soft Ink, the current one in Ink with a 3px brand rule on the header's bottom edge. Below `md` the links sit in a `Menu` popover (44px rows, the current page marked with a 3px brand edge); a member's My tickets stays outside it and Sign out moves in.
+- **Brand mark:** the owner's mark (`components/ui/brand-mark.tsx`): a lavender `#f0eafe` tile with a two-part bolt in Campus Violet `#5b2acb` and Plum Ink `#2a1550`. It sits beside the `Thunderstrux` wordmark, so it is `aria-hidden`: 28px in the header, 24px in the footer and admin shell. It keeps its own hex colours so the door's dark theme doesn't recolour it; the tile carries it on dark surfaces without a variant. The favicon (`app/icon.svg`, with `app/favicon.ico` at 16, 32 and 48px packed from it) and the home-screen icon (`app/apple-icon.tsx`, a full-bleed tile because iOS rounds the corners) are the same mark. Email has no brand header.
 - **Tabs:** 44px tall, 15px; active is semibold Plum Ink over a 3px brand underline on a 1px hairline track.
 - **Organiser column:** Night Violet, white text, group labels at 70% white, 36px rows from `lg`. The current item is a Night Raised row with a 3px glow left edge; the workspace select sits on Night Raised with a glow edge.
 

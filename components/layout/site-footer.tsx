@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BrandMark } from "@/components/ui/brand-mark";
 
 // Lists only destinations that exist. Terms come when they have been legally
 // drafted (LEGAL-001).
@@ -6,10 +7,11 @@ export function SiteFooter() {
   return (
     <footer className="mt-auto border-t border-line bg-surface">
       <div className="mx-auto flex max-w-page flex-wrap items-center justify-between gap-4 px-4 py-8 text-sm text-ink-soft md:px-8">
-        <p>
+        <p className="flex flex-wrap items-center gap-x-2">
+          <BrandMark className="h-6 w-6" />
           <span className="font-display font-semibold text-brand-ink">
             Thunderstrux
-          </span>{" "}
+          </span>
           Events and tools for student societies.
         </p>
         <nav aria-label="Footer" className="flex flex-wrap gap-5">

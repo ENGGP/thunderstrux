@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useRef, type MouseEvent } from "react";
 import { signOutTo } from "@/lib/client/sign-out";
+import { BrandMark } from "@/components/ui/brand-mark";
 import { buttonClasses } from "@/components/ui/button";
 import { TabLabel } from "@/components/ui/link-tabs";
 
@@ -64,10 +65,12 @@ export default function Navbar() {
     <header className="fixed inset-x-0 top-0 z-50 h-[60px] border-b border-line bg-surface md:h-[72px]">
       <div className={`mx-auto flex h-full items-center gap-3 px-4 text-sm font-medium md:gap-6 md:px-8 ${fullWidth ? "lg:pl-4" : "max-w-page"}`}>
         <Link
-          className="font-display text-lg font-semibold text-brand-ink"
+          className="flex items-center gap-2 font-display text-lg font-semibold text-brand-ink"
           href="/"
         >
-          Thunderstrux
+          <BrandMark />
+          {/* md to lg: the full link row needs the room, so the mark stands alone and the name stays for screen readers. */}
+          <span className="md:max-lg:sr-only">Thunderstrux</span>
         </Link>
 
         <nav

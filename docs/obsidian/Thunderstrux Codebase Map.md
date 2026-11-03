@@ -104,7 +104,7 @@ Thunderstrux is a Docker-first Next.js App Router app for student societies: eve
 | `components/purchases` | Ticket checkout action, money summary, payment poller, unpaid-order actions and notices, the phone action bar | `phone-action-bar.tsx`, `purchase-total.tsx`, `checkout-action.tsx`, `money-summary.tsx`, `payment-status-poller.tsx`, `unpaid-order-actions.tsx`, `unpaid-order-notice.tsx`, `ticket-order-notice.tsx`, `release-registration.tsx` |
 | `components/settings` | Society profile, staff, handover, Stripe Connect, payouts, failed emails | `society-profile.tsx`, `staff-management.tsx`, `staff-handover.tsx`, `stripe-connect-settings.tsx`, `payouts-card.tsx`, `failed-notifications.tsx` |
 | `components/tickets` | Check-in console and the buyer's ticket face | `check-in-console.tsx`, `door-theme.tsx`, `ticket-face.tsx` |
-| `components/ui` | Shared primitives ([[UI Architecture Rules#Primitives]]) | `button.tsx`, `input.tsx`, `date-field.tsx`, `notice.tsx`, `status-badge.tsx`, `link-tabs.tsx`, `responsive-table.tsx`, `confirm-dialog.tsx`, `empty-state.tsx`, `pager.tsx`, `filter-bar.tsx`, `audit-timeline.tsx`, `skeleton.tsx`, `card.tsx`, `icon.tsx`, `placeholder.tsx`, `current-tab-into-view.tsx` |
+| `components/ui` | Shared primitives ([[UI Architecture Rules#Primitives]]) | `button.tsx`, `input.tsx`, `select.tsx`, `date-field.tsx`, `notice.tsx`, `status-badge.tsx`, `link-tabs.tsx`, `responsive-table.tsx`, `confirm-dialog.tsx`, `empty-state.tsx`, `pager.tsx`, `filter-bar.tsx`, `audit-timeline.tsx`, `skeleton.tsx`, `card.tsx`, `icon.tsx`, `placeholder.tsx`, `current-tab-into-view.tsx` |
 
 ## Traps
 

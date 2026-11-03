@@ -83,9 +83,11 @@ export function SelectControl({ id, name, value: controlled, defaultValue, onCha
       const rect = field.getBoundingClientRect();
       const below = window.innerHeight - rect.bottom;
       const up = below < Math.min(node.scrollHeight, 288) + 8 && rect.top > below;
-      // At least as wide as the field, wider for a long option, never past the screen.
+      // At least as wide as the field, wider for a long option, never past the page (or under its scrollbar).
+      const page = document.documentElement.clientWidth;
       node.style.minWidth = `${rect.width}px`;
-      node.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - node.offsetWidth - 8))}px`;
+      node.style.maxWidth = `${page - 16}px`;
+      node.style.left = `${Math.max(8, Math.min(rect.left, page - node.offsetWidth - 8))}px`;
       node.style.top = up ? "auto" : `${rect.bottom + 4}px`;
       node.style.bottom = up ? `${window.innerHeight - rect.top + 4}px` : "auto";
     };
@@ -198,7 +200,7 @@ export function SelectControl({ id, name, value: controlled, defaultValue, onCha
       <ul
         aria-labelledby={aria["aria-labelledby"]}
         aria-label={aria["aria-label"]}
-        className={`m-0 max-h-72 w-max max-w-[calc(100vw-1rem)] overflow-y-auto rounded-card border border-line bg-surface p-1 text-ink shadow-[0_12px_32px_rgba(36,20,64,0.16)] inset-auto ${open === "pointer" ? "origin-top animate-pop-in" : ""}`}
+        className={`m-0 max-h-72 w-max overflow-y-auto rounded-card border border-line bg-surface p-1 text-ink shadow-[0_12px_32px_rgba(36,20,64,0.16)] inset-auto ${open === "pointer" ? "origin-top animate-pop-in" : ""}`}
         id={listId}
         // Keeps focus on the field, so choosing (or dragging the scrollbar) never blurs it.
         onMouseDown={(event) => event.preventDefault()}

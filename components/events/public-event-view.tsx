@@ -8,6 +8,7 @@ import type { PublicEventDetail } from "@/lib/events/public-events";
 import { formatDateRange, formatDateTime } from "@/lib/format";
 import { zoneCity } from "@/lib/zoned-time";
 import { appUrl } from "@/lib/app-url";
+import { quietLinkClasses } from "@/components/ui/link-tabs";
 
 // Google Calendar takes UTC times as 20270305T110000Z.
 const calendarTime = (date: Date) => date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
@@ -65,7 +66,7 @@ export function PublicEventView({
             />
           ) : null}
           <header className="grid gap-2">
-            <Link className="w-fit text-sm font-semibold text-brand underline underline-offset-4" href={`/societies/${organisation.slug}`}>
+            <Link className={`w-fit text-sm ${quietLinkClasses}`} href={`/societies/${organisation.slug}`}>
               {organisation.name}
             </Link>
             <h1 className="font-display text-3xl font-semibold text-ink [overflow-wrap:anywhere] md:text-5xl">{event.title}</h1>

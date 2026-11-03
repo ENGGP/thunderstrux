@@ -160,7 +160,7 @@ export function TicketCodesEditor({
                       <DateField error={errors.endsAt} hint="Blank to keep it going" label="Last day" onChange={(lastDay) => setEditing({ ...editing, lastDay })} value={editing.lastDay} />
                       <div className="flex gap-2 sm:mb-6">
                         <Button busy={busy === code.id} busyLabel="Saving…" size="sm" type="submit">Save</Button>
-                        <Button onClick={() => setEditing(null)} size="sm" type="button" variant="tertiary">Cancel</Button>
+                        <Button onClick={() => setEditing(null)} size="sm" type="button" variant="quiet">Cancel</Button>
                       </div>
                     </form>
                   ) : (

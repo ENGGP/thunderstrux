@@ -19,7 +19,7 @@ export function CardGridSkeleton({ label, count = 6 }: { label: string; count?: 
         <div aria-hidden="true" className="grid content-start gap-4 overflow-hidden rounded-card border border-line bg-surface p-5" key={index}>
           <Skeleton className="-mx-5 -mt-5 hidden aspect-video w-[calc(100%+2.5rem)] max-w-none rounded-none sm:block" />
           <div className="flex gap-4">
-            <Skeleton className="h-16 w-14 shrink-0" />
+            <Skeleton className="size-[68px] shrink-0" />
             <div className="grid flex-1 content-start gap-2">
               <Skeleton className="h-3 w-1/3" />
               <Skeleton className="h-5 w-3/4" />

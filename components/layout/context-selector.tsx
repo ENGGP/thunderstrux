@@ -60,7 +60,7 @@ export function ContextSelector({
         {/* Keyed so the control follows the server value after a refresh. */}
         <select
           aria-label="Workspace"
-          className="h-11 w-full rounded-control border border-line-strong bg-surface px-2 text-sm font-medium text-ink"
+          className={`h-11 w-full rounded-control border px-2 text-sm font-medium ${tone === "dark" ? "border-glow bg-night-raised text-white [&>option]:bg-surface [&>option]:text-ink" : "border-line-strong bg-surface text-ink"}`}
           defaultValue={current}
           disabled={busy}
           key={current}

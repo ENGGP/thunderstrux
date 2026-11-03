@@ -127,7 +127,7 @@ export function MemberOrganisationsList({
                   onClick={() => setConfirming(organisation)}
                   size="sm"
                   type="button"
-                  variant="danger"
+                  variant="quiet"
                 >
                   Leave society
                 </Button>

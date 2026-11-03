@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { CommerceOrders } from "./commerce-orders";
 import { DownloadCsv } from "@/components/orders/download-csv";
 import { Pager } from "@/components/ui/pager";
-import { Count, LinkTabs, pillBarClasses, pillClasses, rowLinkClasses } from "@/components/ui/link-tabs";
+import { Count, LinkTabs, pillBarClasses, pillClasses, quietLinkClasses, rowLinkClasses } from "@/components/ui/link-tabs";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { DateField } from "@/components/ui/date-field";
 import { Select, TextInput } from "@/components/ui/input";
@@ -442,7 +442,7 @@ async function OrderResults({
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <Link className="text-sm font-semibold text-brand underline underline-offset-4" href={systemToggleHref}>
+        <Link className={`text-sm ${quietLinkClasses}`} href={systemToggleHref}>
           {includeSystemOrders ? "Hide system orders" : "Show system orders (pending checkouts)"}
         </Link>
         <Pager

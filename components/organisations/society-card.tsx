@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Placeholder } from "@/components/ui/placeholder";
 
 type SocietyCardProps = {
   name: string;
@@ -31,12 +32,7 @@ export function SocietyCard({
           width={56}
         />
       ) : (
-        <div
-          aria-hidden="true"
-          className="flex h-14 w-14 shrink-0 items-center justify-center rounded-control bg-brand-tint font-display text-xl font-semibold text-brand-ink"
-        >
-          {name.trim().charAt(0).toUpperCase()}
-        </div>
+        <Placeholder className="h-14 w-14 rounded-control text-xl" initial={name} />
       )}
       <div className="grid min-w-0 content-start gap-1">
         {/* DM Sans, as every card title is (DESIGN.md, Two-Voice Rule); h2s default to the display face. */}

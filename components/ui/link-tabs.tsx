@@ -5,9 +5,14 @@ import Link from "next/link";
 export const tabBarClasses =
   "tab-cue flex overflow-x-auto shadow-[inset_0_-1px_0_var(--color-line)] sm:gap-1";
 
-// A row's title link in a list or table. Brand colour marks it as a link where
-// hover never happens (phones); the underline still comes on hover.
-export const rowLinkClasses = "font-semibold text-brand underline-offset-4 hover:underline [overflow-wrap:anywhere]";
+// A row's title link in a list or table: ink, because its place in the row already
+// says "link", and violet is kept for actions. The underline comes on hover or focus.
+export const rowLinkClasses = "font-semibold text-ink underline-offset-4 hover:text-brand hover:underline focus-visible:underline [overflow-wrap:anywhere]";
+
+// A utility link beside a heading ("Explore all events", "View all orders"): ink and
+// underlined, turning violet on hover. Links inside a sentence and links that start
+// an action stay brand violet.
+export const quietLinkClasses = "font-semibold text-ink underline decoration-line-strong underline-offset-4 hover:text-brand hover:decoration-current";
 
 export function tabClasses(active: boolean) {
   return `inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap border-b-[3px] px-3 text-ui sm:px-4 ${

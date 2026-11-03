@@ -18,6 +18,7 @@ import { buyerPurchaseBadge, justIssued, purchasedTicketTypeLabel, ticketOrderPr
 import { cancelledByBuyer, pendingCheckoutState } from "@/lib/purchases/pending-checkout";
 import { getOwnTicketPurchase } from "@/lib/purchases/ticket-purchases";
 import { zoneCity } from "@/lib/zoned-time";
+import { quietLinkClasses } from "@/components/ui/link-tabs";
 
 export const metadata: Metadata = { title: "Purchase", robots: { index: false, follow: false } };
 
@@ -56,7 +57,7 @@ export default async function PurchasePage({ params }: { params: Promise<{ order
   return (
     <PersonalShell>
       <div className="grid gap-1">
-        <Link className="w-fit text-sm font-semibold text-brand underline underline-offset-4" href="/purchases">Purchases</Link>
+        <Link className={`w-fit text-sm ${quietLinkClasses}`} href="/purchases">Purchases</Link>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-3xl font-semibold text-ink [overflow-wrap:anywhere]">{event.title}</h1>
           <StatusBadge label={badge.label} status={badge.status} />

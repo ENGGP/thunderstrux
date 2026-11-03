@@ -263,7 +263,7 @@ export function StaffManagement({
                     {/* Phones show rows as cards, with no column header above the select. */}
                     <span aria-hidden="true" className="text-xs font-semibold text-ink-soft md:hidden">Role</span>
                     <select
-                      className="h-9 rounded-control border border-line-strong bg-surface px-2 text-sm text-ink disabled:cursor-not-allowed disabled:bg-surface-subtle"
+                      className="h-9 rounded-control border border-line-strong bg-surface px-2 text-sm text-ink disabled:cursor-not-allowed disabled:border-line disabled:bg-inert disabled:text-ink-soft"
                       aria-label={`Role for ${row.user.email}`}
                       disabled={isSubmitting || lastOwner || row.status !== "active" || (!canManageOwners && row.role === "owner")}
                       onChange={(event) =>
@@ -294,7 +294,7 @@ export function StaffManagement({
                         onClick={() => setPending({ row })}
                         size="sm"
                         type="button"
-                        variant="danger"
+                        variant="dangerText"
                       >
                         Revoke access
                       </Button>
@@ -329,7 +329,7 @@ export function StaffManagement({
                     <Button disabled={isSubmitting} onClick={() => manageInvite(invite.id, "resend")} size="sm" type="button" variant="secondary">
                       Resend invitation
                     </Button>
-                    <Button disabled={isSubmitting} onClick={() => setRevokingInvite({ id: invite.id, email: invite.email })} size="sm" type="button" variant="danger">
+                    <Button disabled={isSubmitting} onClick={() => setRevokingInvite({ id: invite.id, email: invite.email })} size="sm" type="button" variant="dangerText">
                       Revoke invitation
                     </Button>
                   </div>

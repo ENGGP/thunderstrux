@@ -7,7 +7,7 @@ import { buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Icon, type IconName } from "@/components/ui/icon";
-import { rowLinkClasses } from "@/components/ui/link-tabs";
+import { quietLinkClasses, rowLinkClasses } from "@/components/ui/link-tabs";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { analyticsAccess, societySales, ticketMetrics } from "@/lib/analytics/metrics";
 import { analyticsRange, localToday } from "@/lib/analytics/range";
@@ -25,7 +25,7 @@ import { hasOrganisationPermission, type OrganisationPermission, type Organisati
 type Society = { id: string; name: string; staffRole: OrganisationStaffRole };
 type Task = { key: string; icon: IconName; warn?: boolean; title: string; text: string; href: string; link: string; setup?: boolean };
 
-const moreLink = "text-sm font-semibold text-brand underline underline-offset-4";
+const moreLink = `text-sm ${quietLinkClasses}`;
 const titleLink = rowLinkClasses;
 const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
 
@@ -89,15 +89,15 @@ export async function SocietyOverview({ organisation, timeZone }: { organisation
         <h2 className="text-xl font-semibold text-ink">{settingUp ? `Get ${organisation.name} ready` : "Needs your attention"}</h2>
         {settingUp && tasks.some((task) => task.key === "payments") ? <p className="mt-1 text-sm text-ink-soft">You can publish free events before payments are set up.</p> : null}
         {tasks.length ? (
-          <ul className="mt-4 grid gap-3">
+          <ul className="mt-4 grid gap-1">
             {tasks.map((task) => (
-              <li className={`flex flex-wrap items-center gap-x-3.5 gap-y-1 rounded-control border px-4 py-3.5 ${task.warn ? "border-warning-border bg-warning-bg" : "border-line bg-surface"}`} key={task.key}>
-                <Icon className={task.warn ? "text-warning-icon" : "text-brand"} name={task.icon} />
+              <li className={`flex flex-wrap items-center gap-x-3.5 gap-y-1 py-3.5 ${task.warn ? "rounded-control bg-warning-bg px-4" : "border-t border-line px-1 first:border-t-0"}`} key={task.key}>
+                <Icon className={task.warn ? "text-warning-icon" : "text-ink-soft"} name={task.icon} />
                 <div className="grid min-w-0 flex-[1_1_18rem] gap-0.5">
                   <p className="font-semibold text-ink [overflow-wrap:anywhere]">{task.title}</p>
                   {task.text ? <p className="text-sm text-ink-soft">{task.text}</p> : null}
                 </div>
-                <Link className={`inline-flex min-h-11 items-center ${moreLink}`} href={task.href}>{task.link}</Link>
+                <Link className="inline-flex min-h-11 items-center text-sm font-semibold text-brand underline underline-offset-4" href={task.href}>{task.link}</Link>
               </li>
             ))}
           </ul>
@@ -136,7 +136,7 @@ export async function SocietyOverview({ organisation, timeZone }: { organisation
           <ul className="grid">
             {upcoming.events.map((event) => (
               <li className="flex items-center gap-3 border-t border-line py-3 first:border-0" key={event.id}>
-                <DateRail date={event.startTime} size="md" timeZone={timeZone} />
+                <DateRail date={event.startTime} off={Boolean(event.cancelledAt)} size="md" timeZone={timeZone} />
                 <div className="grid min-w-0 flex-1 gap-0.5">
                   <Link className={titleLink} href={eventHref(event.id)}>{event.title}</Link>
                   <span className="text-sm text-ink-soft">

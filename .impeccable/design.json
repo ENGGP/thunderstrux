@@ -1,15 +1,18 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-28T00:00:00Z",
+  "generatedAt": "2026-11-03T00:00:00Z",
   "title": "Design System: Thunderstrux",
   "extensions": {
     "colorMeta": {
       "brand": { "role": "primary", "displayName": "Campus Violet", "canonical": "#5b2acb" },
-      "brand-ink": { "role": "primary", "displayName": "Midnight Plum", "canonical": "#2a1550" },
-      "brand-tint": { "role": "primary", "displayName": "Lilac Wash", "canonical": "#f0eafe" },
+      "night": { "role": "primary", "displayName": "Night Violet", "canonical": "#33136c" },
+      "glow": { "role": "primary", "displayName": "Glow", "canonical": "#bda6ff" },
+      "brand-ink": { "role": "primary", "displayName": "Plum Ink", "canonical": "#2a1550" },
+      "brand-tint": { "role": "primary", "displayName": "Selected Lilac", "canonical": "#ece4ff" },
       "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#24143b" },
-      "paper": { "role": "neutral", "displayName": "Lavender Paper", "canonical": "#fbfafd" },
-      "focus": { "role": "neutral", "displayName": "Focus Blue", "canonical": "#1e72d8" }
+      "paper": { "role": "neutral", "displayName": "Lavender Canvas", "canonical": "#f3f0f8" },
+      "inert": { "role": "neutral", "displayName": "Inert Grey", "canonical": "#f0eff2" },
+      "focus": { "role": "neutral", "displayName": "Ink Ring", "canonical": "#24143b" }
     },
     "shadows": [
       { "name": "card", "value": "0 4px 18px rgba(36, 20, 59, 0.055)", "purpose": "Event cards on hover only." },
@@ -38,7 +41,7 @@
       "refersTo": "button-primary",
       "description": "The one purple action in an area.",
       "html": "<button class=\"ds-btn-primary\">Get tickets</button>",
-      "css": ".ds-btn-primary { background: #5b2acb; color: #fff; height: 44px; padding: 0 16px; border: 0; border-radius: 9px; font: 600 14px 'DM Sans', system-ui, sans-serif; transition: background-color 150ms cubic-bezier(0.23, 1, 0.32, 1), scale 150ms; } .ds-btn-primary:hover { background: #4c22af; } .ds-btn-primary:active { background: #2a1550; scale: 0.97; } .ds-btn-primary:focus-visible { outline: 2px solid #1e72d8; outline-offset: 2px; }"
+      "css": ".ds-btn-primary { background: #5b2acb; color: #fff; height: 44px; padding: 0 16px; border: 0; border-radius: 9px; font: 600 14px 'DM Sans', system-ui, sans-serif; transition: background-color 150ms cubic-bezier(0.23, 1, 0.32, 1), scale 150ms; } .ds-btn-primary:hover { background: #4c22af; } .ds-btn-primary:active { background: #33136c; scale: 0.97; } .ds-btn-primary:focus-visible { outline: 2px solid #24143b; outline-offset: 2px; box-shadow: 0 0 0 2px #fff; }"
     },
     {
       "name": "Text Input",
@@ -46,7 +49,7 @@
       "refersTo": "input",
       "description": "Labelled field with a Control Edge border.",
       "html": "<input class=\"ds-input\" placeholder=\"Search by title\">",
-      "css": ".ds-input { width: 100%; height: 44px; padding: 0 12px; border: 1px solid #9e8aac; border-radius: 9px; background: #fff; color: #24143b; font: 400 16px 'DM Sans', system-ui, sans-serif; } .ds-input::placeholder { color: #6b6276; } .ds-input:focus-visible { outline: 2px solid #1e72d8; outline-offset: 2px; }"
+      "css": ".ds-input { width: 100%; height: 44px; padding: 0 12px; border: 1px solid #8d79a0; border-radius: 9px; background: #fff; color: #24143b; font: 400 16px 'DM Sans', system-ui, sans-serif; } .ds-input::placeholder { color: #6b6276; } .ds-input:focus-visible { outline: 2px solid #24143b; outline-offset: 2px; box-shadow: 0 0 0 2px #fff; }"
     },
     {
       "name": "Status Badge",
@@ -54,7 +57,7 @@
       "refersTo": "status-badge",
       "description": "Wash, hairline, dot and word for every status.",
       "html": "<span class=\"ds-badge\"><span class=\"ds-badge-dot\"></span>Sales open</span>",
-      "css": ".ds-badge { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border: 1px solid #bfe3d6; border-radius: 6px; background: #eef8f4; color: #0b6b55; font: 600 12px 'DM Sans', system-ui, sans-serif; } .ds-badge-dot { width: 6px; height: 6px; border-radius: 999px; background: #12866a; }"
+      "css": ".ds-badge { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border: 1px solid #a9dcc8; border-radius: 6px; background: #e6f5ee; color: #0b6b55; font: 600 12px 'DM Sans', system-ui, sans-serif; } .ds-badge-dot { width: 6px; height: 6px; border-radius: 999px; background: #12866a; }"
     },
     {
       "name": "Date Rail",
@@ -62,7 +65,7 @@
       "refersTo": "date-rail",
       "description": "Day and month tile that leads every event card.",
       "html": "<span class=\"ds-rail\"><b>29</b><small>OCT</small></span>",
-      "css": ".ds-rail { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 9px; background: #f0eafe; color: #2a1550; } .ds-rail b { font: 600 20px/1 'Space Grotesk', sans-serif; } .ds-rail small { margin-top: 4px; font: 600 12px 'DM Sans', sans-serif; }"
+      "css": ".ds-rail { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 9px; background: #33136c; color: #fff; } .ds-rail b { font: 600 20px/1 'Space Grotesk', sans-serif; } .ds-rail small { margin-top: 4px; font: 600 12px 'DM Sans', sans-serif; color: #bda6ff; }"
     }
   ],
   "narrative": {

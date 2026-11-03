@@ -8,6 +8,7 @@ import { Button, buttonClasses } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/ui/notice";
+import { Placeholder } from "@/components/ui/placeholder";
 import { Stepper } from "@/components/ui/quantity-stepper";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
@@ -359,7 +360,7 @@ export function BasketView({ society }: { society: string }) {
                   {line.coverAssetId ? (
                     <img alt="" className="aspect-[4/5] w-16 rounded-control border border-line bg-surface-subtle object-cover sm:w-[88px]" decoding="async" loading="lazy" src={`/api/public/assets/${line.coverAssetId}`} />
                   ) : (
-                    <span aria-hidden="true" className="aspect-[4/5] w-16 rounded-control border border-line bg-surface-subtle sm:w-[88px]" />
+                    <Placeholder className="aspect-[4/5] w-16 rounded-control text-2xl sm:w-[88px]" initial={line.name} />
                   )}
                   <div className="grid min-w-0 content-start gap-1">
                     <Link className="font-semibold text-ink underline-offset-4 hover:underline [overflow-wrap:anywhere]" href={`/societies/${society}/merchandise/${line.productId}`}>

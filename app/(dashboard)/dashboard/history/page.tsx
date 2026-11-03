@@ -151,7 +151,7 @@ async function HistoryList({ organisationId, filters, filtered, timeZone, cursor
 function HistoryItem({ entry, timeZone }: { entry: HistoryEntry; timeZone: string }) {
   const dot =
     entry.actor.kind === "person"
-      ? "bg-brand-ink text-white"
+      ? "bg-night text-white"
       : entry.actor.kind === "former"
         ? "border border-dashed border-line-strong bg-surface-subtle text-ink-muted"
         : entry.actor.kind === "stripe"

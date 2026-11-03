@@ -21,7 +21,7 @@ type Option = { key: string; id?: string; expectedVersion?: number; colour: stri
 let nextKey = 0;
 const blankOption = (): Option => ({ key: `new-${(nextKey += 1)}`, colour: "", size: "", sku: "", price: "", remaining: "" });
 
-const cell = "h-11 w-full min-w-0 rounded-control border border-line-strong bg-surface px-3 text-base text-ink aria-[invalid]:border-danger disabled:bg-surface-subtle";
+const cell = "h-11 w-full min-w-0 rounded-control border border-line-strong bg-surface px-3 text-base text-ink aria-[invalid]:border-danger disabled:border-line disabled:bg-inert disabled:text-ink-soft";
 
 // The product editor (T25, design round B2): details, up to four photos, the
 // options buyers pick with price and stock, and the society's pickup details.
@@ -265,7 +265,7 @@ export function ProductForm({
                     </label>
                     <label className="grid gap-1 text-sm font-semibold text-ink">
                       <span>Price</span>
-                      <span className="flex h-11 items-center rounded-control border border-line-strong bg-surface has-[[aria-invalid]]:border-danger has-[:disabled]:bg-surface-subtle">
+                      <span className="flex h-11 items-center rounded-control border border-line-strong bg-surface has-[[aria-invalid]]:border-danger has-[:disabled]:border-line has-[:disabled]:bg-inert">
                         <span aria-hidden="true" className="pl-3 font-normal text-ink-soft">$</span>
                         <input
                           aria-invalid={fieldError("priceAmount") ? true : undefined}

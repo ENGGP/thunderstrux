@@ -13,7 +13,7 @@ type FieldProps = {
 };
 
 export const control =
-  "w-full rounded-control border border-line-strong bg-surface px-3 text-base text-ink placeholder:text-ink-muted disabled:cursor-not-allowed disabled:bg-surface-subtle aria-invalid:border-danger";
+  "w-full rounded-control border border-line-strong bg-surface px-3 text-base text-ink placeholder:text-ink-muted disabled:cursor-not-allowed disabled:border-line disabled:bg-inert disabled:text-ink-soft aria-invalid:border-danger";
 
 // The <label> holds only the label text so its accessible name stays exact;
 // hint and error are tied to the control through aria-describedby.
@@ -144,7 +144,7 @@ export function MoneyInput({
   return (
     <Field error={error} hint={hint} id={id} label={label}>
       {(describedBy) => (
-        <div className="flex h-11 items-center rounded-control border border-line-strong bg-surface has-[[aria-invalid]]:border-danger has-[:disabled]:bg-surface-subtle">
+        <div className="flex h-11 items-center rounded-control border border-line-strong bg-surface has-[[aria-invalid]]:border-danger has-[:disabled]:border-line has-[:disabled]:bg-inert">
           <span aria-hidden="true" className="pl-3 text-ink-soft">
             $
           </span>

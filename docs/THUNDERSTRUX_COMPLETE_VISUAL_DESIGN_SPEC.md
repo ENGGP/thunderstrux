@@ -129,19 +129,24 @@ Tokens below are deliberate design choices, not claims about an existing theme. 
   --ts-ink-muted: #6b6276;
   --ts-brand: #5b2acb;
   --ts-brand-hover: #4c22af;
-  --ts-brand-tint: #f0eafe;
+  --ts-brand-tint: #ece4ff;
   --ts-brand-ink: #2a1550;
-  --ts-paper: #fbfafd;
+  --ts-night: #33136c;
+  --ts-night-raised: #44207f;
+  --ts-glow: #bda6ff;
+  --ts-paper: #f3f0f8;
   --ts-surface: #ffffff;
-  --ts-surface-subtle: #f5f2fa;
-  --ts-border: #ddd6e7;
-  --ts-input-border: #9e8aac;
-  --ts-focus: #1e72d8;
+  --ts-surface-subtle: #f9f7fc;
+  --ts-inert: #f0eff2;
+  --ts-border: #d8cfe5;
+  --ts-input-border: #8d79a0;
+  --ts-focus: #24143b;
+  --ts-focus-gap: #ffffff;
   /* Status roles: one text colour per role here; the -bg, -border and -icon
      shades are in section 16.2 and app/globals.css. */
   --ts-success: #0b6b55;
   --ts-warning: #8a4a06;
-  --ts-danger: #a61e3f;
+  --ts-danger: #8f0d31;
   --ts-info: #4a4360;
   --ts-neutral: #595265;
 }
@@ -1213,8 +1218,9 @@ A design drift check on 28 October 2026 compared the code (`DESIGN.md`, generate
 | Primary button | 48px, 16px text, 10px radius | 44px, 14px text, 9px radius; 48px with 16px text for purchase actions | Matches 2.3 (44px standard, 48-52px purchase, 36px dense) and the 9px control radius; section 4.1 is updated. |
 | Event card image | 3:2 | 16:9 | One upload serves the card and the event page hero (T11b). |
 | Notice | 3px left border (`InlineNotice`) | Full toned box with icon and title | Recorded in 16.4; status shows through wash, icon and title together. |
-| Focus ring | White 2px gap, then 2px blue | 2px blue with a transparent 2px offset | Passes on every surface checked; revisit only if an accessibility audit flags the plum column or hero. |
+| Focus ring | White 2px gap, then 2px blue | White 2px gap, then a 2px ink ring (`#24143B`); white with a night gap on night surfaces | Night violet (round G, approved 3 Nov 2026): the stray blue left the palette, and the gap keeps the ring visible on every surface. |
+| Deep plum surfaces | Plum `#2A1550` hero, sidebar and door strip | Night violet `#33136C`, raised `#44207F`, glow `#BDA6FF` as its only accent | Round G: plum read as black, so purple never owned a surface. Night now owns the hero, the organiser column, the date tile and placeholders; plum stays as a text colour. |
 | Feedback (3.6) | Toast for small saves | No toasts; results stay inline | Recorded in 16.5; persistent feedback suits PRD 11 (clear success or failure). |
 | Organiser navigation (3.5) | Groups Run, Community, Understand, Settings & tools | Ungrouped Overview, Events, Calendar, Orders, then Community, Insights, Settings | Recorded in 16.3; matches the features that exist, and OpenClaw is deferred. |
 | Pale chartreuse accent | `#DEF17B` editorial micro-accent | Removed | No category or editorial feature uses it, and an unused brand colour invites decoration (13.5: brand personality with restraint). |
-| Image placeholder | Pale violet block with a corner date label | Lilac block with a faint diagonal stripe | Society photographs replace it; the date already leads the card in the date rail. |
+| Image placeholder | Pale violet block with a corner date label | Night violet block with one lighter stripe and the initial in glow; in a card grid only beside a real photo | Round G: lilac meant "selected", so it left placeholders. The date already leads the card in the night date tile. |

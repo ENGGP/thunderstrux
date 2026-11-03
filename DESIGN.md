@@ -5,33 +5,39 @@ colors:
   brand: "#5b2acb"
   brand-hover: "#4c22af"
   brand-ink: "#2a1550"
-  brand-tint: "#f0eafe"
+  brand-tint: "#ece4ff"
   brand-200: "#dccffa"
+  night: "#33136c"
+  night-raised: "#44207f"
+  night-stripe: "#4a2394"
+  glow: "#bda6ff"
   ink: "#24143b"
   ink-soft: "#594f67"
   ink-muted: "#6b6276"
-  paper: "#fbfafd"
-  warm-paper: "#fcfaf5"
+  paper: "#f3f0f8"
   surface: "#ffffff"
-  surface-subtle: "#f5f2fa"
-  line: "#ddd6e7"
-  line-strong: "#9e8aac"
-  focus: "#1e72d8"
+  surface-subtle: "#f9f7fc"
+  inert: "#f0eff2"
+  line: "#d8cfe5"
+  line-strong: "#8d79a0"
+  focus: "#24143b"
+  chart-2: "#8b72e8"
+  chart-out: "#8a8296"
   success: "#0b6b55"
-  success-bg: "#eef8f4"
-  success-border: "#bfe3d6"
+  success-bg: "#e6f5ee"
+  success-border: "#a9dcc8"
   success-icon: "#12866a"
   warning: "#8a4a06"
-  warning-bg: "#fdf5e7"
-  warning-border: "#f1d9ae"
+  warning-bg: "#fdf1dc"
+  warning-border: "#eccf95"
   warning-icon: "#b5650c"
-  danger: "#a61e3f"
-  danger-bg: "#fdf1f3"
-  danger-border: "#f4c6d0"
+  danger: "#8f0d31"
+  danger-bg: "#fdecf0"
+  danger-border: "#e3a1b2"
   danger-icon: "#c42d4f"
   info: "#4a4360"
-  info-bg: "#f7f5fb"
-  info-border: "#e3ddee"
+  info-bg: "#eeebf3"
+  info-border: "#d6cfe0"
   neutral: "#595265"
   neutral-bg: "#f3f1f6"
   neutral-border: "#e2dde9"
@@ -103,7 +109,7 @@ components:
   button-primary-hover:
     backgroundColor: "{colors.brand-hover}"
   button-primary-active:
-    backgroundColor: "{colors.brand-ink}"
+    backgroundColor: "{colors.night}"
   button-secondary:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.brand-ink}"
@@ -111,7 +117,13 @@ components:
     height: "44px"
     padding: "0 16px"
   button-secondary-hover:
-    backgroundColor: "{colors.brand-tint}"
+    backgroundColor: "{colors.surface-subtle}"
+  button-quiet:
+    textColor: "{colors.ink-soft}"
+    height: "44px"
+  button-danger-text:
+    textColor: "{colors.danger}"
+    height: "44px"
   button-danger:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.danger}"
@@ -144,50 +156,55 @@ components:
     textColor: "{colors.brand-ink}"
     height: "40px"
   date-rail:
-    backgroundColor: "{colors.brand-tint}"
-    textColor: "{colors.brand-ink}"
+    backgroundColor: "{colors.night}"
+    textColor: "{colors.surface}"
     rounded: "{rounded.control}"
+    size: "68px"
   org-sidebar:
-    backgroundColor: "{colors.brand-ink}"
+    backgroundColor: "{colors.night}"
     textColor: "{colors.surface}"
     width: "244px"
 ---
 
 # Design System: Thunderstrux
 
-> **Generated from the shipped code** (`app/globals.css`, `components/ui/`, `components/layout/`, `components/events/`, and computed styles on the dev app) by `/impeccable document` on 2026-10-28. It records what is built, not what is intended. Intent lives in the [visual design specification](docs/THUNDERSTRUX_COMPLETE_VISUAL_DESIGN_SPEC.md) and [UI Architecture Rules](docs/obsidian/UI%20Architecture%20Rules.md); they win on any conflict (visual spec 16.8 lists the built values kept on purpose), and any other difference is drift to register, not a new rule. Regenerate it after a token or primitive change.
+> **Generated from the shipped code** (`app/globals.css`, `components/ui/`, `components/layout/`, `components/events/`, and computed styles on the dev app) by `/impeccable document` on 2026-10-28, and brought to the night violet palette (round G, PR 1) on 2026-11-03. It records what is built, not what is intended. Intent lives in the [visual design specification](docs/THUNDERSTRUX_COMPLETE_VISUAL_DESIGN_SPEC.md) and [UI Architecture Rules](docs/obsidian/UI%20Architecture%20Rules.md); they win on any conflict (visual spec 16.8 lists the built values kept on purpose), and any other difference is drift to register, not a new rule. Regenerate it after a token or primitive change.
 
 ## Overview
 
 **Creative North Star: "The Campus Edition"**
 
-A student culture magazine, a polished ticket window and an operations desk sharing one purple-first system. In the built product the magazine shows in the public pages: a deep-plum hero on the home page, Space Grotesk headings, the date rail on every event card, and a 3px brand rule under the current tab and section titles. The ticket window is quieter: white surfaces, hairline borders, one purple action. The desk is the organiser shell: a 244px deep-plum navigation column beside dense, neutral pages.
+A student culture magazine, a polished ticket window and an operations desk sharing one purple-first system. In the built product the magazine shows in the public pages: a night violet hero on the home page with one glow word and the soonest event as a ticket stub, Space Grotesk headings, the night date tile on every event card, and a 3px brand rule under the current tab. The ticket window is quieter: white surfaces, hairline borders, one purple action. The desk is the organiser shell: a 244px night violet navigation column beside dense, neutral pages.
 
 The system is light-only, flat and hairline-led. Depth is a border, not a shadow; shadows appear only on hover for event cards and on floating panels. Motion is small and earned: menus and dialogs pop in, phone sheets slide, a result eases open under the action that caused it, freshly issued tickets rise in once, and everything else stays still.
 
 **Key Characteristics:**
-- Purple carries actions, current state and identity; status colours carry meaning and never decorate.
+- Violet has three jobs: night violet owns surfaces, action violet marks the one thing to do, selected lilac marks what you chose. Status colours carry meaning and never decorate.
 - Two typefaces: Space Grotesk for `h1`/`h2` and display, DM Sans for everything else.
 - Four named radii (6, 9, 14, 20px); no generic `rounded-md/lg/xl`.
-- Every surface is opaque; no gradients except the striped image placeholder.
+- Every surface is opaque; no gradients except the placeholder's one stripe and the hatched money-out bars in charts.
 
 ## Colors
 
-A violet brand on lavender-tinted paper, with jade, ochre and crimson reserved for status.
+Night violet on a lavender canvas, with jade, ochre and crimson reserved for status.
 
 ### Primary
-- **Campus Violet** (`brand`): primary buttons, text links, the active-tab rule, the active nav marker and focus family. Hover deepens to **Pressed Violet** (`brand-hover`), active to **Midnight Plum** (`brand-ink`).
-- **Midnight Plum** (`brand-ink`): the home hero block, the organiser navigation column, active tab and pill text.
-- **Lilac Wash** (`brand-tint`) and **Lilac Outline** (`brand-200`): date rail, active pills, accent badges, the image placeholder.
+- **Night Violet** (`night`): owns surfaces. The home hero, the organiser navigation column, the date tile, image placeholders and the app icons. **Night Raised** (`night-raised`) marks the current nav item and holds the workspace select; **Glow** (`glow`) is its accent and appears only on night (one hero word, the nav marker, the date tile's month, placeholder initials).
+- **Campus Violet** (`brand`): the one thing to do. Primary buttons, action links and links inside a sentence, the active-tab rule, today's mark and the calendar's now line. Hover deepens to **Pressed Violet** (`brand-hover`), press to Night Violet.
+- **Selected Lilac** (`brand-tint`) and **Lilac Outline** (`brand-200`): what you chose. Active pills and segments, published calendar chips, accent badges; an interactive selection always carries a brand edge.
+- **Plum Ink** (`brand-ink`): active tab and secondary-button text.
 
 ### Neutral
-- **Ink** (`ink`), **Soft Ink** (`ink-soft`), **Muted Ink** (`ink-muted`): body, secondary and tertiary text.
-- **Lavender Paper** (`paper`): the page canvas. **Warm Paper** (`warm-paper`): two editorial sections on the home page. **Surface** (`surface`): cards, forms, tables. **Subtle Surface** (`surface-subtle`): disabled fields, counts, row tints.
-- **Hairline** (`line`): every default border (the base layer sets it, so a bare `border` is a hairline). **Control Edge** (`line-strong`): input and secondary-button borders.
-- **Focus Blue** (`focus`): the 2px keyboard ring, deliberately not purple.
+- **Ink** (`ink`), **Soft Ink** (`ink-soft`), **Muted Ink** (`ink-muted`): body, secondary and tertiary text. Row titles and utility links are ink (`rowLinkClasses`, `quietLinkClasses`), turning violet on hover.
+- **Lavender Canvas** (`paper`): the page canvas, 1.13:1 against white so cards lift off it. **Surface** (`surface`): cards, forms, tables. **Inset** (`surface-subtle`): table heads, counts and row tints inside a card. **Inert Grey** (`inert`): disabled fields, grey so they never read as selected.
+- **Hairline** (`line`): every default border (the base layer sets it, so a bare `border` is a hairline). **Control Edge** (`line-strong`): input and secondary-button borders, 3.9:1 on white.
+- **Ink Ring** (`focus`): the 2px keyboard ring with a 2px white gap; `surface-night` turns it white with a night gap.
 
 ### Status roles
-Success (jade), warning (ochre), danger (crimson), info (lilac-grey with a brand icon) and neutral each come as text, `-bg` wash, `-border` hairline and `-icon` mark. Text is at least 6:1 and icons at least 3:1 on their own wash.
+Success (jade), warning (ochre), danger (crimson), info (slate, in the neutral family, so purple stays out of notices) and neutral each come as text, `-bg` wash, `-border` hairline and `-icon` mark. Text is at least 5.7:1 and icons at least 3:1 on their own wash.
+
+### Charts
+Series one is Campus Violet and series two **Chart Lilac** (`chart-2`), stacked with a 2px gap. Money going out is hatched **Chart Grey** (`chart-out`, the `hatch` utility) below the axis with its amount in crimson; on phones it runs left from zero. A cancelled event's bars are Chart Grey.
 
 ### Named Rules
 **The Status-Only Rule.** Jade, ochre and crimson appear only with a status word or icon (`StatusBadge`, `Notice`), never as decoration or brand.
@@ -231,15 +248,15 @@ Flat by default: surfaces separate by tone (paper vs surface) and hairlines. Two
 
 ## Shapes
 
-Moderately squared: 6px tags and badges, 9px controls and buttons, 14px cards and notices, 20px for editorial feature panels (the home page and the society cover). Pills and avatar dots are fully round. The active tab and active nav item carry a 3px brand edge (bottom and left respectively). Images are 16:9 and bleed to the card edge; with no image, a lilac block with a faint 135° stripe stands in.
+Moderately squared: 6px tags and badges, 9px controls and buttons, 14px cards and notices, 20px for editorial feature panels (the home page and the society cover). Pills and avatar dots are fully round. The active tab carries a 3px brand rule; the active nav item a 3px glow left edge on a raised night row. Images are 16:9 and bleed to the card edge; with no image, the night violet `Placeholder` stands in (one lighter stripe, the initial in glow), and in a card grid only when a neighbour has a real photo.
 
 ## Components
 
 ### Buttons
 - **Shape:** gently squared (9px).
 - **Primary:** Campus Violet fill, white 14px semibold label, 44px tall (36px `sm`, 48px `lg`).
-- **Hover / Focus / Press:** colour cross-fades over 150ms; press scales to 97%; focus is the blue 2px ring with a 2px offset.
-- **Secondary:** white with a Control Edge border and Midnight Plum label, lilac wash on hover. **Tertiary:** a brand text link that underlines on hover. **Danger:** crimson outline; solid crimson only on a dialog's confirm button.
+- **Hover / Focus / Press:** colour cross-fades over 150ms; press scales to 97%; focus is the ink 2px ring with a 2px white gap.
+- **Secondary:** white with a Control Edge border and Plum Ink label, inset on hover. **Tertiary:** a brand text link that underlines on hover. **Quiet:** soft ink text for a way out (a dialog's Cancel, Leave society). **Danger:** crimson outline; **Danger text** for a destructive action repeated down a list (Revoke access); solid crimson only on a dialog's confirm button. **On night:** a white button and a glow-edged ghost (`onNight`, `ghostNight`).
 - **Disabled:** neutral wash, neutral border, muted text.
 - **Busy:** keeps its colour and its width; the label reads the busy label ("Saving…", "Opening Stripe…") in the same space, with no spinner. Every variant carries a border, transparent where none shows, so no state changes the button's size.
 
@@ -256,20 +273,20 @@ Moderately squared: 6px tags and badges, 9px controls and buttons, 14px cards an
 
 ### Inputs / Fields
 - **Style:** 44px, 9px radius, Control Edge border, white fill, 16px text; the label sits above in 14px semibold, hint and error below in 14px.
-- **Focus:** the global blue ring. **Error:** crimson border plus a crimson message tied by `aria-describedby`. **Disabled:** subtle surface.
+- **Focus:** the global ink ring. **Error:** crimson border plus a crimson message tied by `aria-describedby`. **Disabled:** Inert Grey with a hairline and soft ink text.
 - **Quantity stepper:** one Control Edge frame holding 44px − and + buttons around a centred, typable count; an error replaces the hint.
 
 ### Navigation
 - **Header:** white, 60/72px, brand wordmark left; links in Soft Ink, the current one in Ink with a 3px brand rule on the header's bottom edge. Below `md` the links sit in a `Menu` popover (44px rows, the current page marked with a 3px brand edge); a member's My tickets stays outside it and Sign out moves in.
-- **Tabs:** 44px tall, 15px; active is semibold Midnight Plum over a 3px brand underline on a 1px hairline track.
-- **Organiser column:** Midnight Plum, white text, group labels at 70% white, 36px rows from `lg` with a 3px left marker on the current item.
+- **Tabs:** 44px tall, 15px; active is semibold Plum Ink over a 3px brand underline on a 1px hairline track.
+- **Organiser column:** Night Violet, white text, group labels at 70% white, 36px rows from `lg`. The current item is a Night Raised row with a 3px glow left edge; the workspace select sits on Night Raised with a glow edge.
 
 ### Event card
-- **Order:** 16:9 image (or a striped lilac area from `sm` when a neighbour has an image), date rail, host link, title, date, place, then the selling line.
+- **Order:** 16:9 image (or the night placeholder with the event's initial, from `sm`, when a neighbour has an image), date tile, host link, title, date, place, then the selling line.
 - **Selling line:** the standard prices on sale in semibold ink ("Free", "$12.00", "From $12.00", "Free or $15.00"), or a Sold out or Sales closed badge, or "Paid tickets unavailable right now" in Soft Ink.
 
-### Date rail (signature)
-A lilac tile with the day in Space Grotesk and the three-letter month in 12px uppercase, both Midnight Plum, leading every event card and list. It anchors "what's happening" before the title.
+### Date tile (signature)
+A fixed night violet square (68px in cards, 56px in lists) with the day in white Space Grotesk over the three-letter month in 12px uppercase glow, leading every event card and list. It anchors "what's happening" before the title, and never stretches with the text beside it. A cancelled event's tile is grey.
 
 ### Notice
 A 14px-radius toned panel: wash, hairline, 20px icon, toned title, ink body, optional action on the right and a close button when dismissible.
@@ -278,7 +295,7 @@ A 14px-radius toned panel: wash, hairline, 20px icon, toned title, ink body, opt
 
 ### Do:
 - **Do** use the semantic utilities (`bg-brand`, `text-ink-soft`, `border-line`, `rounded-card`, `max-w-page`) for every colour, radius and width.
-- **Do** keep one purple primary action per area; use secondary or tertiary for the rest.
+- **Do** keep one filled violet button per view; use secondary, quiet or tertiary for the rest, and quiet ink links for row titles and utility links.
 - **Do** show every status through `StatusBadge` or `Notice`, with its word.
 - **Do** keep check-in, list rows, tab changes and payment results still; animate only menus, dialogs, phone sheets, a result easing in under its action, and newly issued tickets.
 - **Do** show a result directly under the button that caused it, never at the top of the form.

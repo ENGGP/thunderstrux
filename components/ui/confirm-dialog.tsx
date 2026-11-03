@@ -54,7 +54,7 @@ export function ConfirmDialog({
   return (
     <dialog
       aria-labelledby={titleId}
-      className="m-auto w-[min(92vw,520px)] animate-dialog-in rounded-card border border-line bg-surface p-6 text-ink shadow-float backdrop:animate-fade-in backdrop:bg-brand-ink/40"
+      className="m-auto w-[min(92vw,520px)] animate-dialog-in rounded-card border border-line bg-surface p-6 text-ink shadow-float backdrop:animate-fade-in backdrop:bg-night/40"
       onCancel={(event) => {
         // Escape cancels; it never confirms, and not while a request is in flight.
         event.preventDefault();
@@ -72,7 +72,7 @@ export function ConfirmDialog({
             </div>
           ) : null}
           <div className="flex flex-wrap justify-end gap-3">
-            <Button disabled={busy} onClick={onCancel} type="button" variant="secondary">
+            <Button disabled={busy} onClick={onCancel} type="button" variant="quiet">
               {cancelLabel}
             </Button>
             <Button

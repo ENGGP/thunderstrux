@@ -215,7 +215,7 @@ export default async function OrganiserEventPage({
                 </div>
               }
             >
-              <SalesOverTime access={access} eventId={event.id} organisationId={organisation.id} timeZone={event.timeZone} />
+              <SalesOverTime access={access} cancelled={Boolean(event.cancelledAt)} eventId={event.id} organisationId={organisation.id} timeZone={event.timeZone} />
             </Suspense>
           </Card>
         ) : null}
@@ -268,7 +268,8 @@ export default async function OrganiserEventPage({
 
 // Zero-filled from the first paid sale to the last: by day, or by week past
 // two months, over at most the last 366 days.
-async function SalesOverTime({ access, organisationId, eventId, timeZone }: { access: AnalyticsAccess; organisationId: string; eventId: string; timeZone: string }) {
+// A cancelled event's sales stay on record, drawn grey so they never read as live.
+async function SalesOverTime({ access, cancelled, organisationId, eventId, timeZone }: { access: AnalyticsAccess; cancelled: boolean; organisationId: string; eventId: string; timeZone: string }) {
   const days = await eventSalesDays(organisationId, eventId, timeZone);
   if (!days) return <p className="mt-4 text-sm text-ink-soft">No paid sales yet.</p>;
   const earliest = addDays(days.last, 1 - maxRangeDays);
@@ -280,6 +281,7 @@ async function SalesOverTime({ access, organisationId, eventId, timeZone }: { ac
       <BarChart
         bars={series.map((bucket) => ({ key: bucket.start, label: formatShortDate(bucket.start), primary: bucket.gross ?? 0, value: formatMoney(bucket.gross ?? 0) }))}
         label={`Gross sales by ${weekly ? "week starting" : "day"}`}
+        muted={cancelled}
       />
     </div>
   );

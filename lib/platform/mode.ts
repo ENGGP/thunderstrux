@@ -22,5 +22,12 @@ export function adminHostAllowed(host: string | null) {
   }
 }
 
+// Dev only: ADMIN_PORTAL_MFA=off lets the dev app's portal skip the authenticator.
+// Built images run NODE_ENV=production (inlined at build), so preview and
+// production always require it whatever this variable says.
+export function adminMfaOff() {
+  return process.env.NODE_ENV === "development" && process.env.ADMIN_PORTAL_MFA === "off";
+}
+
 // How long one authenticator verification lets an operator read.
 export const ADMIN_WINDOW_MS = 60 * 60_000;

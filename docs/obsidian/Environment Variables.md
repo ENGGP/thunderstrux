@@ -57,6 +57,7 @@ sources: [docker-compose.yml, docker-compose.dev.yml, docker-compose.hosted.yml,
 | `MFA_ENCRYPTION_KEY` | `lib/security/staff-mfa.ts`, `scripts/doctor-dev.mjs` | Base64 of exactly 32 bytes; encrypts authenticator secrets. Back it up separately; losing it strands enrolments. | when MFA is not `off` | yes |
 | `LEGACY_ORGANISATION_ACCESS_MODE` | `lib/staff/live-authority.ts` | `allow` lets an organisation account on `Organisation.accountUserId` act as owner when it has no staff row; `deny` stops it. Unset is `allow` outside production; in production unset or invalid denies and fails readiness. | hosted: compose | no |
 | `ADMIN_PORTAL_ENABLED` | `lib/platform/mode.ts` (`proxy.ts`, `lib/platform/authority.ts`) | `true` makes this process serve the admin portal at `/admin` ([[Platform Admin Portal]]). Set only by `docker-compose.dev.yml` and the `pnpm ops:admin` container; unset everywhere else, so the public app answers 404. `validateHostedConfig` refuses it on the hosted app. | no | no |
+| `ADMIN_PORTAL_MFA` | `lib/platform/mode.ts` (`adminMfaOff`) | `off` lets the admin portal skip the authenticator, but only when `NODE_ENV=development`. Set only by `docker-compose.dev.yml`; built images run `NODE_ENV=production` and ignore it. | no | no |
 | `AUTH_TRUST_HOST` | Auth.js | Set only by `tests/integration/dependency-security.test.ts`. | no | no |
 
 ## Database and Redis

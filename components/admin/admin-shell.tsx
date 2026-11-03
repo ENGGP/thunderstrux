@@ -4,6 +4,7 @@ import { Icon, type IconName } from "@/components/ui/icon";
 import { appUrl } from "@/lib/app-url";
 import { hasPlatformPermission, type PlatformPermission } from "@/lib/permissions/platform";
 import type { PlatformActor } from "@/lib/platform/authority";
+import { AdminCodeOff } from "./action-dialog";
 import { AdminSignOut } from "./admin-sign-out";
 import { Omnibox } from "./omnibox";
 import { VerifyWindow } from "./verify-window";
@@ -53,7 +54,11 @@ export function AdminShell({ actor, current, children }: { actor: PlatformActor;
         </Link>
         <Omnibox />
         <div className="ml-auto flex items-center gap-3">
-          <VerifyWindow endsAt={actor.windowEndsAt.toISOString()} />
+          {actor.mfaOff ? (
+            <span className="inline-flex h-[30px] items-center gap-1.5 whitespace-nowrap rounded-full border border-line bg-surface-subtle px-2.5 text-[13px] font-semibold text-ink-soft">
+              <Icon name="warning" size={16} />No code (dev)
+            </span>
+          ) : <VerifyWindow endsAt={actor.windowEndsAt.toISOString()} />}
           <span className="flex flex-col text-xs leading-tight text-ink-muted">
             <strong className="text-sm text-ink">{operatorName(actor)}</strong>
             {actor.role}
@@ -80,7 +85,7 @@ export function AdminShell({ actor, current, children }: { actor: PlatformActor;
           ))}
         </nav>
         <main className="min-w-0 flex-[999_1_540px] px-7 pb-10 pt-6" id="main" tabIndex={-1}>
-          <div className="mx-auto flex max-w-[1180px] flex-col gap-[18px]">{children}</div>
+          <div className="mx-auto flex max-w-[1180px] flex-col gap-[18px]">{actor.mfaOff ? <AdminCodeOff>{children}</AdminCodeOff> : children}</div>
         </main>
       </div>
     </div>

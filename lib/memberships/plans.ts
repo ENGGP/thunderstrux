@@ -259,6 +259,8 @@ export async function publishPlan(actor: AccountActor, organisationId: string, p
     if (plan.status === "published") return plan;
     checkVersion(plan, version);
     if (plan.status === "archived") throw new MembershipPlanError(409, "An archived plan can't go back on sale. Create a new plan instead.");
+    // T55: read under the society lock.
+    if (organisation.restrictedAt) throw new MembershipPlanError(409, "Thunderstrux support has restricted this society, so it can't publish or sell. The owners were emailed.");
     await refuseBlockers(tx, organisation, plan);
     const published = await tx.membershipProduct.update({
       where: { id: plan.id },

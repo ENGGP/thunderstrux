@@ -6,6 +6,7 @@ import { AdminShell, adminEnvironment } from "@/components/admin/admin-shell";
 import { IdChip } from "@/components/admin/id-chip";
 import { AdminTime, Breadcrumbs, Facts, Panel, RecordHeader, rowLink } from "@/components/admin/record";
 import { Icon, type IconName } from "@/components/ui/icon";
+import { Notice } from "@/components/ui/notice";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { recordPlatformView } from "@/lib/platform/audit";
 import { requirePlatformPage } from "@/lib/platform/authority";
@@ -69,6 +70,12 @@ export default async function AdminRecoveryPage({ params }: { params: Promise<{ 
         title={title}
         type={request.kind === "mfa_reset" ? "Authenticator reset" : "Ownership recovery"}
       />
+      {/* The outcome stays on the page, so it survives the refresh that ends the dialog (board H8, state 5). */}
+      {request.status === "completed" ? (
+        <Notice role="status" title={request.kind === "mfa_reset" ? `${target}'s authenticator was reset` : `${target} is an owner of ${request.organisation?.name ?? "the society"}`} tone="success">
+          Completed <AdminTime value={request.completedAt} />. {request.kind === "ownership" ? "Payouts are held for 7 days. " : "They set up a new authenticator at their next sign-in. "}Everyone told was emailed again.
+        </Notice>
+      ) : request.status === "cancelled" ? <Notice role="status" title="Request cancelled">Nothing was changed. Everyone told was emailed.</Notice> : null}
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(380px,100%),1fr))] items-start gap-[18px]">
         <Panel title="Timeline">
           <div className="grid gap-4 px-4 py-4">

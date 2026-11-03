@@ -23,16 +23,15 @@ export async function setWorkerPaused(actor: PlatformActor, worker: string, paus
   }, now);
 }
 
-// Read-only checks; the run happens before the change transaction so a slow audit
-// holds no lock, and a wrong code keeps nothing. Each check's count, class and
-// sample ids are the trail's metadata, which the Operations page shows.
+// Read-only checks, run only once the code is accepted, so a session without the
+// phone can't start one. They read outside the transaction, which meanwhile holds
+// only the operator's own row. Each check's count, class and sample ids are the
+// trail's metadata, which the Operations page shows.
 export async function runIntegrityAudit(actor: PlatformActor, input: ChangeInput, now = new Date()) {
-  const results = await runDatabaseIntegrityAudit();
-  const checks = results.map((check) => ({ name: check.name, classification: check.classification, count: check.count, legacy: Boolean(check.legacy), sampleIds: check.sampleIds.slice(0, 5) }));
-  return platformWrite(actor, "platform:operations", input, async () => ({
-    change: { action: "platform.integrity_audit_run", targetType: "IntegrityAudit", targetId: "database", metadata: { checks } },
-    result: { checks }
-  }), now);
+  return platformWrite(actor, "platform:operations", input, async () => {
+    const checks = (await runDatabaseIntegrityAudit()).map((check) => ({ name: check.name, classification: check.classification, count: check.count, legacy: Boolean(check.legacy), sampleIds: check.sampleIds.slice(0, 5) }));
+    return { change: { action: "platform.integrity_audit_run", targetType: "IntegrityAudit", targetId: "database", metadata: { checks } }, result: { checks } };
+  }, now, 120_000);
 }
 
 export function readPauseAll() {

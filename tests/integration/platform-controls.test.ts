@@ -3,7 +3,8 @@ import { NextRequest } from "next/server";
 import { POST as adminAction } from "@/app/api/admin/actions/route";
 import { proxy } from "@/proxy";
 import { prisma } from "@/lib/db";
-import { describe as describeEntry } from "@/lib/audit/history";
+import { describe as describeEntry, readHistory } from "@/lib/audit/history";
+import { publishPlan } from "@/lib/memberships/plans";
 import { createCommerceCheckout } from "@/lib/commerce/checkout";
 import { getPublishedEventDetail, getPublishedEvents, listingAvailability } from "@/lib/events/public-events";
 import { setOrganisationEventPublication, setOrganisationEventSaleState } from "@/lib/events/event-lifecycle";
@@ -210,6 +211,10 @@ describe("restricting a society and holding its payouts", () => {
     await expect(disconnectAccount(owner.organisation.id, { actor: { id: owner.user.id } })).rejects.toBeInstanceOf(StripeDisconnectBlockedError);
     expect((await prisma.organisation.findUniqueOrThrow({ where: { id: owner.organisation.id } })).stripeAccountId).not.toBeNull();
     expect(await processPayoutBatch(25, step.now)).toEqual({ processed: 0, results: [] });
+    const plan = await prisma.membershipProduct.create({ data: { organisationId: owner.organisation.id, name: "2027 membership", priceAmount: 0, startsAt: new Date(), endsAt: new Date(Date.now() + 100 * 86_400_000), entitlements: ["member_prices"] } });
+    await expect(publishPlan({ id: owner.user.id, authVersion: 0 }, owner.organisation.id, plan.id, { expectedVersion: plan.version })).rejects.toThrow("restricted");
+    // History tells it as Thunderstrux support, under the Thunderstrux filter too.
+    expect((await readHistory(owner.organisation.id, { who: "thunderstrux" }, "Australia/Brisbane")).entries.map((entry) => entry.actor.name)).toContain("Thunderstrux support");
 
     const lift = next();
     await changeSociety(actor, "lift_restriction", owner.organisation.id, lift.input, lift.now);
@@ -276,7 +281,7 @@ describe("delayed recovery", () => {
     await prisma.user.update({ where: { id: owner.user.id }, data: { disabledAt: new Date() } });
     const changed = next();
     await expect(completeRecovery(actor, requestId, changed.input, changed.now)).rejects.toThrow("changed since it was made");
-    expect((await readRecoveryRequest(requestId))?.checks[0].ok).toBe(false);
+    expect((await readRecoveryRequest(requestId))?.checks.map((check) => check.ok)).toEqual([false, true, true, true]);
     const cancel = next("Someone objected");
     await cancelRecovery(actor, requestId, cancel.input, cancel.now);
     expect(await notices("recovery_cancelled")).toHaveLength(1);

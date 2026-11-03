@@ -189,7 +189,7 @@ export async function readRecoveryRequest(id: string) {
   if (!request) return null;
   const [people, otherOpen] = await Promise.all([
     told(prisma, id),
-    prisma.platformRecoveryRequest.count({ where: { id: { not: id }, status: "pending", ...(request.organisation ? { organisationId: request.organisation.id } : { targetUserId: request.target.id }) } })
+    prisma.platformRecoveryRequest.count({ where: { id: { not: id }, status: "pending", kind: request.kind, ...(request.organisation ? { organisationId: request.organisation.id } : { targetUserId: request.target.id }) } })
   ]);
   // The recheck Complete shows; the transaction repeats it under locks.
   const target = request.target;

@@ -30,7 +30,8 @@ export async function platformWrite<T>(
   permission: PlatformPermission,
   input: ChangeInput,
   work: (tx: Prisma.TransactionClient, now: Date) => Promise<{ change: PlatformChange; result: T }>,
-  now = new Date()
+  now = new Date(),
+  timeoutMs = 20_000
 ) {
   const reason = cleanReason(input.reason);
   if (reason.length < 8 || reason.length > 500) throw new PlatformRefusal("Give a reason of 8 to 500 characters.");
@@ -42,7 +43,7 @@ export async function platformWrite<T>(
       targetId: done.change.targetId, organisationId: done.change.organisationId ?? null, reason, metadata: done.change.metadata
     } });
     return done;
-  }, { timeout: 20_000 });
+  }, { timeout: timeoutMs });
   // Ids only; adminPathFor links the receiver to the record.
   emitOperationalAlert("platform_admin_action", {
     action: change.action, operatorUserId: actor.user.id, role: actor.role, targetType: change.targetType, targetId: change.targetId,

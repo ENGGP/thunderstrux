@@ -42,10 +42,9 @@ export function ActionDialog({ env, spec, onClose, onDone }: { env: string; spec
       });
       onDone(reason);
     } catch (error) {
-      // A refusal changed nothing and keeps what you typed, except the used code.
+      // A refusal changed nothing and keeps what you typed (board H7).
       if (error instanceof ClientApiError && error.status < 500) setFailure({ kind: "refused", message: error.message });
       else setFailure({ kind: "broken", at: new Date().toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", second: "2-digit" }) });
-      setCode("");
       setBusy(false);
     }
   }

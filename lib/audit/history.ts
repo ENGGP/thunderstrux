@@ -58,7 +58,8 @@ function filterWhere(organisationId: string, filters: HistoryFilters, timeZone: 
   // Check-ins only under their own filter, so the door doesn't bury the rest.
   if (filters.category) and.push({ OR: prefixes[filters.category].map((prefix) => ({ action: { startsWith: prefix } })) });
   else and.push({ NOT: { action: { startsWith: prefixes.checkins[0] } } });
-  if (filters.who === "thunderstrux") and.push({ actorUserId: null, action: { in: automaticActions } });
+  // Support's changes read as Thunderstrux too (T55).
+  if (filters.who === "thunderstrux") and.push({ actorUserId: null, OR: [{ action: { in: automaticActions } }, { action: { startsWith: "platform." } }] });
   else if (filters.who === "stripe") and.push({ actorUserId: null, action: { notIn: automaticActions }, NOT: { action: { startsWith: "platform." } } });
   else if (filters.who) and.push({ actorUserId: filters.who });
   if (filters.from) and.push({ createdAt: { gte: startOfZonedDay(filters.from, timeZone) } });

@@ -16,6 +16,7 @@ import { membershipOffers } from "@/lib/memberships/offers";
 import { shopProducts } from "@/lib/merchandise/shop";
 import { zoneCity } from "@/lib/zoned-time";
 import { societyViewer } from "./viewer";
+import { quietLinkClasses } from "@/components/ui/link-tabs";
 export const dynamic = "force-dynamic";
 // Societies put this link in their Instagram bio: the preview names them, says what they do and shows their cover.
 export async function generateMetadata({ params }: { params: Promise<{ orgSlug: string }> }): Promise<Metadata> {
@@ -48,8 +49,8 @@ export default async function OrganisationDetailsPage({
   ]);
   // PUB-05: the soonest membership still to end and the four newest products.
   const offer = offers[0];
-  const heading = "border-l-[3px] border-brand pl-3 text-2xl font-semibold text-ink";
-  const more = "text-sm font-semibold text-brand underline underline-offset-4";
+  const heading = "text-2xl font-semibold text-ink";
+  const more = `text-sm ${quietLinkClasses}`;
   return (
     <main id="main" tabIndex={-1} className="bg-paper pb-14">
       <div className="mx-auto max-w-page px-4 md:px-8">

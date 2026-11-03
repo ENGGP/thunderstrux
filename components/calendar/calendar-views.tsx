@@ -41,10 +41,10 @@ const tone = (item: CalendarItem) =>
     : item.kind === "term"
       ? "border-line bg-surface-subtle text-ink-soft"
       : item.event.cancelledAt
-        ? "border-line bg-surface text-ink-soft hover:border-brand"
+        ? "border-danger-border bg-surface text-ink-soft hover:border-brand"
         : item.event.status === "draft"
           ? "border-dashed border-ink-muted bg-surface text-ink"
-          : "border-brand-200 bg-brand-tint text-brand-ink hover:border-brand";
+          : "border-brand-200 bg-brand-tint text-ink hover:border-brand";
 
 // What a link can't fit, for its tooltip and read after its visible words: a
 // link's name must contain what sighted people see (WCAG 2.5.3).
@@ -67,7 +67,7 @@ function chipText(segment: Segment, timeZone: string, month: boolean): ReactNode
   if (item.kind === "term") return `${membershipLabel(item.end.name)} ends`;
   const { event } = item;
   const status = mark(event);
-  const word = status ? <b className="font-semibold">{statusLabel(status)} </b> : null;
+  const word = status ? <b className={status === "cancelled" ? "font-semibold text-danger" : "font-semibold"}>{statusLabel(status)} </b> : null;
   if (month) return <>{word}{event.title}</>;
   const start = formatTime(event.startTime, timeZone);
   if (!item.multiDay) return <>{word}<b className="font-semibold">{start}</b> {event.title}</>;
@@ -107,7 +107,7 @@ export function MonthGrid({ days, month, ...props }: ViewProps & { days: string[
             {week.map((day, column) => {
               const outside = day.slice(0, 7) !== month;
               return (
-                <div className={`group relative border-l border-line first:border-l-0 ${outside ? "bg-surface-subtle" : ""}`} key={day} style={{ gridColumn: column + 1, gridRow: "1 / -1" }}>
+                <div className={`group relative border-l border-line first:border-l-0 ${outside ? "bg-neutral-bg" : ""}`} key={day} style={{ gridColumn: column + 1, gridRow: "1 / -1" }}>
                   {props.newEventHref && day >= props.today ? (
                     <Link
                       aria-label={`New event on ${formatDay(day, true)}`}
@@ -188,8 +188,8 @@ export function WeekGrid({ days, now, ...props }: ViewProps & { days: string[]; 
         {days.map((day, index) => (
           <div className="relative border-l border-line bg-[linear-gradient(var(--color-line)_1px,transparent_1px)]" key={day} style={{ backgroundSize: `100% ${hourPx}px`, backgroundPositionY: 0 }}>
             {day === nowDay ? (
-              <div aria-hidden="true" className="absolute inset-x-0 z-10 border-t-2 border-danger-icon" style={{ top: top(localMinutes(now, props.timeZone)) }}>
-                <i className="absolute -left-[5px] -top-1.5 size-2.5 rounded-full bg-danger-icon" />
+              <div aria-hidden="true" className="absolute inset-x-0 z-10 border-t-2 border-brand" style={{ top: top(localMinutes(now, props.timeZone)) }}>
+                <i className="absolute -left-[5px] -top-1.5 size-2.5 rounded-full bg-brand" />
               </div>
             ) : null}
             {timed[index].map((entry) => {

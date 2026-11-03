@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { DateRail } from "@/components/events/date-rail";
+import { Placeholder } from "@/components/ui/placeholder";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { ListingAvailability } from "@/lib/events/public-events";
 import { formatDateTime, listingPriceLabel } from "@/lib/format";
@@ -39,7 +40,7 @@ export function EventCard({
         // Decorative: the title link names the event.
         <img alt="" className="-mx-5 -mt-5 aspect-video w-[calc(100%+2.5rem)] max-w-none object-cover" decoding="async" loading="lazy" src={`/api/public/assets/${heroAssetId}`} />
       ) : media ? (
-        <div aria-hidden="true" className="-mx-5 -mt-5 hidden aspect-video w-[calc(100%+2.5rem)] max-w-none bg-brand-tint sm:block bg-[repeating-linear-gradient(135deg,transparent_0_15px,color-mix(in_srgb,var(--ts-brand)_9%,transparent)_15px_16px)]" />
+        <Placeholder className="-mx-5 -mt-5 aspect-video w-[calc(100%+2.5rem)] max-w-none text-5xl max-sm:hidden" initial={title} />
       ) : null}
       <DateRail date={startTime} timeZone={timeZone} />
       <div className="grid min-w-0 flex-1 content-start gap-1">

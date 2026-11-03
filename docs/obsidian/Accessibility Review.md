@@ -40,7 +40,7 @@ A new page joins the matching journey list in the spec.
 - **Skip link:** every page's `<main id="main" tabIndex={-1}>` is the Skip to content target.
 - **Labels:** each control has a `<label>` holding only its label; hints and errors are tied with `aria-describedby`; an error sets `aria-invalid` (`components/ui/input.tsx`, `components/ui/date-field.tsx`).
 - **Label in name (2.5.3):** a button whose accessible name adds context starts with its visible words and adds the rest as screen-reader text ("Check in" + name, "Mark ready" + " for order ABC123"). Hidden text inside a scrolling table needs a `relative` button, or it escapes the scroll area and widens the page.
-- **Focus:** the ring is an unlayered 2px `--ts-focus` outline that no utility removes.
+- **Focus:** the ring is an unlayered 2px ink `--ts-focus` outline that no utility removes, with a 2px white `--ts-focus-gap` between it and the control; on night surfaces (`surface-night`) it turns white with a night gap.
 - **Live regions:** results are `Notice`s with `role="status"` or `role="alert"`; nothing permanent on a page is a live region.
 - **Dialogs:** native `<dialog>` via `showModal()` traps focus; Escape cancels and never confirms.
 - **Scrolling content:** a container that scrolls sideways is a focusable region named after its content (`role="region"`, `tabIndex={0}`, `aria-label`), as `ResponsiveTable` does; page grids use `grid-cols-1` so wide tables scroll inside their card.

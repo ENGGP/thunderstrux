@@ -1,15 +1,19 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
+import { DateRail } from "@/components/events/date-rail";
 import { EventCard } from "@/components/events/event-card";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SocietyCard } from "@/components/organisations/society-card";
 import { buttonClasses } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { quietLinkClasses } from "@/components/ui/link-tabs";
 import { CardGridSkeleton, Skeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { appUrl } from "@/lib/app-url";
 import { getPublishedEvents } from "@/lib/events/public-events";
+import { formatDateTime, listingPriceLabel } from "@/lib/format";
 import {
   discoverOrganisations,
   discoveryInput
@@ -47,51 +51,50 @@ const howItWorks = [
 export default async function Home() {
   // A society needs its own account, so signed-in visitors are not offered one here.
   const signedIn = Boolean((await getLiveSession())?.user);
+  // The soonest public event, shown as a ticket stub beside the headline on wide screens.
+  const [heroEvent] = (await getPublishedEvents({ limit: 1 })).events;
 
   return (
     <>
       <main id="main" tabIndex={-1} className="bg-paper">
-        <section className="bg-brand-ink text-white">
-          <div className="mx-auto grid max-w-page gap-6 px-4 py-14 md:px-8 md:py-20">
-            <h1 className="max-w-3xl text-balance font-display text-4xl font-semibold leading-[1.1] md:text-6xl md:leading-[1.06]">
-              Discover events at your campus
-            </h1>
-            <p className="max-w-xl text-lg text-white/80">
-              See what student societies are running, get your tickets and
-              follow the people behind them.
-            </p>
-            <div className="flex flex-wrap gap-3">
-              <Link
-                className={buttonClasses({
-                  size: "lg",
-                  variant: "tertiary",
-                  className: "bg-surface text-brand-ink no-underline hover:bg-brand-tint hover:no-underline"
-                })}
-                href="/events"
-              >
-                See what&apos;s on
-              </Link>
-              <Link
-                className={buttonClasses({
-                  size: "lg",
-                  variant: "tertiary",
-                  className: "text-white"
-                })}
-                href="/societies"
-              >
-                Find a society
-              </Link>
+        <section className="surface-night">
+          <div className="mx-auto grid max-w-page gap-10 px-4 py-14 md:px-8 md:py-20 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)] lg:items-center">
+            <div className="grid gap-6">
+              <h1 className="max-w-3xl text-balance font-display text-4xl font-semibold leading-[1.1] md:text-6xl md:leading-[1.06]">
+                Discover events at your <span className="text-glow">campus</span>
+              </h1>
+              <p className="max-w-xl text-lg text-white/80">
+                See what student societies are running, get your tickets and
+                follow the people behind them.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                {/* Beside the ticket stub (wide screens only), Get tickets is the one filled button. */}
+                <Link
+                  className={buttonClasses({
+                    size: "lg",
+                    variant: "onNight",
+                    className: heroEvent ? "lg:border-glow lg:bg-transparent lg:text-white lg:hover:bg-night-raised" : ""
+                  })}
+                  href="/events"
+                >
+                  See what&apos;s on
+                </Link>
+                <Link className={buttonClasses({ size: "lg", variant: "ghostNight" })} href="/societies">
+                  Find a society
+                </Link>
+              </div>
             </div>
+            {heroEvent ? <HeroEvent event={heroEvent} /> : null}
           </div>
         </section>
 
         <div className="mx-auto grid max-w-page gap-14 px-4 py-12 md:gap-20 md:px-8 md:py-16">
           <Suspense fallback={<HomeSkeleton />}>
-            <HomeListings />
+            <HomeListings heroEventId={heroEvent?.id ?? null} />
           </Suspense>
           {signedIn ? null : (
             <section aria-labelledby="how-it-works" className="grid gap-6">
-              <h2 className="border-l-[3px] border-brand pl-3 text-2xl font-semibold text-ink" id="how-it-works">
+              <h2 className="text-2xl font-semibold text-ink" id="how-it-works">
                 How Thunderstrux works
               </h2>
               <ul className="grid gap-6 md:grid-cols-3">
@@ -105,7 +108,7 @@ export default async function Home() {
             </section>
           )}
           {signedIn ? null : (
-            <section className="grid gap-4 rounded-feature bg-warm-paper p-8 md:grid-cols-[1fr_auto] md:items-center">
+            <section className="grid gap-4 rounded-feature border border-line bg-surface p-8 md:grid-cols-[1fr_auto] md:items-center">
               <div>
                 <h2 className="text-2xl font-semibold text-ink">
                   Running a society?
@@ -115,7 +118,7 @@ export default async function Home() {
                   year&apos;s committee without losing your history.
                 </p>
               </div>
-              <Link className={buttonClasses({ size: "lg" })} href="/signup?for=society">
+              <Link className={buttonClasses({ size: "lg", variant: "secondary" })} href="/signup?for=society">
                 Create a society
               </Link>
             </section>
@@ -148,9 +151,53 @@ function HomeSkeleton() {
   );
 }
 
-// A short look ahead; the full, filtered list lives at /events.
-async function HomeListings() {
-  const result = await getPublishedEvents({ limit: 6 });
+type HeroEventData = Awaited<ReturnType<typeof getPublishedEvents>>["events"][number];
+
+// The soonest public event as a ticket stub: the date tile, what and where, a tear
+// line, then the price and Get tickets. Wide screens only; phones keep the words.
+function HeroEvent({ event }: { event: HeroEventData }) {
+  const timeZone = event.organisation.timeZone;
+  const href = `/events/${event.id}`;
+  const { availability } = event;
+  return (
+    <article className="hidden gap-5 rounded-card bg-surface p-6 text-ink lg:grid">
+      <div className="flex gap-4">
+        <DateRail date={event.startTime} timeZone={timeZone} />
+        <div className="grid min-w-0 content-start gap-1">
+          <Link className="w-fit text-sm text-ink-muted underline-offset-4 hover:text-brand hover:underline" href={`/societies/${event.organisation.slug}`}>
+            {event.organisation.name}
+          </Link>
+          <h2 className="font-sans text-xl font-semibold leading-snug [overflow-wrap:anywhere]">
+            <Link className="underline-offset-4 hover:underline" href={href}>{event.title}</Link>
+          </h2>
+          <p className="text-sm text-ink-soft">{formatDateTime(event.startTime, { timeZone, fallback: "Date unavailable" })}</p>
+          <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">{event.location}</p>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t-2 border-dashed border-line pt-4">
+        {availability?.state === "on_sale" ? (
+          <>
+            <span className="font-semibold tabular-nums">{listingPriceLabel(availability.prices)}</span>
+            <Link className={buttonClasses()} href={href}>Get tickets</Link>
+          </>
+        ) : (
+          <>
+            {availability?.state === "sold_out" || availability?.state === "sales_closed" ? (
+              <StatusBadge status={availability.state === "sold_out" ? "sold-out" : "sales-closed"} />
+            ) : <span className="text-sm text-ink-soft">Paid tickets unavailable right now</span>}
+            <Link className={buttonClasses({ variant: "secondary" })} href={href}>See event</Link>
+          </>
+        )}
+      </div>
+    </article>
+  );
+}
+
+// A short look ahead; the full, filtered list lives at /events. On wide screens the
+// hero already shows the soonest event, so the grid starts at the next one there.
+async function HomeListings({ heroEventId }: { heroEventId: string | null }) {
+  const result = await getPublishedEvents({ limit: heroEventId ? 7 : 6 });
+  const wideOnly = heroEventId && result.events.length === 7 ? result.events[6].id : null;
   // The home page features societies that have something to show: an upcoming event, then a description.
   // Directory order (by name) stays as it is; this only re-ranks a first dozen.
   const found = await discoverOrganisations(discoveryInput(new URLSearchParams({ limit: "12" })));
@@ -161,16 +208,10 @@ async function HomeListings() {
     <>
       <section aria-labelledby="upcoming-events" className="grid gap-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
-          <h2
-            className="border-l-[3px] border-brand pl-3 text-2xl font-semibold text-ink"
-            id="upcoming-events"
-          >
+          <h2 className="text-2xl font-semibold text-ink" id="upcoming-events">
             Upcoming events
           </h2>
-          <Link
-            className="text-sm font-semibold text-brand underline"
-            href="/events"
-          >
+          <Link className={`text-sm ${quietLinkClasses}`} href="/events">
             Explore all events
           </Link>
         </div>
@@ -186,18 +227,19 @@ async function HomeListings() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {result.events.map((event) => (
-              <EventCard
-                availability={event.availability}
-                id={event.id}
-                key={event.id}
-                location={event.location}
-                society={event.organisation}
-                media={result.events.some((item) => item.heroAssetId)}
-                heroAssetId={event.heroAssetId}
-                startTime={event.startTime}
-                timeZone={event.organisation.timeZone}
-                title={event.title}
-              />
+              <div className={event.id === heroEventId ? "grid lg:hidden" : event.id === wideOnly ? "hidden lg:grid" : "grid"} key={event.id}>
+                <EventCard
+                  availability={event.availability}
+                  id={event.id}
+                  location={event.location}
+                  society={event.organisation}
+                  media={result.events.some((item) => item.heroAssetId)}
+                  heroAssetId={event.heroAssetId}
+                  startTime={event.startTime}
+                  timeZone={event.organisation.timeZone}
+                  title={event.title}
+                />
+              </div>
             ))}
           </div>
         )}
@@ -206,16 +248,10 @@ async function HomeListings() {
       {societies.organisations.length > 0 ? (
         <section aria-labelledby="discover-societies" className="grid gap-6">
           <div className="flex flex-wrap items-end justify-between gap-3">
-            <h2
-              className="border-l-[3px] border-brand pl-3 text-2xl font-semibold text-ink"
-              id="discover-societies"
-            >
+            <h2 className="text-2xl font-semibold text-ink" id="discover-societies">
               Discover societies
             </h2>
-            <Link
-              className="text-sm font-semibold text-brand underline"
-              href="/societies"
-            >
+            <Link className={`text-sm ${quietLinkClasses}`} href="/societies">
               All societies
             </Link>
           </div>

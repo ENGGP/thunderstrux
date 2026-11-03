@@ -1,7 +1,7 @@
 import type { ButtonHTMLAttributes } from "react";
 
 type ButtonStyle = {
-  variant?: "primary" | "secondary" | "tertiary" | "danger" | "dangerSolid";
+  variant?: "primary" | "secondary" | "tertiary" | "onNight" | "ghostNight" | "quiet" | "danger" | "dangerText" | "dangerSolid";
   size?: "sm" | "md" | "lg";
   className?: string;
   // Working on a request: keeps its colour and shows progress, not the neutral "unavailable" look.
@@ -11,11 +11,19 @@ type ButtonStyle = {
 // Every variant carries a border (transparent where none shows), so turning
 // disabled or busy never adds one and the button never changes width.
 const variants = {
-  primary: "border border-transparent bg-brand text-white hover:bg-brand-hover active:bg-brand-ink",
+  primary: "border border-transparent bg-brand text-white hover:bg-brand-hover active:bg-night",
+  // Lilac means "chosen", so a hovered secondary button takes the inset tone instead.
   secondary:
-    "border border-line-strong bg-surface text-brand-ink hover:bg-brand-tint",
+    "border border-line-strong bg-surface text-brand-ink hover:bg-surface-subtle",
   tertiary: "border border-transparent text-brand underline-offset-4 hover:underline",
+  // On a night violet surface: the white primary, and a glow-edged ghost beside it.
+  onNight: "border border-transparent bg-surface text-night hover:bg-surface-subtle",
+  ghostNight: "border border-glow text-white hover:bg-night-raised",
+  // Cancel and other ways out: present, but never competing with the one action that does something.
+  quiet: "border border-transparent text-ink-soft underline-offset-4 hover:text-ink hover:underline",
   danger: "border border-danger bg-surface text-danger hover:bg-danger-bg",
+  // A destructive action in a list: crimson words, so a column of them isn't a wall of red. Its dialog confirms in solid crimson.
+  dangerText: "border border-transparent text-danger underline-offset-4 hover:underline",
   // Solid danger appears only on the confirming button of a dialog.
   dangerSolid: "border border-transparent bg-danger text-white hover:opacity-90"
 };

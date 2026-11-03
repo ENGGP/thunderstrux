@@ -64,7 +64,7 @@ describe("dashboards (T34)", () => {
     for (const text of [`Get ${organisation.name} ready`, "Set up payments", "Finish your society profile", "Schedule your first event"]) expect(html).toContain(text);
     for (const hidden of ["Needs your attention", "Sales this month", "$0.00", "Members now", "Upcoming events"]) expect(html).not.toContain(hidden);
     // Payments is a setup step here, not a warning: free events can be published without it.
-    expect(html).not.toContain("border-warning-border");
+    expect(html).not.toContain("bg-warning-bg");
     // A draft doesn't end setup: publishing it is the next step.
     await eventAt(organisation.id, "First draft", at(21 * day), "draft");
     const drafted = await page();

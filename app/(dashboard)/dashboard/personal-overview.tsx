@@ -3,8 +3,8 @@ import { formatDay, formatTime, localDay } from "@/components/calendar/layout";
 import { DateRail } from "@/components/events/date-rail";
 import { buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Icon } from "@/components/ui/icon";
-import { rowLinkClasses } from "@/components/ui/link-tabs";
+import { Placeholder } from "@/components/ui/placeholder";
+import { quietLinkClasses, rowLinkClasses } from "@/components/ui/link-tabs";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getAccessibleOrganisationsForCurrentAccount } from "@/lib/auth/access";
 import { readMemberProfile } from "@/lib/auth/account-settings";
@@ -22,7 +22,7 @@ import { zoneCity } from "@/lib/zoned-time";
 // in payment review is a purchase, never a ticket here.
 
 const day = 86_400_000;
-const moreLink = "text-sm font-semibold text-brand underline underline-offset-4";
+const moreLink = `text-sm ${quietLinkClasses}`;
 const titleLink = rowLinkClasses;
 const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
 const lastDay = (endsAt: Date, timeZone: string) => formatDate(new Date(endsAt.getTime() - 1), timeZone);
@@ -120,9 +120,7 @@ export async function PersonalOverview({ userId }: { userId: string }) {
           {next.event.heroAssetId ? (
             <img alt="" className="aspect-video w-full object-cover sm:aspect-auto sm:w-2/5" decoding="async" loading="lazy" src={`/api/public/assets/${next.event.heroAssetId}`} />
           ) : (
-            <div aria-hidden="true" className="flex aspect-video items-center justify-center bg-brand-tint text-brand sm:aspect-auto sm:w-2/5 sm:min-h-[220px]">
-              <Icon name="ticket" size={40} />
-            </div>
+            <Placeholder className="aspect-video text-6xl sm:aspect-auto sm:min-h-[220px] sm:w-2/5" initial={next.event.title} />
           )}
           <div className="grid flex-1 content-start gap-2 p-5 sm:p-6">
             <p className="text-caption font-semibold uppercase tracking-wide text-brand">Your next plans</p>
@@ -236,7 +234,7 @@ export async function PersonalOverview({ userId }: { userId: string }) {
               <ul className="mt-3 grid">
                 {joined.map((society) => (
                   <li className="flex items-center gap-3 border-t border-line py-3.5 first:border-0" key={society.id}>
-                    <span aria-hidden="true" className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-ink text-sm font-semibold text-white">
+                    <span aria-hidden="true" className="flex size-10 shrink-0 items-center justify-center rounded-full bg-night text-sm font-semibold text-white">
                       {society.name.split(/\s+/).slice(0, 2).map((word) => word[0]?.toUpperCase()).join("")}
                     </span>
                     <div className="grid min-w-0 gap-0.5">

@@ -146,7 +146,7 @@ export default async function SocietyMembershipsPage({ params }: { params: Promi
                           <ul className="grid gap-1.5 text-ui">
                             {offer.entitlements.map((key) => (
                               <li className="flex items-start gap-2" key={key}>
-                                <Icon className="mt-0.5 text-success" name="success" size={18} />
+                                <Icon className="mt-0.5 text-ink-soft" name="success" size={18} />
                                 {unlockWords[key]}
                               </li>
                             ))}

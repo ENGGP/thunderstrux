@@ -102,7 +102,7 @@ export function SignupForm({
               <input
                 aria-describedby={`account-type-${value}`}
                 checked={accountRole === value}
-                className="mt-1"
+                className="mt-1 accent-brand"
                 name="accountRole"
                 onChange={() => setAccountRole(value)}
                 type="radio"

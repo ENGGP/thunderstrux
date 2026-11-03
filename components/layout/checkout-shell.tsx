@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { quietLinkClasses } from "@/components/ui/link-tabs";
 
 // A ticket purchase's steps, the same on every page it passes through (DEBT-002).
 export function ticketSteps({ guest, free }: { guest: boolean; free: boolean }) {
@@ -41,7 +42,7 @@ export function CheckoutShell({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm font-semibold text-ink-soft [overflow-wrap:anywhere]">{lead} {society}</p>
           {backHref ? (
-            <Link className="inline-flex min-h-11 items-center text-sm font-semibold text-brand underline underline-offset-4" href={backHref}>
+            <Link className={`inline-flex min-h-11 items-center text-sm ${quietLinkClasses}`} href={backHref}>
               {backLabel}
             </Link>
           ) : null}

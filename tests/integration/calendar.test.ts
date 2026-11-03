@@ -142,7 +142,7 @@ describe("society calendar (T33)", () => {
     const month = await page({ date: "2026-10-15" });
     expect(month).toContain("Halloween Social, cancelled");
     // A month chip is the title; its dates follow for screen readers.
-    expect(month).toMatch(/<b class="font-semibold">Cancelled <\/b>Halloween Social<span class="sr-only">, /);
+    expect(month).toMatch(/<b class="font-semibold text-danger">Cancelled <\/b>Halloween Social<span class="sr-only">, /);
     expect(month).toContain(">Cancelled</span>"); // the legend, and the Agenda's badge
     expect(month).not.toContain("Engineering Camp, cancelled");
     expect(await page({ view: "week", date: "2026-10-31" })).toContain("Cancelled · Halloween Social");

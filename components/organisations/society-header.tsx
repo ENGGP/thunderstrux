@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Placeholder } from "@/components/ui/placeholder";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { TabLabel, tabBarClasses, tabClasses } from "@/components/ui/link-tabs";
 import { formatDate } from "@/lib/format";
@@ -31,7 +32,7 @@ export function SocietyHeader({
           <img alt="" className="mt-6 aspect-[3/1] w-full rounded-feature object-cover md:aspect-[5/1]" src={`/api/public/assets/${organisation.coverAssetId}`} />
         ) : (
           // A quiet branded pattern, not an empty box that reads as a broken image.
-          <div aria-hidden="true" className="mt-6 h-24 rounded-feature bg-brand-tint bg-[repeating-linear-gradient(135deg,transparent_0_15px,color-mix(in_srgb,var(--ts-brand)_9%,transparent)_15px_16px)] md:h-32" />
+          <Placeholder className="mt-6 h-24 rounded-feature md:h-32" />
         )}
         <div className={`flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-4 -mt-9 px-2 md:px-6`}>
           {organisation.logoAssetId ? (
@@ -43,9 +44,7 @@ export function SocietyHeader({
               width={72}
             />
           ) : (
-            <div aria-hidden="true" className="flex h-[72px] w-[72px] items-center justify-center rounded-card border border-line bg-surface font-display text-3xl font-semibold text-brand-ink">
-              {organisation.name.trim().charAt(0).toUpperCase()}
-            </div>
+            <Placeholder className="h-[72px] w-[72px] rounded-card text-3xl ring-4 ring-paper" initial={organisation.name} />
           )}
           <div className="min-w-0 flex-1 sm:pt-10">
             <h1 className="font-display text-3xl font-semibold text-ink [overflow-wrap:anywhere] md:text-5xl">{organisation.name}</h1>

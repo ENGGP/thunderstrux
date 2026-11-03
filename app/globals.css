@@ -17,12 +17,22 @@
   --color-brand-tint: var(--ts-brand-tint);
   --color-brand-200: var(--ts-brand-200);
   --color-paper: var(--ts-paper);
-  --color-warm-paper: var(--ts-warm-paper);
   --color-surface: var(--ts-surface);
   --color-surface-subtle: var(--ts-surface-subtle);
   --color-line: var(--ts-border);
   --color-line-strong: var(--ts-input-border);
   --color-focus: var(--ts-focus);
+  /* Night violet owns surfaces (the hero, the organiser column, the date tile,
+     placeholders); glow is its accent and appears only on night. Inert is
+     disabled, grey so it never reads as selected. */
+  --color-night: var(--ts-night);
+  --color-night-raised: var(--ts-night-raised);
+  --color-night-stripe: var(--ts-night-stripe);
+  --color-glow: var(--ts-glow);
+  --color-inert: var(--ts-inert);
+  /* A chart's second series, and money going out (drawn hatched). */
+  --color-chart-2: var(--ts-chart-2);
+  --color-chart-out: var(--ts-chart-out);
   /* Status roles: text (words), -bg (wash), -border (hairline), -icon (marks). */
   --color-success: var(--ts-success);
   --color-success-bg: var(--ts-success-bg);
@@ -155,6 +165,21 @@
   }
 }
 
+/* A night violet surface: white text, and a white focus ring with a night gap. */
+@utility surface-night {
+  background-color: var(--ts-night);
+  color: #ffffff;
+  --ts-focus: #ffffff;
+  --ts-focus-gap: var(--ts-night);
+}
+
+/* Money going out in a chart: thin diagonal lines with an outline, so it reads
+   without colour and stays the quietest mark. */
+@utility hatch {
+  background: repeating-linear-gradient(135deg, var(--ts-chart-out) 0 2px, transparent 2px 6px);
+  box-shadow: inset 0 0 0 1px var(--ts-chart-out);
+}
+
 @layer base {
   :root {
     color-scheme: light;
@@ -164,33 +189,44 @@
     --ts-brand: #5b2acb;
     --ts-brand-hover: #4c22af;
     --ts-brand-ink: #2a1550;
-    --ts-brand-tint: #f0eafe;
+    /* Selected: what you chose, always with a brand edge. */
+    --ts-brand-tint: #ece4ff;
     --ts-brand-200: #dccffa;
-    --ts-paper: #fbfafd;
-    --ts-warm-paper: #fcfaf5;
+    /* The canvas sits darker than white cards (1.13:1), so cards lift off it. */
+    --ts-paper: #f3f0f8;
     --ts-surface: #ffffff;
-    --ts-surface-subtle: #f5f2fa;
-    --ts-border: #ddd6e7;
-    --ts-input-border: #9e8aac;
-    --ts-focus: #1e72d8;
-    /* Jade, ochre, crimson and a brand lilac for information. Every text colour is
-       at least 6:1 and every icon colour at least 3:1 on its own wash. */
+    --ts-surface-subtle: #f9f7fc;
+    --ts-border: #d8cfe5;
+    --ts-input-border: #8d79a0;
+    --ts-night: #33136c;
+    --ts-night-raised: #44207f;
+    --ts-night-stripe: #4a2394;
+    --ts-glow: #bda6ff;
+    --ts-inert: #f0eff2;
+    --ts-chart-2: #8b72e8;
+    --ts-chart-out: #8a8296;
+    /* An ink ring with a white gap; surface-night turns it white on night. */
+    --ts-focus: #24143b;
+    --ts-focus-gap: #ffffff;
+    /* Jade, ochre and crimson, with information in the neutral family so purple
+       stays out of notices. Every text colour is at least 5.7:1 and every icon
+       colour at least 3:1 on its own wash. */
     --ts-success: #0b6b55;
-    --ts-success-bg: #eef8f4;
-    --ts-success-border: #bfe3d6;
+    --ts-success-bg: #e6f5ee;
+    --ts-success-border: #a9dcc8;
     --ts-success-icon: #12866a;
     --ts-warning: #8a4a06;
-    --ts-warning-bg: #fdf5e7;
-    --ts-warning-border: #f1d9ae;
+    --ts-warning-bg: #fdf1dc;
+    --ts-warning-border: #eccf95;
     --ts-warning-icon: #b5650c;
-    --ts-danger: #a61e3f;
-    --ts-danger-bg: #fdf1f3;
-    --ts-danger-border: #f4c6d0;
+    --ts-danger: #8f0d31;
+    --ts-danger-bg: #fdecf0;
+    --ts-danger-border: #e3a1b2;
     --ts-danger-icon: #c42d4f;
     --ts-info: #4a4360;
-    --ts-info-bg: #f7f5fb;
-    --ts-info-border: #e3ddee;
-    --ts-info-icon: #5b2acb;
+    --ts-info-bg: #eeebf3;
+    --ts-info-border: #d6cfe0;
+    --ts-info-icon: #594f67;
     --ts-neutral: #595265;
     --ts-neutral-bg: #f3f1f6;
     --ts-neutral-border: #e2dde9;
@@ -272,8 +308,10 @@
   }
 }
 
-/* Unlayered so no utility (including outline-none) can remove the keyboard focus ring. */
+/* Unlayered so no utility (including outline-none) can remove the keyboard focus ring.
+   The shadow fills the 2px offset, so the ring always has a gap between it and the control. */
 :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
   outline: 2px solid var(--ts-focus);
   outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--ts-focus-gap);
 }

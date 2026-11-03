@@ -7,7 +7,8 @@ import { Icon } from "@/components/ui/icon";
 import { tabBarClasses, tabClasses } from "@/components/ui/link-tabs";
 import { useLeaveGuard } from "@/lib/client/leave-guard";
 import { profileSteps } from "./profile-steps";
-import { Select, TextInput, TextArea } from "@/components/ui/input";
+import { TextInput, TextArea } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Notice } from "@/components/ui/notice";
 import {
   ClientApiError,
@@ -379,7 +380,7 @@ export function SocietyProfile({
                 label="Society timezone"
                 value={profile.timeZone}
                 required
-                onChange={(event) => field("timeZone", event.target.value)}
+                onChange={(value) => field("timeZone", value)}
               >
                 {/* Societies are Australian first: their zones lead, the rest follow. */}
                 <optgroup label="Australia">

@@ -1,4 +1,4 @@
-import { test, expect, prisma, createEvent } from "./fixtures";
+import { test, expect, prisma, createEvent, choose } from "./fixtures";
 
 test("visitors explore events by title, society and dates, on desktop and phone", async ({ page, data }) => {
   await prisma.event.update({ where: { id: data.event.id }, data: { title: "Explore Mixer Night" } });
@@ -12,14 +12,14 @@ test("visitors explore events by title, society and dates, on desktop and phone"
 
   const filters = page.getByRole("search", { name: "Filter events" });
   await filters.getByLabel("Search by title").fill("explore");
-  await filters.getByLabel("Society").selectOption({ label: data.organisation.name });
+  await choose(filters.getByRole("combobox", { name: "Society", exact: true }), data.organisation.name);
   await filters.getByRole("button", { name: "Show events" }).click();
   await expect(page).toHaveURL(new RegExp(`q=explore.*society=${data.organisation.slug}`));
   await expect(page.getByRole("link", { name: "Explore Mixer Night" })).toBeVisible();
   await expect(page.getByText("Explore Ended Night")).toHaveCount(0);
 
   // A range longer than 366 days is refused at the field, and no list shows.
-  await filters.getByLabel("When").selectOption("custom");
+  await choose(filters.getByRole("combobox", { name: "When", exact: true }), "Choose dates");
   await filters.getByLabel("From", { exact: true }).fill("1/1/2026");
   await filters.getByLabel("To", { exact: true }).fill("1 Jun 2027");
   await filters.getByRole("button", { name: "Show events" }).click();
@@ -39,7 +39,7 @@ test("visitors explore events by title, society and dates, on desktop and phone"
 
   // On a phone, When and Society fold behind the Filters toggle.
   await page.setViewportSize({ width: 390, height: 900 });
-  await expect(filters.getByLabel("When")).toBeHidden();
+  await expect(filters.getByRole("combobox", { name: "When", exact: true })).toBeHidden();
   await filters.getByRole("button", { name: "Filters" }).click();
-  await expect(filters.getByLabel("When")).toBeVisible();
+  await expect(filters.getByRole("combobox", { name: "When", exact: true })).toBeVisible();
 });

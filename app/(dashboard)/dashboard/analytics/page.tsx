@@ -7,7 +7,7 @@ import { FilterBar } from "@/components/ui/filter-bar";
 import { buttonClasses } from "@/components/ui/button";
 import { DateField } from "@/components/ui/date-field";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Select } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { LinkTabs } from "@/components/ui/link-tabs";
 import { Notice } from "@/components/ui/notice";
 import { Skeleton } from "@/components/ui/skeleton";

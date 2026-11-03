@@ -5,7 +5,8 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DateField } from "@/components/ui/date-field";
-import { MoneyInput, Select, TextInput } from "@/components/ui/input";
+import { MoneyInput, TextInput } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Notice } from "@/components/ui/notice";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
 import { formatDate, parseMoneyInput } from "@/lib/format";
@@ -197,13 +198,13 @@ export function TicketCodesEditor({
               onChange={(event) => setForm({ ...form, code: event.target.value.toUpperCase() })}
               value={form.code}
             />
-            <Select error={errors.ticketTypeId} label="For" onChange={(event) => setForm({ ...form, ticketTypeId: event.target.value, discount: form.discount === "none" && !ticketTypes.find((type) => type.id === event.target.value)?.hidden ? "percent" : form.discount })} value={form.ticketTypeId}>
+            <Select error={errors.ticketTypeId} label="For" onChange={(value) => setForm({ ...form, ticketTypeId: value, discount: form.discount === "none" && !ticketTypes.find((type) => type.id === value)?.hidden ? "percent" : form.discount })} value={form.ticketTypeId}>
               <option value="">Every ticket anyone can see</option>
               {ticketTypes.map((type) => (
                 <option key={type.id} value={type.id}>{type.hidden ? `${type.name} (hidden: the code unlocks it)` : type.name}</option>
               ))}
             </Select>
-            <Select label="Discount" onChange={(event) => setForm({ ...form, discount: event.target.value, value: "" })} value={form.discount}>
+            <Select label="Discount" onChange={(value) => setForm({ ...form, discount: value, value: "" })} value={form.discount}>
               <option value="percent">Percent off</option>
               <option value="amount">Dollars off</option>
               {hiddenChosen ? <option value="none">None: it only unlocks the ticket</option> : null}

@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Icon } from "@/components/ui/icon";
-import { Select, TextInput } from "@/components/ui/input";
+import { TextInput } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Notice } from "@/components/ui/notice";
 import { ClientApiError, fetchJson } from "@/lib/client/api";
 import type { ActionSpec } from "@/lib/platform/specs";
@@ -76,7 +77,7 @@ export function ActionDialog({ env, spec, onClose, onDone }: { env: string; spec
         <section aria-label="Why" className="grid gap-3">
           <h3 className="text-xs font-bold uppercase tracking-wider text-ink-muted">2 · Why</h3>
           {spec.reasons.length ? (
-            <Select label="Reason" onChange={(event) => setChoice(event.target.value)} value={choice}>
+            <Select label="Reason" onChange={(value) => setChoice(value)} value={choice}>
               {[...spec.reasons, "Other"].map((option) => <option key={option}>{option}</option>)}
             </Select>
           ) : null}

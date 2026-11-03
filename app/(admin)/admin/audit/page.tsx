@@ -4,6 +4,7 @@ import { AdminShell } from "@/components/admin/admin-shell";
 import { AdminTime, Panel, rowLink } from "@/components/admin/record";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { Pager } from "@/components/ui/pager";
+import { SelectControl } from "@/components/ui/select";
 import { readPlatformAudit } from "@/lib/platform/audit";
 import { requirePlatformPage } from "@/lib/platform/authority";
 
@@ -40,12 +41,12 @@ export default async function AdminAuditPage({ searchParams }: { searchParams: P
         <p className="text-sm text-ink-soft">What operators read and changed. Rows can't be edited; views and searches go after two years.</p>
       </div>
       <FilterBar action="/admin/audit" active={(action ? 1 : 0) + (targetId ? 1 : 0)} className="rounded-[10px] border border-line bg-surface px-4 py-3.5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]" label="Filter the audit trail">
-        <label className="flex flex-col gap-1.5 text-sm font-semibold">Action
-          <select className="h-10 rounded-[8px] border border-line-strong bg-surface px-2 font-normal" defaultValue={action ?? ""} name="action">
+        <div className="flex flex-col gap-1.5 text-sm font-semibold"><span id="audit-action">Action</span>
+          <SelectControl aria-labelledby="audit-action" className="h-10 w-full rounded-[8px] border border-line-strong bg-surface px-2 font-normal" defaultValue={action ?? ""} name="action">
             <option value="">Any</option>
             {actions.map((name) => <option key={name} value={name}>{name}</option>)}
-          </select>
-        </label>
+          </SelectControl>
+        </div>
         <label className="flex flex-col gap-1.5 text-sm font-semibold">Target id
           <input className="h-10 rounded-[8px] border border-line-strong bg-surface px-3 font-mono font-normal" defaultValue={targetId} name="target" type="search" />
         </label>

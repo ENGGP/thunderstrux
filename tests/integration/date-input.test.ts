@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { formatDayInput, monthWeeks, parseDayInput, shiftDay, shiftMonth } from "@/lib/date-input";
+import { endAfterStart, formatDayInput, monthWeeks, parseDayInput, shiftDay, shiftMonth } from "@/lib/date-input";
 
 describe("house date picker days", () => {
   test("reads the ways people type a day, and refuses days that don't exist", () => {
@@ -20,5 +20,20 @@ describe("house date picker days", () => {
     expect(october.at(-1)?.at(-1)).toBe("2026-11-01");
     expect(october.every((week) => week.length === 7)).toBe(true);
     expect(monthWeeks("2027-02-10")).toHaveLength(4);
+  });
+
+  test("fills the event's end from its start, and never leaves it before the start", () => {
+    // Empty end: two hours after the start, across midnight too.
+    expect(endAfterStart("2026-11-20T18:00", "", "", true)).toBe("2026-11-20T20:00");
+    expect(endAfterStart("2026-12-31T23:00", "", "", false)).toBe("2027-01-01T01:00");
+    // A filled-in end keeps its length as the start moves, even later in the day.
+    expect(endAfterStart("2026-11-21T19:00", "2026-11-20T18:00", "2026-11-20T21:00", true)).toBe("2026-11-21T22:00");
+    // An end the organiser chose stays while it is still after the start.
+    expect(endAfterStart("2026-11-20T19:00", "2026-11-20T18:00", "2026-11-20T23:30", false)).toBe("2026-11-20T23:30");
+    // ...and moves, keeping its length, once the start passes it.
+    expect(endAfterStart("2026-11-22T18:00", "2026-11-20T18:00", "2026-11-20T21:00", false)).toBe("2026-11-22T21:00");
+    expect(endAfterStart("2026-11-20T21:00", "", "2026-11-20T21:00", false)).toBe("2026-11-20T23:00");
+    // No start yet, or the start cleared: the end is left alone.
+    expect(endAfterStart("", "2026-11-20T18:00", "2026-11-20T20:00", true)).toBe("2026-11-20T20:00");
   });
 });

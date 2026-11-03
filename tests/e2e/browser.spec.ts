@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { test, expect, prisma, login, selectStaffContext, createEvent, createOrganisationAccount, createOrganisationStaff } from './fixtures';
+import { test, expect, prisma, login, selectStaffContext, createEvent, createOrganisationAccount, createOrganisationStaff, choose } from './fixtures';
 import { createOrder } from '@/tests/helpers/test-data';
 
 test('finance staff can page order history while another tenant cannot read it', async ({ page, data }) => {
@@ -212,8 +212,7 @@ test('member staff choose a tenant, retain it during this login and see role-awa
   await createOrganisationStaff({ organisationId: second.organisation.id, userId: data.manager.id, role: 'finance_manager' });
   await login(page, data.manager.email);
   await expect(page.getByRole('heading', { name: "Overview", exact: true })).toBeVisible();
-  const chooser = page.getByLabel('Workspace');
-  await chooser.selectOption(data.organisation.id);
+  await choose(page.getByRole('combobox', { name: 'Workspace', exact: true }), data.organisation.name);
   await expect(page.getByText('Current society', { exact: true }).filter({ visible: true })).toBeVisible();
   const nav = page.getByRole('navigation', { name: 'Organisation navigation' }).first();
   await expect(nav.getByRole('link', { name: 'Events', exact: true })).toBeVisible();
@@ -222,7 +221,7 @@ test('member staff choose a tenant, retain it during this login and see role-awa
   await expect(nav.getByRole('link', { name: 'Events', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByText('Revenue', { exact: true })).toHaveCount(0);
   await page.reload();
-  await expect(page.getByLabel('Workspace').first()).toHaveValue(data.organisation.id);
+  await expect(page.getByRole('combobox', { name: 'Workspace', exact: true }).first()).toHaveText(data.organisation.name);
   // From lg the sidebar is a column beside the page, never a block above it.
   const sidebar = await page.locator('aside').first().boundingBox();
   const content = await page.locator('main').first().boundingBox();
@@ -230,7 +229,7 @@ test('member staff choose a tenant, retain it during this login and see role-awa
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByText('Society menu', { exact: true }).click();
   const mobile = page.locator('details');
-  await mobile.getByLabel('Workspace').selectOption(second.organisation.id);
+  await choose(mobile.getByRole('combobox', { name: 'Workspace', exact: true }), second.organisation.name);
   await expect(page.getByText('Current society', { exact: true }).filter({ visible: true })).toBeVisible();
   // On a phone the society and its menu share one row (the summary).
   await expect(page.locator('aside summary').getByText(second.organisation.name, { exact: true })).toBeVisible();
@@ -239,7 +238,7 @@ test('member staff choose a tenant, retain it during this login and see role-awa
   await prisma.organisationStaff.updateMany({ where: { userId: data.manager.id, organisationId: second.organisation.id }, data: { status: 'revoked' } });
   await page.reload();
   await expect(page.getByRole('heading', { name: "Overview", exact: true })).toBeVisible();
-  await expect(page.getByLabel('Workspace')).toHaveValue('personal');
+  await expect(page.getByRole('combobox', { name: 'Workspace', exact: true })).toHaveText('Personal');
   await page.goto('/tickets');
   await expect(page.getByRole('heading', { name: 'My tickets', exact: true })).toBeVisible();
   // On a phone Sign out is inside the Menu, and My tickets stays outside it.
@@ -249,14 +248,14 @@ test('member staff choose a tenant, retain it during this login and see role-awa
   await page.getByRole('navigation', { name: 'Menu' }).getByRole('button', { name: 'Sign out' }).click();
   await expect(page).toHaveURL('http://localhost:3100/');
   await login(page, data.manager.email);
-  await expect(page.getByLabel('Workspace')).toHaveValue('personal');
+  await expect(page.getByRole('combobox', { name: 'Workspace', exact: true })).toHaveText('Personal');
 });
 
 
 test('private staff invitation email supports explicit acceptance, resend and revocation', async ({ page, data, browser }) => {
   await login(page, data.owner.email, '/dashboard/settings/staff');
   await page.getByLabel('Email', { exact: true }).fill(data.member.email);
-  await page.getByLabel('Invitation role', { exact: true }).selectOption('finance_manager');
+  await choose(page.getByRole('combobox', { name: 'Invitation role', exact: true }), 'Finance manager');
   const responsePromise = page.waitForResponse(response => response.url().endsWith(`/api/orgs/${data.organisation.slug}/staff/invites`) && response.request().method() === 'POST');
   await page.getByRole('button', { name: 'Create invite', exact: true }).click();
   const response = await responsePromise; expect(response.status()).toBe(201);
@@ -292,8 +291,8 @@ test('private staff invitation email supports explicit acceptance, resend and re
     await expect(recipient.getByRole('status')).toContainText('Staff access accepted');
     expect(await prisma.organisationStaff.findUniqueOrThrow({ where: { organisationId_userId: { organisationId: data.organisation.id, userId: data.member.id } } })).toMatchObject({ role: 'finance_manager', status: 'active' });
     await recipient.getByRole('link', { name: 'Open dashboard' }).click();
-    await expect(recipient.getByLabel('Workspace')).toHaveValue('personal');
-    await recipient.getByLabel('Workspace').selectOption(data.organisation.id);
+    await expect(recipient.getByRole('combobox', { name: 'Workspace', exact: true })).toHaveText('Personal');
+    await choose(recipient.getByRole('combobox', { name: 'Workspace', exact: true }), data.organisation.name);
     await expect(recipient.getByText('Current society', { exact: true }).filter({ visible: true })).toBeVisible();
   } finally { await context.close(); }
   await page.getByLabel('Email', { exact: true }).fill(data.manager.email);

@@ -1,4 +1,4 @@
-import { test, expect, prisma, login } from "./fixtures";
+import { test, expect, prisma, login, choose } from "./fixtures";
 
 // T38: an owner edits an event, then finds who changed what in History,
 // filters it and reads it on a phone.
@@ -20,7 +20,7 @@ test("an owner reads what changed in History and filters it", async ({ page, dat
   await expect(edit).toContainText("Integration Room");
   await expect(edit).toContainText("The Pav");
 
-  await page.getByLabel("What").selectOption("events");
+  await choose(page.getByRole("combobox", { name: "What", exact: true }), "Events");
   await page.getByRole("button", { name: "Apply" }).click();
   await expect(page).toHaveURL(/category=events/);
   await expect(page.getByRole("listitem").filter({ hasText: "edited Engineering Mixer" })).toBeVisible();

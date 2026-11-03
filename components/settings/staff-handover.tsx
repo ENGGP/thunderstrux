@@ -1,7 +1,8 @@
 "use client";
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Select, TextInput } from "@/components/ui/input";
+import { TextInput } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
@@ -40,11 +41,11 @@ export function StaffHandover({ orgSlug, orgName, targets }: { orgSlug: string; 
       {/* What's needed comes first, so nobody fills the form to learn it can't work yet. */}
       {!targets.length && <Notice>Invite and verify another staff member first. They must meet the current MFA requirements.</Notice>}
       <div className="grid gap-4 md:grid-cols-2">
-        <Select label="Incoming owner" value={incomingStaffId} onChange={event => setIncoming(event.target.value)} required disabled={busy}>
+        <Select label="Incoming owner" value={incomingStaffId} onChange={(value) => setIncoming(value)} required disabled={busy}>
           <option value="">Choose staff member</option>
           {targets.map(item => <option key={item.id} value={item.id}>{item.email}</option>)}
         </Select>
-        <Select label="Your access after handover" value={outgoingAccess} onChange={event => setOutgoing(event.target.value)} disabled={busy}>
+        <Select label="Your access after handover" value={outgoingAccess} onChange={(value) => setOutgoing(value)} disabled={busy}>
           <option value="admin">Keep admin access</option><option value="revoked">Revoke my staff access</option>
         </Select>
       </div>

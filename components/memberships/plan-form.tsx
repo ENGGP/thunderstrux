@@ -6,7 +6,8 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DateField } from "@/components/ui/date-field";
-import { MoneyInput, Select, TextArea, TextInput } from "@/components/ui/input";
+import { MoneyInput, TextArea, TextInput } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Notice } from "@/components/ui/notice";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
 import { formatMoney, formatMoneyInput, parseMoneyInput } from "@/lib/format";
@@ -195,7 +196,7 @@ export function PlanForm({
               </div>
               {form.preset === "custom" ? null : (
                 <div className="max-w-48">
-                  <Select label="Year" onChange={(event) => choose(form.preset, event.target.value)} value={form.year}>
+                  <Select label="Year" onChange={(value) => choose(form.preset, value)} value={form.year}>
                     {years.map((year) => (
                       <option key={year}>{year}</option>
                     ))}

@@ -2,7 +2,8 @@
 
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { Icon } from "@/components/ui/icon";
-import { Field, Select, control } from "@/components/ui/input";
+import { Field, control } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { formatCalendarDay, formatCalendarMonth, formatClock } from "@/lib/format";
 import { formatDayInput, localTodayInBrowser, monthWeeks, parseDayInput, shiftDay, shiftMonth } from "@/lib/date-input";
 
@@ -135,7 +136,8 @@ export function DateField({ label, hint, error, id, name, value: controlled, def
 }
 
 // Below 640px the month is a sheet pinned to the bottom of the screen, so a
-// field in a right-hand column never opens it off the edge.
+// field in a right-hand column never opens it off the edge. From 640px it is
+// as wide as its seven 44px day columns, so Sunday is never cut off.
 function MonthPicker({ animate, label, value, min, max, onPick, onClose }: { animate: boolean; label: string; value: string; min?: string; max?: string; onPick: (day: string) => void; onClose: () => void }) {
   const today = localTodayInBrowser();
   const [focused, setFocused] = useState(value || today);
@@ -171,7 +173,7 @@ function MonthPicker({ animate, label, value, min, max, onPick, onClose }: { ani
   return (
     <div
       aria-labelledby={titleId}
-      className={`fixed inset-x-4 bottom-4 z-30 rounded-card border border-line bg-surface p-3 shadow-[0_12px_32px_rgba(36,20,64,0.16)] sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-2 sm:w-[19.5rem] sm:origin-top-left ${animate ? "animate-sheet-in sm:animate-pop-in" : ""}`}
+      className={`fixed inset-x-4 bottom-4 z-30 rounded-card border border-line bg-surface p-3 shadow-[0_12px_32px_rgba(36,20,64,0.16)] sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-2 sm:w-max sm:origin-top-left ${animate ? "animate-sheet-in sm:animate-pop-in" : ""}`}
       onKeyDown={(event) => {
         if (event.key === "Escape") onClose();
       }}
@@ -251,8 +253,8 @@ function MonthPicker({ animate, label, value, min, max, onPick, onClose }: { ani
 
 // A local date and time for forms that need both (the event builder): the
 // house date picker and a time list in 15-minute steps. The value is
-// "YYYY-MM-DDTHH:MM", or "" until both parts are chosen.
-export function DateTimeField({ label, hint, error, id, value, onChange }: { label: string; hint?: string; error?: string; id?: string; value: string; onChange: (value: string) => void }) {
+// "YYYY-MM-DDTHH:MM", or "" until both parts are chosen. `min` is the earliest day.
+export function DateTimeField({ label, hint, error, id, min, value, onChange }: { label: string; hint?: string; error?: string; id?: string; min?: string; value: string; onChange: (value: string) => void }) {
   // Either half chosen alone waits here until the other is chosen.
   const [pending, setPending] = useState({ day: "", time: "" });
   const day = value.slice(0, 10) || pending.day;
@@ -271,6 +273,7 @@ export function DateTimeField({ label, hint, error, id, value, onChange }: { lab
           hint={hint}
           id={id}
           label="Date"
+          min={min}
           onChange={(next) => {
             setPending({ day: next, time });
             onChange(next && time ? `${next}T${time}` : "");
@@ -279,9 +282,9 @@ export function DateTimeField({ label, hint, error, id, value, onChange }: { lab
         />
         <Select
           label="Time"
-          onChange={(event) => {
-            setPending({ day, time: event.target.value });
-            onChange(day && event.target.value ? `${day}T${event.target.value}` : "");
+          onChange={(next) => {
+            setPending({ day, time: next });
+            onChange(day && next ? `${day}T${next}` : "");
           }}
           value={time}
         >

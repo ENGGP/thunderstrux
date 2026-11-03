@@ -34,7 +34,7 @@ test("an owner reads the calendar by month, week and agenda and starts an event 
   await expect(page).toHaveURL(new RegExp(`/dashboard/events/new\\?date=${today}`));
   const starts = page.getByRole("group", { name: "Starts", exact: true });
   await expect(starts.getByLabel("Date", { exact: true })).toHaveValue(formatDayInput(today));
-  await expect(starts.getByLabel("Time")).toHaveValue("18:00");
+  await expect(starts.getByRole("combobox", { name: "Time", exact: true })).toHaveText("6:00 pm");
 
   await page.setViewportSize({ width: 390, height: 900 });
   await page.goto("/dashboard/calendar");

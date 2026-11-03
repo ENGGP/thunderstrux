@@ -159,7 +159,7 @@ export type HistoryEntry = {
   detailUnavailable: boolean;
 };
 
-const roleLabels: Record<string, string> = { owner: "Owner", admin: "Admin", event_manager: "Event manager", finance_manager: "Finance manager", check_in_staff: "Check-in staff" };
+export const roleLabels: Record<string, string> = { owner: "Owner", admin: "Admin", event_manager: "Event manager", finance_manager: "Finance manager", check_in_staff: "Check-in staff" };
 const statusLabels: Record<string, string> = { active: "Active", revoked: "Removed", invited: "Invited" };
 const fieldLabels: Record<string, string> = {
   title: "Title", description: "Description", startTime: "Starts", endTime: "Ends", location: "Location", capacity: "Capacity", salesCloseAt: "Ticket sales close",

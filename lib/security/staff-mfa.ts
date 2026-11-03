@@ -3,6 +3,8 @@ import { compare } from "bcryptjs";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { lockAccount } from "@/lib/auth/account-lock";
+import { emitOperationalAlert } from "@/lib/ops/alerts";
+import { livePlatformRole } from "@/lib/platform/operators";
 
 const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 const periodMs = 30_000;
@@ -129,6 +131,8 @@ async function requireStaffEligibility(userId: string, allowEnrolled = false, cl
     where: { userId, status: "active" }, select: { id: true }
   });
   if (active) return;
+  // T54: platform operators use the same authenticator, always required for /admin.
+  if (await livePlatformRole(client, { id: userId })) return;
   const legacy = await client.organisation.findFirst({
     where: { accountUserId: userId, staff: { none: { userId } } }, select: { id: true }
   });
@@ -159,7 +163,22 @@ async function auditStaffMfa(tx: Prisma.TransactionClient, userId: string, actio
       organisationId, actorUserId: userId, action, targetType: "User", targetId: userId
     })) });
   }
+  // T54: an operator's authenticator steps go to the platform trail (an operator staffs no society).
+  const operatorRole = await livePlatformRole(tx, { id: userId });
+  if (operatorRole) {
+    await tx.platformAuditLog.create({ data: {
+      actorUserId: userId, operatorRole, action: platformMfaActions[action], targetType: "User", targetId: userId
+    } });
+  }
+  return operatorRole;
 }
+
+const platformMfaActions: Record<string, string> = {
+  "staff_mfa.enabled": "platform.mfa_enabled",
+  "staff_mfa.verified": "platform.mfa_verified",
+  "staff_mfa.recovery_used": "platform.mfa_recovery_used",
+  "staff_mfa.recovery_codes_replaced": "platform.mfa_recovery_codes_replaced"
+};
 
 export async function getStaffMfaStatus(userId: string) {
   await requireStaffEligibility(userId, true);
@@ -236,7 +255,7 @@ export async function verifyStaffMfa(userId: string, code: string, sessionDigest
   if (!mfa?.enabledAt || !mfa.encryptedSecret) throw new MfaRequiredError("Staff MFA enrollment required");
   const step = acceptedStep(decrypt(mfa.encryptedSecret), code, now, mfa.lastAcceptedStep);
   const codeHash = /^\d{6}$/.test(code) ? null : recoveryHash(userId, recoveryCode);
-  await prisma.$transaction(async (tx) => {
+  const operatorRole = await prisma.$transaction(async (tx) => {
     await lockMfaAccount(tx, userId, true);
     if (step !== null) {
       const changed = await tx.userMfa.updateMany({ where: { userId,
@@ -251,8 +270,9 @@ export async function verifyStaffMfa(userId: string, code: string, sessionDigest
     await tx.mfaGrant.upsert({ where: { sessionDigest },
       create: { sessionDigest, userId, verifiedAt: now, expiresAt: new Date(now.getTime() + grantLifetimeMs) },
       update: { userId, verifiedAt: now, expiresAt: new Date(now.getTime() + grantLifetimeMs) } });
-    await auditStaffMfa(tx, userId, step === null ? "staff_mfa.recovery_used" : "staff_mfa.verified");
+    return auditStaffMfa(tx, userId, step === null ? "staff_mfa.recovery_used" : "staff_mfa.verified");
   });
+  if (operatorRole) emitOperationalAlert("platform_operator_verified", { userId, role: operatorRole, recoveryCode: step === null });
 }
 
 // A new set of recovery codes replaces every unused one (UI-018). It takes the

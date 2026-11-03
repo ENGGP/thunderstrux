@@ -71,3 +71,18 @@ export function databaseUrlForRestore(source, databaseName) {
   url.pathname = `/${databaseName}`;
   return url.toString();
 }
+
+// T54: the admin portal's one-off container (Q6): published on loopback only,
+// with the portal switched on and its own sign-in origin. NEXT_PUBLIC_APP_URL
+// stays the public site, so every notice links there, never to the portal.
+export const ADMIN_PORTAL_PORT = 3091;
+export function adminPortalRunArgs(project) {
+  const origin = `http://localhost:${ADMIN_PORTAL_PORT}`;
+  return [
+    "run", "-d", "--rm", "--no-deps", "--name", `${assertOperationsProject(project)}-admin`,
+    "-p", `127.0.0.1:${ADMIN_PORTAL_PORT}:3000`,
+    "-e", "PORT=3000", "-e", "ADMIN_PORTAL_ENABLED=true",
+    "-e", `AUTH_URL=${origin}`, "-e", `NEXTAUTH_URL=${origin}`, "-e", `TRUSTED_APP_ORIGINS=${origin}`,
+    "app"
+  ];
+}

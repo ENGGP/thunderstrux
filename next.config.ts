@@ -58,7 +58,9 @@ const nextConfig: NextConfig = {
     return [
       { source: "/:path*", headers: securityHeaders },
       // API answers are private unless a route says otherwise; public reads and health checks set their own.
-      { source: "/api/:path((?!public/|health).*)", headers: [{ key: "Cache-Control", value: "private, no-store" }] }
+      { source: "/api/:path((?!public/|health).*)", headers: [{ key: "Cache-Control", value: "private, no-store" }] },
+      // T54: admin pages are never cached, kept or indexed.
+      { source: "/admin/:path*", headers: [{ key: "Cache-Control", value: "private, no-store" }, { key: "X-Robots-Tag", value: "noindex, nofollow" }] }
     ];
   },
   async redirects() {

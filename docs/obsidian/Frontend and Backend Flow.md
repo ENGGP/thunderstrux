@@ -168,6 +168,10 @@ Product rules: [[Memberships and Merchandise]].
 | `/dashboard/settings/staff` | `requireManagementPage("staff:manage")` | `listOrganisationStaff`, `listPastStaffInvites`; `listHandoverTargets` for owners | `components/settings/staff-management.tsx`; owners also get `components/settings/staff-handover.tsx` |
 | `/dashboard/notifications` | `requireManagementPage("orders:email_resend")` | `listFailedBusinessNotifications` (`lib/email/notification-outbox.ts`) | Email delivery: failed society emails, `components/settings/failed-notifications.tsx` (Send again with a review reason, `POST /api/notifications/[jobId]/requeue`); Newer and Older pages (`?direction=`); bad cursor: redirect to the first page. Account-security mail never appears |
 
+## Admin portal
+
+[[Platform Admin Portal#Pages]] owns these: `/admin`, `/admin/search`, `/admin/users`, `/admin/users/[userId]`, `/admin/societies`, `/admin/societies/[organisationId]`, `/admin/orders`, `/admin/orders/[orderId]`, `/admin/operations`, `/admin/audit`, `/admin/operators`.
+
 ## Legacy slug routes
 
 `app/(dashboard)/dashboard/[orgSlug]/layout.tsx` is a pass-through. Each page calls `redirectLegacyOrganisationPage`: unknown slug or no live authority is a 404; MFA needed goes to `/mfa`; a slug that isn't the selected context goes to `/dashboard`; otherwise it redirects to the slugless page. Links are only ever generated slugless.
@@ -183,7 +187,7 @@ Product rules: [[Memberships and Merchandise]].
 ## How pages reach data
 
 - **Server pages call `lib/*` services directly**, never their own `/api` routes and never Prisma (`tests/integration/domain-service-boundaries.test.ts`). They pass the organisation id the guard returned.
-- **Client components call the API for every change** through `fetchJson` or `fetchWithCsrf` (`lib/client/api.ts`), then `router.refresh()` to re-read on the server. Main callers: event form and actions (`/api/events`), check-in console (`/api/events/[eventId]/tickets`, `/api/tickets/[ticketId]/check-in`), checkout actions (`/api/payments/checkout/*`, through `useCheckout` in `lib/client/checkout.ts`, which polls with `waitForAttempt`), order actions (`/api/orders/[orderId]/*`), memberships and merchandise forms and actions (`/api/orgs/[orgSlug]/memberships/*`, `/api/orgs/[orgSlug]/merchandise/*`), staff and profile settings (`/api/orgs/[orgSlug]/staff/*`, `/profile`, `/assets`), account forms (`/api/me/*`), guest forms (`/api/guest/*`), join and leave, context switcher (`POST /api/me/context`), Stripe settings. Contracts: [[API Reference]].
+- **Client components call the API for every change** through `fetchJson` or `fetchWithCsrf` (`lib/client/api.ts`), then `router.refresh()` to re-read on the server. Callers include the event form, the check-in console, checkout (`useCheckout` in `lib/client/checkout.ts`, which polls with `waitForAttempt`), order actions, society settings, account and guest forms, and the context switcher (`POST /api/me/context`). Contracts: [[API Reference]].
 - **Reads in the browser** are rare: the check-in console search, the payment status poller, the merchandise basket quote (`POST /api/merchandise/quote`), society search, and the Stripe status card.
 - **Loading:** a page decides every redirect and 404 above its `<Suspense>` boundary, then streams slow reads behind a skeleton (events list, overviews, orders, analytics, calendar, history, plans, roster, products, pickups, Explore, home). No other `loading.tsx` exists: one answers 200 where a page redirects or conceals a 404, so unknown event and society links answer 404. The `/societies` one sits in the `(list)` group so it wraps no society page, and is a screen tall so the footer never flashes up. Every stand-in has the shape of what replaces it ([[UI Architecture Rules#Primitives]]).
 - **Errors:** `app/error.tsx` says nothing about the cause; `app/not-found.tsx` is also what a foreign tenant resource renders and must not hint that it exists.

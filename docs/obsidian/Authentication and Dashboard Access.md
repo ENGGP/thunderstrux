@@ -106,7 +106,8 @@ Extra rules outside the matrix: only an `owner` may invite an owner, change an o
 
 ## Proxy and page guards
 
-- `proxy.ts` matches `/dashboard/:path*` and `/account/:path*` only. It reads the JWT, checks the live identity and `authVersion`, and redirects a missing, stale or disabled session to `/login` with the path and query as `callbackUrl`.
+- `proxy.ts` matches `/dashboard/:path*`, `/account/:path*` and `/admin/:path*`. It reads the JWT, checks the live identity and `authVersion`, and redirects a missing, stale or disabled session to `/login` with the path and query as `callbackUrl`. `/admin` first answers 404 unless the process is in admin mode and the host is the sign-in host ([[Platform Admin Portal#Who can reach it]]).
+- **Platform operators** are a separate authority: an active `PlatformOperator` row, never a staff role, and a staff role grants nothing in the admin portal. Operators use the staff authenticator flows, and `requireStaffEligibility` accepts them; their authenticator steps go to the platform trail, not to any society. An active operator can't accept a staff invitation. Everything else: [[Platform Admin Portal]].
 - Everything else guards itself: public event pages `/events/[eventId]` are public; checkout and confirmation pages ask for sign-in themselves.
 - An organisation account sees public event pages as a buyer would; the ticket box says society accounts can't buy (`viewer: "society"`). It is not redirected.
 - Management pages call `requireManagementPage` with their permission; the page-to-permission map is in [[Frontend and Backend Flow]]. A member account with no staff row reaches personal pages only.

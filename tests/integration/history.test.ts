@@ -191,7 +191,8 @@ describe("History (T38)", () => {
         for (const match of (await readFile(`${root}/${file}`, "utf8")).matchAll(/action: "([a-z_]+\.[a-z_.]+)"/g)) literal.add(match[1]);
       }
     }
-    expect([...literal].filter((action) => !recordedActions.includes(action))).toEqual([]);
+    // platform.* rows go to the operators' own trail (PlatformAuditLog, T54), never a society's History.
+    expect([...literal].filter((action) => !action.startsWith("platform.") && !recordedActions.includes(action))).toEqual([]);
 
     const none = new Map();
     const targets = { events: none, orders: none, commerce: none, grants: none, plans: none, products: none, staff: none, invites: none, tickets: none, ticketTypes: none, assets: none };

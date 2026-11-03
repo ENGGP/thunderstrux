@@ -116,6 +116,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 | `staff_invite_email` | 3 / 1 h | closed | society, address | invite create, resend |
 | `data_export` | 20 / 1 h | closed | society, user | orders and attendee CSV downloads |
 | `society_enquiry` | 5 / 1 h | closed | IP and slug; then sender email | Contact {society} (required) |
+| `platform_read` | 600 / 1 h | open | operator | every admin portal page (`requirePlatformPage`, [[Platform Admin Portal]]); open so an incident can still be investigated without Redis |
 | `ticket_code_check` | 600 / 10 min | open | IP, event | a `?code=` read on the event and checkout pages (`codeForBuyer`), so codes can't be found by trying them; when limited the page says to wait |
 | `staff_mfa_setup` | 5 / 1 h | closed | user | MFA setup (not required) |
 | `staff_mfa_verify` | 10 / 10 min | closed | user | MFA confirm, verify and new recovery codes; every fresh-code action when a code is sent (not required) |

@@ -23,6 +23,8 @@ export default function Navbar() {
   const pathname = usePathname() ?? "";
   const search = useSearchParams()?.toString() ?? "";
   const menu = useRef<HTMLElement>(null);
+  // T54: the admin portal has its own shell, so it can't be mistaken for the site.
+  if (pathname === "/admin" || pathname.startsWith("/admin/")) return null;
   // Dashboard pages have a full-height sidebar at the left edge, so the header spans the window to line up with it.
   const fullWidth = pathname.startsWith("/dashboard");
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);

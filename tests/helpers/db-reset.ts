@@ -42,7 +42,8 @@ async function planReset() {
     const ready = [...pending].filter((table) => !keys.some((key) => key.parent === table && pending.has(key.child)));
     if (ready.length > 0) {
       for (const table of ready.sort()) {
-        deletes.push(`DELETE FROM ${quote(table)};`);
+        // T54: the platform trail refuses row deletes; TRUNCATE fires no row trigger.
+        deletes.push(table === "PlatformAuditLog" ? `TRUNCATE TABLE ${quote(table)};` : `DELETE FROM ${quote(table)};`);
         pending.delete(table);
       }
       continue;

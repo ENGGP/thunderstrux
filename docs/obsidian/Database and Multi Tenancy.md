@@ -47,12 +47,14 @@ Fields, defaults and relations: `prisma/schema.prisma`. Amounts are integer cent
 
 | Model | Purpose and notable rules |
 | --- | --- |
-| `User` | One account (`accountRole` `member` or `organisation`). `password` is a bcrypt hash. `authVersion` invalidates sessions; `disabledAt`, `closedAt` (closure is permanent, see below). `renewalReminders` is the one optional-mail switch. |
+| `User` | One account (`accountRole` `member` or `organisation`). `password` is a bcrypt hash. `authVersion` invalidates sessions; `disabledAt`, `closedAt` (closure is permanent, see below); `lastSignInAt` (last password sign-in). `renewalReminders` is the one optional-mail switch. |
 | `AuthToken` | Emailed account token: purpose (`verify_account`, `reset_password`, `email_change`), digest only (`tokenHash` unique), bound to email and `authVersion`, expiry, consumed or invalidated. |
 | `AccountSecurityEvent` | Private per-account ledger (password reset or change, email change steps, `account_closed`). Restrict on user delete. |
 | `UserMfa` | Encrypted TOTP secret (and pending one during enrolment), `lastAcceptedStep` against replay. |
 | `MfaRecoveryCode` | One-time recovery code digests. |
 | `MfaGrant` | A session's MFA verification: keyed by session digest, with expiry. The stale-orders worker deletes expired grants. |
+| `PlatformOperator` | A platform operator (T54), `PlatformOperator_revocation_chk`. [[Platform Admin Portal]] |
+| `PlatformAuditLog` | The operators' trail; `PlatformAuditLog_actor_chk`, `PlatformAuditLog_reason_chk`. |
 
 ### Societies and staff
 
@@ -123,6 +125,8 @@ Values are a contract: code, SQL checks and stored rows use them. Adding a value
 | `OrganisationRole` | `org_owner`, `org_admin`, `event_manager`, `finance_manager`, `content_manager`, `member` (join rows; no authority) |
 | `OrganisationStaffRole` | `owner`, `admin`, `event_manager`, `finance_manager`, `check_in_staff` |
 | `OrganisationStaffStatus` | `invited`, `active`, `revoked` |
+| `PlatformOperatorRole` | `support`, `admin` |
+| `PlatformOperatorStatus` | `active`, `revoked` |
 | `EventStatus` | `draft`, `published` |
 | `EventVisibility` | `public`, `unlisted`, `members_only` |
 | `EventSaleState` | `open`, `closed` |
@@ -178,7 +182,7 @@ Composite indexes and the reads they serve. Every index is in `prisma/schema.pri
 | `EmailOutbox(status, nextAttemptAt, createdAt)`, `NotificationOutbox(status, nextAttemptAt)`, `CompensationRefundJob(state, nextAttemptAt, createdAt)`, `RefundRequest(status, nextAttemptAt)`, `PurchaseDispute(reversalStatus, reversalNextAttemptAt)`, `CheckoutAttempt(state, reconcileDueAt)`, `EventChange(completedAt, createdAt)` | Worker claim queries; the outbox and compensation tables also index `processingStartedAt` for lease recovery |
 
 - Indexes are plain `CREATE INDEX`, which blocks writes to the table while it builds (seconds at current volumes).
-- Known overlaps, kept until production index-usage evidence says otherwise: `Order(eventId)` and `Order(userId)` are prefixes of the composites; `TicketReservation(orderId)` duplicates its unique index; `Event(organisationId)` is a prefix of `Event(organisationId, status)`; `Ticket(orderId)` is a prefix of the unique `(orderId, issueSequence)`.
+- Known overlaps, kept until production index usage says otherwise: `Order(eventId)` and `Order(userId)` are prefixes of the composites; `TicketReservation(orderId)` duplicates its unique index; `Event(organisationId)` is a prefix of `Event(organisationId, status)`; `Ticket(orderId)` is a prefix of the unique `(orderId, issueSequence)`.
 
 ## Constraints and triggers
 
@@ -187,7 +191,7 @@ Database checks back the validators; a write that breaks one fails with a Postgr
 - **Numeric:** `TicketType_quantity_nonnegative_chk`, `TicketType_price_nonnegative_chk`, `TicketType_member_price_chk`, `Order_quantity_positive_chk`, `Order_unitPrice_nonnegative_chk`, `Order_totalAmount_nonnegative_chk`, `Order_paid_total_matches_units_chk` (a paid order's total is unit price × quantity), `Order_feeAmount_bounds_chk`, `Order_externalRefundedAmount_chk`, `TicketReservation_quantity_positive_chk`, `Ticket_issueSequence_positive_chk`, `Event_capacity_positive_chk`, `Event_version_positive_chk`, `CommerceOrder_amounts_chk`, `CommerceOrderLine_amount_chk`, `MerchandiseVariant_remaining_chk`, `RefundRequest_amount_chk`, `PurchaseDispute_reversalAmount_chk`, `SocietyPayout_amount_chk`, `TicketCode_discount_chk`, `TicketCode_maxUses_chk`, `Order_discountAmount_chk`.
 - **Lifecycle:** `Event_endTime_after_startTime_chk`; `Order_paid_requires_paidAt_chk`, `Order_expired_has_no_paidAt_chk`, `Order_failed_requires_failedAt_chk`, `Order_fulfilled_requires_paid_chk`, `Order_free_has_zero_total_chk`; `Order_cancellation_chk` and `CommerceOrder_cancellation_chk` (only a free, paid-status order is cancelled, with a reason of 8 to 500 characters); `CommerceOrder_free_chk`, `CommerceOrder_fulfilled_chk`, `CommerceOrder_refund_chk`, `CommerceOrder_pickup_chk`; `CheckoutAttempt_ticket_order_chk`, `CheckoutAttempt_commerce_order_chk`, `CheckoutAttempt_attached_session_chk`; `PurchaseDispute_resolution_chk`; `MembershipProduct_published_chk`, `MembershipProduct_archived_chk`; `EventChange_completed_chk`.
 - **Shape:** `Order_buyer_capture_check` (snapshot all-or-nothing; provenance `current_account_at_capture`, `purchase` or `verified_guest`), `Order_member_price_chk` (grant and version together), `CommerceOrder_buyer_chk`, `GuestAccessGrant_purpose_scope_chk`, `GuestAccessGrant_session_chk`, `GuestIdentity_email_normalised_chk`, `RefundRequest_purchase_chk`, `PurchaseDispute_purchase_chk`, `NotificationOutbox_privacy_check`, `Organisation_profile_bounds_chk`, `User_closed_disabled_check`, `TicketCode_code_chk`, `Order_code_snapshot_chk`.
-- **Triggers:** `Order_preserve_buyer_capture` (buyer capture immutable), `Order_preserve_member_price`, `CommerceOrder_preserve_snapshot`, `CommerceOrderLine_append_only`, `CommerceLifecycleEvent_append_only`, `MembershipProduct_preserve_sold`, `MembershipGrant_preserve_facts`, `User_permanent_closure` (a closed account can't reopen), `AuditLog_actor_role`.
+- **Triggers:** `Order_preserve_buyer_capture` (buyer capture immutable), `Order_preserve_member_price`, `CommerceOrder_preserve_snapshot`, `CommerceOrderLine_append_only`, `CommerceLifecycleEvent_append_only`, `MembershipProduct_preserve_sold`, `MembershipGrant_preserve_facts`, `User_permanent_closure` (a closed account can't reopen), `AuditLog_actor_role`, `PlatformAuditLog_append_only` ([[Platform Admin Portal#The trail]]).
 - **Audit-only (no constraint):** cross-row checks such as reservation versus order, ticket count versus quantity, and grant overlap. Grant overlap needs an exclusion constraint on `btree_gist`, which waits for the hosting decision.
 
 ## Lock order
@@ -226,10 +230,10 @@ Row-level leases for jobs (`processingToken` on outbox, refund and dispute rows)
 
 ## Account lifecycle and retained records
 
-- Closing an account keeps the `User` id and sets `closedAt` and `disabledAt`; credentials are disabled and `User_permanent_closure` refuses reopening. A new signup never inherits the old account's records.
+- Closure keeps the `User` id, sets `closedAt` and `disabledAt` and disables the credentials; `User_permanent_closure` refuses reopening, and a new signup inherits nothing.
 - Orders, tickets, attendance, audit and security rows stay attached to the original user. Missing buyer snapshots are filled from the account at closure (provenance `current_account_at_capture`); nothing invents purchase-time facts.
 - Relations to `User` use `SetNull` or `Restrict`, not cascade, for financial and history rows.
-- Ownership handover (`lib/staff/handover.ts`) promotes the incoming owner, makes the outgoing one an admin or revokes them, checks an active owner remains, clears `Organisation.accountUserId` and writes `staff.ownership.handed_over`. A retired pointer is never restored. Events and payment records keep their owner society.
+- Ownership handover (`lib/staff/handover.ts`, [[Authentication and Dashboard Access#Owner handover]]) clears `Organisation.accountUserId` for good; events and payment records keep their society.
 - Details: [[Authentication and Dashboard Access]], [[Email Delivery Implementation]].
 
 ## Traps
@@ -239,7 +243,6 @@ Row-level leases for jobs (`processingToken` on outbox, refund and dispute rows)
 - `TicketType.quantity` is what's left. Paid fulfilment and free registration both decrement it; never treat it as the original allocation.
 - A ticket's `validity` changes after issue (refunds, disputes, cancellations), and `checkedInAt` at the door. Count "issued" as `validity = 'active'` where the rule needs valid tickets.
 - Ticket email fields on `Order` (`ticketEmailSentAt` and friends) and `isManuallyRefunded` are bookkeeping only, never payment, fulfilment or refund truth.
-- `CompensationRefundJob` is ticket-only; commerce compensation refunds are `RefundRequest` rows.
 - New check constraints evaluate NULL as passing; write `IS NOT NULL` explicitly when a field is required in a state.
 - Integration tests reset only a database whose name contains `_test`.
 

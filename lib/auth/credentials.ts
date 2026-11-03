@@ -46,6 +46,9 @@ export async function authorizeCredentials(credentials: Partial<Record<string, u
     return null;
   }
 
+  // T54: support sees when someone last got in (a dormant owner, a stuck account).
+  await prisma.user.update({ where: { id: user.id }, data: { lastSignInAt: new Date() }, select: { id: true } });
+
   return {
     id: user.id,
     authVersion: user.authVersion,

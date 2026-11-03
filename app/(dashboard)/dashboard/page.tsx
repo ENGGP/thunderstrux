@@ -19,6 +19,7 @@ import {
 import { bootstrapOrganisationId, contextChoices, readAccountContext, type ContextChoices } from "@/lib/auth/context";
 import { readTimeZone } from "@/lib/organisations/profile";
 import { hasOrganisationPermission } from "@/lib/permissions";
+import { landsInAdmin } from "@/lib/platform/authority";
 import { zoneCity } from "@/lib/zoned-time";
 import { PersonalOverview } from "./personal-overview";
 import { DoorOverview, SocietyOverview } from "./society-overview";
@@ -85,6 +86,7 @@ async function OrganisationDashboard(contexts: ContextChoices) {
 
 export default async function DashboardPage() {
   const user = await requireAuthenticatedUser();
+  if (await landsInAdmin(user)) redirect("/admin");
   const context = await readAccountContext();
   if (context.selected) {
     try {

@@ -117,6 +117,17 @@ sources: [lib/audit/history.ts, app/(dashboard)/dashboard/history/page.tsx, pris
 
 OpenClaw actions are deferred and write nothing.
 
+## Platform trail
+
+The admin portal and the operator CLI write `PlatformAuditLog`, never `AuditLog`, so none of these reaches a society's History ([[Platform Admin Portal#The trail]]).
+
+| Source | Action(s) | Holds |
+| --- | --- | --- |
+| Every admin record page (`recordPlatformView`) | `platform.viewed` | target type and id |
+| Every admin search (`recordPlatformSearch`) | `platform.searched` | a keyed digest of the query (`searchDigest`) and the result count, never the text |
+| `pnpm ops:operator` (`lib/platform/operators.ts`) | `platform.operator_granted`, `platform.operator_role_changed`, `platform.operator_revoked` | no actor; the reason, `via: "cli"`, the OS user and host, the old role on a change |
+| An operator's authenticator steps (`lib/security/staff-mfa.ts`) | `platform.mfa_enabled`, `platform.mfa_verified`, `platform.mfa_recovery_used`, `platform.mfa_recovery_codes_replaced` | the operator |
+
 ## History
 
 - **Who can read:** `audit:read` (owners and admins) through `requireManagementPage` on `/dashboard/history`; rows of the selected society only.

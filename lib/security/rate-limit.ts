@@ -39,7 +39,8 @@ export type RateLimitPolicy =
   | "guest_token_digest"
   | "data_export"
   | "society_enquiry"
-  | "ticket_code_check";
+  | "ticket_code_check"
+  | "platform_read";
 
 type RateLimitPolicyConfig = {
   limit: number;
@@ -114,7 +115,10 @@ export const policies: Record<RateLimitPolicy, RateLimitPolicyConfig> = {
   society_enquiry: { limit: 5, windowSeconds: 60 * 60, failureMode: "closed" },
   // A ticket code read on the event or checkout page, per address and event, so codes can't be guessed by
   // trying them. Each buyer on a shared code link spends two or more reads, so a campus needs this many.
-  ticket_code_check: { limit: 600, windowSeconds: 10 * 60, failureMode: "open" }
+  ticket_code_check: { limit: 600, windowSeconds: 10 * 60, failureMode: "open" },
+  // T54: admin pages an operator opens. A brake on reading the platform out page by
+  // page; open, so an incident can still be investigated while Redis is down.
+  platform_read: { limit: 600, windowSeconds: 60 * 60, failureMode: "open" }
 };
 
 const REDIS_CONNECT_TIMEOUT_MS = 1_500;

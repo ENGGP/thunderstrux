@@ -373,6 +373,7 @@ function ReviewNotice({ order, canAct, timeZone }: { order: Awaited<ReturnType<t
           action={canAct && !order.externalRefundReviewedAt ? (
             <OrderReviewActions
               action="mark_reviewed"
+              covering="dispute"
               orderId={order.id}
               preselect={Math.floor(dispute.amount / order.unitPrice)}
               tickets={order.tickets.filter((ticket) => ticket.validity === "active").map((ticket) => ({ id: ticket.id, reference: ticketReference(ticket.id), type: ticket.ticketType.name }))}

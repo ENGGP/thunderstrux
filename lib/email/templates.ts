@@ -16,7 +16,8 @@ export const notificationTemplateSchema = z.enum([
 export const businessTemplates: readonly NotificationTemplate[] = ["business_notice", "event_cancelled", "society_enquiry", "society_restricted", "society_unrestricted"];
 export type NotificationTemplate = z.infer<typeof notificationTemplateSchema>;
 // DEF-097: text that runs over its limit ends in an ellipsis rather than failing.
-export const clipText = (text: string, max: number) => (text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`);
+// Never cuts an emoji's surrogate pair in half.
+export const clipText = (text: string, max: number) => (text.length <= max ? text : `${text.slice(0, max - 1).replace(/[\uD800-\uDBFF]$/, "").trimEnd()}…`);
 export const notificationPayloadSchema = z.object({
   // A message built from a society's own text (a long pickup policy) is shortened, never refused:
   // a refusal inside a payment's transaction would stop the sale settling (DEF-097).

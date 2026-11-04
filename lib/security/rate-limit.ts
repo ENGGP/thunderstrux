@@ -125,8 +125,9 @@ export const policies: Record<RateLimitPolicy, RateLimitPolicyConfig> = {
   society_enquiry: { limit: 5, windowSeconds: 60 * 60, failureMode: "closed" },
   // #19: one address across every society, so it can't write to all of them at five each.
   society_enquiry_ip: { limit: 30, windowSeconds: 60 * 60, failureMode: "closed" },
-  // #72: anyone may price a basket; each quote reads the catalogue and stock.
-  merchandise_quote: { limit: 300, windowSeconds: 10 * 60, failureMode: "open" },
+  // #72: anyone may price a basket; each quote reads the catalogue and stock. High enough for a
+  // campus's shoppers behind one address during a drop (as DEF-066 did for sign-in).
+  merchandise_quote: { limit: 3000, windowSeconds: 10 * 60, failureMode: "open" },
   // A ticket code read on the event or checkout page, per address and event, so codes can't be guessed by
   // trying them. Each buyer on a shared code link spends two or more reads, so a campus needs this many.
   ticket_code_check: { limit: 600, windowSeconds: 10 * 60, failureMode: "open" },

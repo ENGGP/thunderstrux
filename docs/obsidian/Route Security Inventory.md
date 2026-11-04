@@ -120,7 +120,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 | `data_export` | 20 / 1 h | closed | society, user | orders and attendee CSV downloads |
 | `society_enquiry` | 5 / 1 h | closed | IP and slug; then sender email | Contact {society} (required) |
 | `society_enquiry_ip` | 30 / 1 h | closed | IP | Contact {society}, across every society (required) |
-| `merchandise_quote` | 300 / 10 min | open | IP | `merchandise/quote` |
+| `merchandise_quote` | 3000 / 10 min | open | IP | `merchandise/quote` |
 | `platform_read` | 600 / 1 h | open | operator | every admin portal page (`requirePlatformPage`, [[Platform Admin Portal]]); open so an incident can still be investigated without Redis |
 | `platform_write` | 30 / 1 h | closed | operator | every admin change, wrong codes included (`platformApiActor`) |
 | `platform_integrity_audit` | 5 / 1 h | closed | operator | running the integrity audit from the portal |

@@ -49,7 +49,7 @@ export function TicketOrderNotice({ order, processing, cancelled = false }: { or
   const held = order.requiresCompensationReview ? reviewDisputeWords(order, `${society} will sort it out; contact them if you haven't heard back`) : null;
   if (held) return <Notice title={held.title} tone={order.disputeStatus === "open" ? "warning" : undefined}><p>We couldn&apos;t issue your tickets after your payment went through. {held.message}</p></Notice>;
   // Stripe's "lost" is the buyer's win: their bank returned the payment, and the tickets were voided.
-  if (projection === "disputed" && order.disputeStatus === "lost") return <Notice title="Refunded by your bank"><p>Your bank upheld your dispute and returned the disputed amount to you{issued ? ". The tickets it covered are no longer valid." : ". No tickets were issued for this order."}</p></Notice>;
+  if (projection === "disputed" && order.disputeStatus === "lost") return <Notice title="Refunded by your bank"><p>Your bank upheld your dispute and returned the disputed amount to you{issued ? ". Tickets it covered no longer work; your ticket list shows which are still valid." : ". No tickets were issued for this order."}</p></Notice>;
   if (projection === "disputed" && !order.requiresCompensationReview) return <Notice title="Payment disputed" tone="warning"><p>Your bank has disputed this payment, so the tickets are under review. Contact {society} before the event.</p></Notice>;
   if (projection === "review" || order.requiresCompensationReview) {
     return order.requiresCompensationReview ? (

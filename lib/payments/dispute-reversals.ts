@@ -129,9 +129,9 @@ async function sendReversal(id: string, token: string, now: Date): Promise<Rever
     reversal = (await stripe.transfers.listReversals(transfer.id, { limit: 100 })).data.find((item) => item.metadata?.disputeId === dispute.stripeDisputeId);
     if (!reversal) {
       // PAY-072: Stripe may have turned the dispute won since it was queued; then
-      // nothing is owed, and the society keeps its share.
+      // nothing is owed, and the society keeps its share. An appeal is no win (PAY-068).
       const live = await stripe.disputes.retrieve(dispute.stripeDisputeId);
-      if (outcomeOf(live.status, caseTypeOf(live)) !== "lost") {
+      if (outcomeOf(live.status, caseTypeOf(live)) === "won") {
         await release(dispute.id, token, { reversalStatus: "cancelled", reversalNextAttemptAt: null, reversalLastError: null });
         logInfo("dispute_reversal.cancelled", { disputeId: dispute.stripeDisputeId, providerStatus: live.status });
         return "cancelled";

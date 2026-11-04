@@ -859,6 +859,32 @@ describe("dispute transitions", () => {
     expect((await disputeRow(fixture)).reversalStatus).toBe("pending");
   });
 
+  test("a win never cancels a reversal whose outcome is unknown: the worker finds the one Stripe made, and an appeal sends it (PAY-072)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fixture = await paidOrder();
+    const transferId = `tr_${fixture.order.id}`;
+    stripe.charge.mockResolvedValue({ id: fixture.chargeId, transfer: transferId });
+    stripe.transfer.mockResolvedValue({ id: transferId, amount: 3000, amount_reversed: 0, currency: "aud", destination: fixture.owner.organisation.stripeAccountId });
+    stripe.reversals.mockResolvedValue({ data: [] });
+    stripe.reverse.mockRejectedValue(new Error("socket hang up"));
+    await deliver(fixture, "lost", {}, "charge.dispute.closed");
+    expect(await processDisputeReversalBatch(25, new Date(Date.now() + 1000))).toMatchObject({ results: [{ status: "uncertain" }] });
+    await deliver(fixture, "won");
+    expect((await disputeRow(fixture)).reversalStatus).toBe("uncertain");
+    stripe.reversals.mockResolvedValue({ data: [{ id: unique("trr"), amount: 3000, metadata: { disputeId: `dp_${fixture.order.id}` } }] });
+    expect(await processDisputeReversalBatch(25, new Date(Date.now() + 60 * 60_000))).toMatchObject({ results: [{ status: "succeeded" }] });
+
+    const appealed = await paidOrder();
+    stripe.charge.mockResolvedValue({ id: appealed.chargeId, transfer: `tr_${appealed.order.id}` });
+    stripe.transfer.mockResolvedValue({ id: `tr_${appealed.order.id}`, amount: 3000, amount_reversed: 0, currency: "aud", destination: appealed.owner.organisation.stripeAccountId });
+    stripe.reversals.mockResolvedValue({ data: [] });
+    stripe.reverse.mockImplementation(async (_id: string, params: { amount: number; metadata: Record<string, string> }) => ({ id: unique("trr"), amount: params.amount, metadata: params.metadata }));
+    await deliver(appealed, "lost", {}, "charge.dispute.closed");
+    stripe.dispute.mockResolvedValue(disputeObject(appealed, "appeal_under_review"));
+    expect(await processDisputeReversalBatch(25, new Date(Date.now() + 2 * 60 * 60_000))).toMatchObject({ results: [{ status: "succeeded" }] });
+  });
+
   test("a win after a loss on a checked-in order is a person's call: no refund, an alert (PAY-073)", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const fixture = await paidOrder();

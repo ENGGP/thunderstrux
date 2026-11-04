@@ -96,11 +96,12 @@ export async function recordDispute(tx: Prisma.TransactionClient, input: {
 }
 
 // PAY-072: a dispute Stripe turned won after its loss no longer owes the society's
-// share back: a reversal not yet sent is cancelled (the worker re-reads Stripe
-// before sending one it already claimed).
+// share back: a reversal never sent is cancelled. One claimed or `uncertain` may
+// exist at Stripe, so the worker settles it: it finds a reversal already made, or
+// re-reads the dispute and cancels.
 export async function cancelQueuedReversals(tx: Prisma.TransactionClient, scope: { orderId: string } | { commerceOrderId: string }) {
   await tx.purchaseDispute.updateMany({
-    where: { ...scope, reversalStatus: { in: ["pending", "uncertain"] }, reversalProcessingToken: null },
+    where: { ...scope, reversalStatus: "pending", reversalProcessingToken: null },
     data: { reversalStatus: "cancelled", reversalNextAttemptAt: null }
   });
 }

@@ -365,8 +365,9 @@ function ReviewNotice({ order, canAct, timeZone }: { order: Awaited<ReturnType<t
         </Notice>
       );
     }
-    // PAY-074: the bank took back part of the payment, so the tickets stand until staff pick the ones it covered.
-    if (!ticketless && dispute.amount < order.totalAmount) {
+    // PAY-074: the bank took back part of the payment, so the tickets stand until staff pick the ones it covered
+    // (a loss of the whole payment voids every ticket).
+    if (!ticketless && order.tickets.some((ticket) => ticket.validity === "active")) {
       return (
         <Notice
           action={canAct && !order.externalRefundReviewedAt ? (

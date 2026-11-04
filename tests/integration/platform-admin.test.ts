@@ -84,6 +84,10 @@ describe("who reaches the admin portal", () => {
     setMockSession({ userId: fresh.id, email: fresh.email, accountRole: "member" });
     vi.stubEnv("ADMIN_PORTAL_MFA", "off");
     vi.stubEnv("NODE_ENV", "development");
+    // A dev app reached through a tunnel still asks (#104).
+    vi.stubEnv("AUTH_URL", "https://dev.example.test");
+    await expect(requirePlatformPage("platform:monitor", "/admin")).rejects.toThrow("REDIRECT:/mfa?callbackUrl=%2Fadmin");
+    vi.stubEnv("AUTH_URL", "http://127.0.0.1:3080");
     const actor = await requirePlatformPage("platform:monitor", "/admin");
     expect(actor).toMatchObject({ role: "admin", mfaOff: true });
     await expect(prisma.$transaction((tx) => lockPlatformActor(tx, actor, "platform:monitor", ""))).resolves.toMatchObject({ role: "admin" });

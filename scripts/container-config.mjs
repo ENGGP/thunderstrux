@@ -13,6 +13,19 @@ function requireService(config, name) {
   return service;
 }
 
+// SEC-053 (N9): what any deployed app must have, hosted or the preview's ops:deploy, whatever
+// staff MFA mode the owner chose: rate limiting on, a client-IP header the edge overwrites
+// (x-forwarded-for can be forged, so it would let anyone pick their own bucket), and no admin portal.
+export function assertDeployedAppEnvironment(environment = {}) {
+  if (environment.RATE_LIMIT_ENABLED !== "true") throw new Error("The deployed app must set RATE_LIMIT_ENABLED=true: sign-in and checkout limits need Redis");
+  const header = String(environment.RATE_LIMIT_TRUSTED_PROXY_HEADER ?? "").trim().toLowerCase();
+  if (!header || header === "x-forwarded-for") {
+    throw new Error("The deployed app must set RATE_LIMIT_TRUSTED_PROXY_HEADER to a header its edge overwrites (cf-connecting-ip behind Cloudflare), not x-forwarded-for");
+  }
+  // T54: the admin portal runs only on loopback, on demand (pnpm ops:admin), never in the public app.
+  if (environment.ADMIN_PORTAL_ENABLED !== undefined) throw new Error("The deployed app must not set ADMIN_PORTAL_ENABLED: the admin portal runs only on loopback");
+}
+
 export function validateHostedConfig(config) {
   if (config.services?.db || config.services?.redis) {
     throw new Error("Hosted Compose must not bundle PostgreSQL or Redis");
@@ -45,12 +58,10 @@ export function validateHostedConfig(config) {
   const app = requireService(config, "app");
   if (app.ports?.length) throw new Error("Hosted app must leave public port publication to the platform ingress");
   if (!app.healthcheck) throw new Error("Hosted app must define a readiness healthcheck");
-  if (app.environment?.RATE_LIMIT_ENABLED !== "true") throw new Error("Hosted app must enable Redis rate limiting");
+  assertDeployedAppEnvironment(app.environment);
   // T53: staff authority on a hosted app always needs an authenticator and a live staff row.
   if (app.environment?.MFA_ENFORCEMENT_MODE !== "enforce") throw new Error("Hosted app must set MFA_ENFORCEMENT_MODE=enforce");
   if (app.environment?.LEGACY_ORGANISATION_ACCESS_MODE !== "deny") throw new Error("Hosted app must set LEGACY_ORGANISATION_ACCESS_MODE=deny");
-  // T54: the admin portal runs only on loopback, on demand (pnpm ops:admin), never in the public app.
-  if (app.environment?.ADMIN_PORTAL_ENABLED !== undefined) throw new Error("Hosted app must not set ADMIN_PORTAL_ENABLED: the admin portal runs only on loopback");
 
   const secretVariables = [
     "DATABASE_URL",

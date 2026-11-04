@@ -69,7 +69,7 @@ sources: [docker-compose.yml, docker-compose.dev.yml, docker-compose.hosted.yml,
 | `RATE_LIMIT_ENABLED` | `lib/security/rate-limit.ts`, `lib/security/staff-mfa.ts`, `scripts/doctor-dev.mjs` | `true` turns on Redis limits and readiness pings Redis. Otherwise optional limits are skipped, routes that require protection answer 503, and staff MFA changes are refused. Compose default `false`; hosted hard-codes `true`. | hosted (fixed) | no |
 | `RATE_LIMIT_REDIS_URL` | `lib/security/rate-limit.ts` | Redis URL; base default `redis://redis:6379`. Missing while enabled fails readiness and each check per its policy. | hosted (secret) | yes |
 | `RATE_LIMIT_KEY_PREFIX` | `lib/security/rate-limit.ts` | Key prefix; default `thunderstrux`. | hosted: compose | no |
-| `RATE_LIMIT_TRUSTED_PROXY_HEADER` | `lib/security/rate-limit.ts` | Header holding the client IP; default `x-forwarded-for`. The edge must overwrite it. An invalid header name makes every client `unknown`. The Droplet overlay uses `x-thunderstrux-client-ip`. | hosted: compose | no |
+| `RATE_LIMIT_TRUSTED_PROXY_HEADER` | `lib/security/rate-limit.ts` | Header holding the client IP; default `x-forwarded-for`. The edge must overwrite it. An invalid header name makes every client `unknown`. The Droplet overlay uses `x-thunderstrux-client-ip`; `ops:deploy` and the hosted check refuse unset or `x-forwarded-for` (SEC-053). | hosted: compose | no |
 
 ## Stripe
 
@@ -118,7 +118,7 @@ sources: [docker-compose.yml, docker-compose.dev.yml, docker-compose.hosted.yml,
 | `CADDY_HTTP_PORT`, `CADDY_HTTPS_PORT` | Droplet overlay | Defaults `80`, `443`. | no | no |
 | `THUNDERSTRUX_SECRETS_DIR` | Droplet overlay | Secret files; default `/etc/thunderstrux/secrets`. | no | no |
 | `THUNDERSTRUX_BACKUP_DIR`, `BACKUP_NAME` | Droplet overlay `backup` service | Backup folder (default `/var/lib/thunderstrux/backups`) and file name (default `manual`). | no | no |
-| `SEED_DEMO_PASSWORD` | `prisma/seed.mjs` | Required (16+ characters) when any app URL is not loopback; then every seeded account uses it (SEC-015). | seeding a public origin | no |
+| `SEED_DEMO_PASSWORD` | `prisma/seed.mjs` | When set (16+ characters), every seeded account uses it. Required when any app URL is not loopback, or under `NODE_ENV=production` with no URL (SEC-015, SEC-051). | seeding a public origin | no |
 | `REHEARSAL_TOOLS_IMAGE` | `scripts/rehearse-upgrade.mjs` | Tools image; default `thunderstrux-e2e-tests:local`. | no | no |
 | `USERDOMAIN` | `scripts/run-e2e.mjs`, `scripts/operations.mjs` | Windows only: owner for `icacls` when locking run and state folders. | Windows | no |
 

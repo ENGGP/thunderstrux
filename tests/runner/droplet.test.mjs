@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { deploySteps, quote, releaseImages } from "../../scripts/droplet.mjs";
+import { deploySteps, provenanceChecks, quote, releaseImages } from "../../scripts/droplet.mjs";
 
 // T43b: the pilot-host deploy's ordering, image and edge contracts. The full
 // deploy, upgrade, rollback and failed-release path runs in
@@ -53,7 +53,18 @@ test("only main publishes and attests release images, verified against this work
   for (const gate of gates) assert.ok(gate.includes("&& github.ref == 'refs/heads/main'"), gate);
   const verifies = lines.filter((line) => line.includes("gh attestation verify"));
   assert.equal(verifies.length, 2);
-  for (const verify of verifies) assert.ok(verify.includes('--signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" --source-ref refs/heads/main'), verify);
+  for (const verify of verifies) assert.ok(verify.includes('--signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" --source-ref refs/heads/main --source-digest "$GITHUB_SHA"'), verify);
+});
+
+test("a real host deploys a pair only after GitHub proves main built both images from the manifest's revision (SEC-052)", async () => {
+  const pair = manifest();
+  const checks = provenanceChecks(pair);
+  assert.deepEqual(checks.map((check) => check[2]), [`oci://${pair.web.ref}`, `oci://${pair.ops.ref}`]);
+  for (const check of checks) {
+    assert.deepEqual(check.slice(3), ["--repo", "ENGGP/thunderstrux", "--signer-workflow", "ENGGP/thunderstrux/.github/workflows/release.yml", "--source-ref", "refs/heads/main", "--source-digest", pair.revision]);
+  }
+  const source = await text("scripts/droplet.mjs");
+  assert.ok(source.indexOf("provenanceChecks(manifest)") < source.indexOf('log("upload"'), "provenance is checked before anything is uploaded");
 });
 
 test("server commands quote their arguments", () => {

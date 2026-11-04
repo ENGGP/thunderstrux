@@ -78,7 +78,8 @@ const pendingDeliveries = new Set<Promise<void>>();
 // every five minutes per process, carrying how many were held back; the log still
 // records each one (SEC-020).
 const ALERT_COOLDOWN_MS = 5 * 60_000;
-const cooledAlerts = new Set<OperationalAlertName>(["stripe_webhook_signature_failure", "stripe_webhook_body_too_large"]);
+// #40: a broken settlement fails on every sweep, so its alert is cooled too.
+const cooledAlerts = new Set<OperationalAlertName>(["stripe_webhook_signature_failure", "stripe_webhook_body_too_large", "checkout_settlement_failed"]);
 const cooldowns = new Map<OperationalAlertName, { until: number; suppressed: number }>();
 
 // T54: the admin portal path of the record an alert names (ids only, which the

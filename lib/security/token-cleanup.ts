@@ -23,13 +23,14 @@ export async function cleanUpExpiredTokens(now = new Date(), batch = 500) {
   const accessBefore = new Date(now.getTime() - accessRetentionMs);
   const oldAccess = { action: { in: accessActions }, createdAt: { lt: accessBefore } };
   const [authTokens, guestGrants, mfaGrants, notifications, access] = await Promise.all([
-    prisma.authToken.findMany({ where: { expiresAt: { lt: before } }, select: { id: true }, take: batch }),
+    // #34: oldest first, so a backlog clears in order rather than in whatever order the index returns.
+    prisma.authToken.findMany({ where: { expiresAt: { lt: before } }, select: { id: true }, take: batch, orderBy: { expiresAt: "asc" } }),
     prisma.guestAccessGrant.findMany({
       where: { expiresAt: { lt: before }, OR: [{ sessionExpiresAt: null }, { sessionExpiresAt: { lt: before } }] },
       select: { id: true },
       take: batch
     }),
-    prisma.mfaGrant.findMany({ where: { expiresAt: { lt: before } }, select: { sessionDigest: true }, take: batch }),
+    prisma.mfaGrant.findMany({ where: { expiresAt: { lt: before } }, select: { sessionDigest: true }, take: batch, orderBy: { expiresAt: "asc" } }),
     prisma.notificationOutbox.findMany({ where: finished, select: { id: true, eventKey: true }, take: batch }),
     prisma.platformAuditLog.findMany({ where: oldAccess, select: { id: true }, take: batch })
   ]);

@@ -97,7 +97,8 @@ export async function runWorker(name: WorkerName, job: () => Promise<Record<stri
     const timedOut = (error as { timedOut?: boolean })?.timedOut === true;
     outcome = timedOut ? "timed_out" : "failed";
     logError(timedOut ? "worker.timed_out" : "worker.failed", { worker: name, durationMs: Date.now() - started, error });
-    emitOperationalAlert(timedOut ? "worker_timed_out" : "worker_failed", { worker: name, dedupeKey: `${timedOut ? "worker_timed_out" : "worker_failed"}:${name}`, error });
+    // #31: the alert leaves the host, so it carries the error's name only; the log keeps the rest.
+    emitOperationalAlert(timedOut ? "worker_timed_out" : "worker_failed", { worker: name, dedupeKey: `${timedOut ? "worker_timed_out" : "worker_failed"}:${name}`, errorName: error instanceof Error ? error.name : "UnknownError" });
     await finish(name, holder, outcome, Date.now() - started, error).catch(() => undefined);
     process.exitCode = 1;
     return outcome;

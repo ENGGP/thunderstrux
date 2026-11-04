@@ -15,8 +15,13 @@ export const notificationTemplateSchema = z.enum([
 // Society notices: tenant-owned, listed and requeued on the society's Notifications page.
 export const businessTemplates: readonly NotificationTemplate[] = ["business_notice", "event_cancelled", "society_enquiry", "society_restricted", "society_unrestricted"];
 export type NotificationTemplate = z.infer<typeof notificationTemplateSchema>;
+// DEF-097: text that runs over its limit ends in an ellipsis rather than failing.
+// Never cuts an emoji's surrogate pair in half.
+export const clipText = (text: string, max: number) => (text.length <= max ? text : `${text.slice(0, max - 1).replace(/[\uD800-\uDBFF]$/, "").trimEnd()}…`);
 export const notificationPayloadSchema = z.object({
-  message: z.string().min(1).max(2000),
+  // A message built from a society's own text (a long pickup policy) is shortened, never refused:
+  // a refusal inside a payment's transaction would stop the sale settling (DEF-097).
+  message: z.preprocess((value) => (typeof value === "string" ? clipText(value, 2000) : value), z.string().min(1).max(2000)),
   link: z.string().url().max(2000).optional(),
   // A society notice can name its own subject (T30), such as the event that changed. Organiser
   // text may hold line breaks; they fold to a space so one name can't fail a whole fan-out (SEC-003).

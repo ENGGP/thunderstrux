@@ -42,6 +42,8 @@ export async function POST(request: Request, context: RouteContext) {
     if (limitResponse) {
       return limitResponse;
     }
+    const societyLimit = await enforceRateLimit({ policy: "order_resend_society", request, keyParts: [organisation.id] });
+    if (societyLimit) return societyLimit;
 
     const actor = await requireAuthenticatedUser();
     await enqueueOrganisationOrderTicketEmail(

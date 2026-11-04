@@ -196,7 +196,8 @@ export async function processStaleOrderCleanupBatch({
     emitOperationalAlert("stale_order_worker_failed", {
       dryRun,
       limit: requestedLimit,
-      error
+      // #31: off-host, the error's name only; the log above keeps the rest.
+      errorName: error instanceof Error ? error.name : "UnknownError"
     });
     throw error;
   }

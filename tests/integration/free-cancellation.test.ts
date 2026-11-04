@@ -56,6 +56,15 @@ describe("cancelling a free registration", () => {
     await expect(enqueueOrganisationOrderTicketEmail(fixture.owner.organisation.id, order.id)).rejects.toThrow("cancelled");
   });
 
+  test("a buyer can't give back a registration already used at the door; staff still can (#67)", async () => {
+    const fixture = await freeOrder();
+    const { cancelFreeOrder } = await import("@/lib/payments/free-cancellation");
+    await expect(prisma.$transaction((tx) => cancelFreeOrder(tx, { organisationId: fixture.owner.organisation.id, orderId: fixture.order.id, by: { kind: "buyer", actorUserId: fixture.owner.user.id }, reason: "I can't make it.", now: new Date() })))
+      .rejects.toThrow("already used at the door");
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).cancelledAt).toBeNull();
+    expect(await cancelFreePurchase(input(fixture))).toMatchObject({ status: "cancelled" });
+  });
+
   test("two cancellations at once record one", async () => {
     const fixture = await freeOrder();
     const results = await Promise.all([cancelFreePurchase(input(fixture)), cancelFreePurchase(input(fixture))]);

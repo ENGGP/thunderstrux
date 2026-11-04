@@ -27,6 +27,10 @@ describe("order exports", () => {
     expect(toCsv(["Name", "Note"], [["=HYPERLINK(\"x\")", 'Said "hi", left'], ["-2+3", null], [12, "@sum"]])).toBe(
       "﻿Name,Note\r\n\"'=HYPERLINK(\"\"x\"\")\",\"Said \"\"hi\"\", left\"\r\n'-2+3,\r\n12,'@sum\r\n"
     );
+    // SEC-056: a leading space, a full-width sign, or a formula after a semicolon or tab is defused and quoted.
+    expect(toCsv(["A"], [[" =1+1"], ["＝SUM(A1)"], ["Ann;=cmd()"], ["Bo\t+1"], ["plain; text"]])).toBe(
+      "﻿A\r\n'\u0020=1+1\r\n'＝SUM(A1)\r\n\"'Ann;=cmd()\"\r\n\"'Bo\t+1\"\r\n\"plain; text\"\r\n"
+    );
   });
 
   test("the ticket orders download holds every order the filters match, only this society's, and is audited", async () => {

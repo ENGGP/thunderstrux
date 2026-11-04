@@ -114,7 +114,10 @@ export type GuestSession = NonNullable<Awaited<ReturnType<typeof readGuestSessio
 // A guest session opens one order: the order its purchase link names, or an
 // order bought during this checkout session. Nothing else, whatever the email.
 export async function canOpenGuestOrder(session: GuestSession, orderId: string) {
-  if (session.purpose === "purchase") return session.orderId === orderId;
+  if (session.purpose === "purchase" && session.orderId !== orderId) return false;
+  // #66: and only an order this guest identity bought, whatever the grant or attempt says.
+  if (!(await prisma.order.findFirst({ where: { id: orderId, guestIdentityId: session.guestIdentityId }, select: { id: true } }))) return false;
+  if (session.purpose === "purchase") return true;
   return Boolean(await prisma.checkoutAttempt.findFirst({ where: { actorKind: "guest", actorId: session.grantId, orderId }, select: { id: true } }));
 }
 

@@ -98,6 +98,8 @@ export async function enqueueTicketEmail({
         event: { select: { organisationId: true } }
       }
     });
+    // SEC-057: a resend already waiting is the one the buyer gets; another adds nothing.
+    if (await tx.emailOutbox.count({ where: { orderId, mode, status: { in: ["pending", "processing"] } } })) return { enqueued: false };
     const job = await tx.emailOutbox.create({
       data: { orderId, mode },
       select: { id: true }

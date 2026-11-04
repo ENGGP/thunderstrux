@@ -39,7 +39,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 | Auth.js POSTs (`auth/[...nextauth]`) | every POST: `login_ip_global` → at most 10 KB read before Auth.js parses it (else 400, SEC-049); sign-out also deletes the login's MFA grant |
 | Sign-in (credentials callback) | then a plain form with an address (else 400, SEC-040, SEC-041) → one `email` field (else 400, SEC-007) → `login_ip_email` → `login_known_device` for a browser with a valid known-device cookie, else `login_email` (per account across addresses, DEBT-002, SEC-050) → the password-work gate (503 when full, SEC-019) → Auth.js (its own CSRF) |
 | Guest links (`guest/email/request`, `guest/recover`) | origin → `guest_email_ip` → body → `guest_email_address` → service |
-| Society enquiry (`orgs/[orgSlug]/enquiries`) | origin → `society_enquiry` (IP, slug) → body → `society_enquiry` (sender) → service |
+| Society enquiry (`orgs/[orgSlug]/enquiries`) | origin → `society_enquiry_ip` → `society_enquiry` (IP, slug) → body → `society_enquiry` (sender) → service |
 | Guest redemption (`guest/email/confirm`) | origin → body → `guest_token_ip` → `guest_token_digest` → service |
 | Account security (`me/account/password`, `me/account/email/*`, `POST me/account/closure`) | origin → sign-in (live `authVersion`) → `account_security_change` → body → email confirm only: `account_token_ip`/`account_token_digest` → service (current password, enrolled MFA) |
 | Profile, notification preferences | origin → body → sign-in → service (no rate limit) |
@@ -51,7 +51,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 | Check-in, check-out | origin → dashboard context → `tickets:check_in` → `ticket_check_in_out` → sign-in |
 | Staff order decisions (`refunds`, `cancel`) | origin → context → permission → sign-in → body → `staff_mfa_verify` when a code is sent → fresh code unless MFA mode `off` → service; `review` stops at the login grant |
 | `refund-manual` | origin → context → `orders:refund_mark` → sign-in → strict body → `staff_mfa_verify` when a code is sent → fresh code unless `off` |
-| `resend` | origin → context → `orders:email_resend` → order in this society (404) → `order_resend` → sign-in |
+| `resend` | origin → context → `orders:email_resend` → order in this society (404) → `order_resend` → `order_resend_society` → sign-in; a resend already waiting adds no second email (SEC-057) |
 | Email and notification requeue | origin → context → `orders:email_resend` → order/job exists (404) → `order_resend` → bounded strict body → sign-in |
 | `compensation-refund/confirm` | origin → body → context → `orders:refund` → sign-in → `staff_mfa_verify` when a code is sent → fresh code unless MFA is `off` (SEC-036) |
 | Society slug routes (`organisationActor`: profile, assets, calendar, memberships, merchandise) | origin (writes) → sign-in → slug → permission (+MFA) → rate limit where one applies → body |
@@ -110,6 +110,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 | `organisation_create` | 5 / 1 h | closed | user, IP | `POST /api/orgs` (not required) |
 | `checkout_create` | 5 / 10 min | open | user, event or family; `guest`, guest identity, event or family; `cancel`, order | ticket, membership and merchandise checkout; buyer cancel |
 | `order_resend` | 10 / 15 min | open | society, order or job | resend, email-job requeue, notification requeue |
+| `order_resend_society` | 200 / 1 h | closed | society | resend, all of a society's orders together (SEC-057) |
 | `organisation_join_leave` | 30 / 10 min | open | user, slug, `join`/`leave` | join, leave |
 | `ticket_check_in_out` | 300 / 1 min | open | society, `check-in`/`check-out` | check-in, check-out |
 | `stripe_connect_mutation` | 20 / 10 min | open | society, action | Connect onboard, continue, dashboard, disconnect |
@@ -118,6 +119,8 @@ There is no one universal order. Each family runs its checks in this order; a re
 | `staff_invite_email` | 3 / 1 h | closed | society, address | invite create, resend |
 | `data_export` | 20 / 1 h | closed | society, user | orders and attendee CSV downloads |
 | `society_enquiry` | 5 / 1 h | closed | IP and slug; then sender email | Contact {society} (required) |
+| `society_enquiry_ip` | 30 / 1 h | closed | IP | Contact {society}, across every society (required) |
+| `merchandise_quote` | 3000 / 10 min | open | IP | `merchandise/quote` |
 | `platform_read` | 600 / 1 h | open | operator | every admin portal page (`requirePlatformPage`, [[Platform Admin Portal]]); open so an incident can still be investigated without Redis |
 | `platform_write` | 30 / 1 h | closed | operator | every admin change, wrong codes included (`platformApiActor`) |
 | `platform_integrity_audit` | 5 / 1 h | closed | operator | running the integrity audit from the portal |
@@ -132,7 +135,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 | `guest_token_ip` | 500 / 10 min | closed | IP | guest link redemption |
 | `guest_token_digest` | 10 / 10 min | closed | token digest | guest link redemption |
 
-Not rate limited: public reads (abusive read volume belongs to the hosting edge), `merchandise/quote`, `payments/checkout/attempts/[attemptId]`, buyer status reads, event and staff writes not listed above, the webhooks.
+Not rate limited: public reads (abusive read volume belongs to the hosting edge), `payments/checkout/attempts/[attemptId]`, buyer status reads, event and staff writes not listed above, the webhooks.
 
 ### Client IP
 
@@ -214,7 +217,7 @@ Methods in backticks; "ctx" is the selected dashboard context ([[Authentication 
 | `POST` `/api/payments/webhook`, `/api/stripe/connect/webhook`, `/api/stripe/accounts/webhook` | Stripe signature |
 | `GET` `/api/public/events`, `/api/public/events/[eventId]`, `/api/public/organisations/search` | public |
 | `GET` `/api/public/assets/[assetId]` | public image, or a members-only event image to a member it is open to |
-| `POST` `/api/merchandise/quote` | public, no origin check (changes nothing) |
+| `POST` `/api/merchandise/quote` | public, no origin check (changes nothing), `merchandise_quote` |
 
 ## Traps
 

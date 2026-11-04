@@ -12,7 +12,9 @@ type RouteContext = { params: Promise<{ orgSlug: string }> };
 export async function POST(request: Request, context: RouteContext) {
   const guard = enforceTrustedMutationRequest(request); if (guard) return guard;
   const { orgSlug } = await context.params;
-  const ipLimit = await enforceRateLimit({ policy: "society_enquiry", request, keyParts: [getRateLimitClientIp(request), orgSlug], required: true });
+  const ip = getRateLimitClientIp(request);
+  const ipLimit = await enforceRateLimit({ policy: "society_enquiry_ip", request, keyParts: [ip], required: true }) ??
+    await enforceRateLimit({ policy: "society_enquiry", request, keyParts: [ip, orgSlug], required: true });
   if (ipLimit) return ipLimit;
   const body = await validateJson(request, enquirySchema); if (!body.success) return validationError(body.details);
   const senderLimit = await enforceRateLimit({ policy: "society_enquiry", request, keyParts: [body.data.email], required: true });

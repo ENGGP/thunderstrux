@@ -46,6 +46,10 @@ export async function cancelFreeOrder(
   if (order.paymentKind !== "free" || order.status !== "paid" || !order.fulfilledAt) {
     throw new FreeCancellationError("not_cancellable", "Only a confirmed free registration can be cancelled here");
   }
+  // #67: a buyer can't give back a place already used at the door; staff still can.
+  if (by.kind === "buyer" && await tx.ticket.count({ where: { orderId: input.orderId, checkedInAt: { not: null } } })) {
+    throw new FreeCancellationError("not_cancellable", "A ticket from this registration was already used at the door, so it can't be cancelled");
+  }
   await tx.order.update({ where: { id: input.orderId }, data: { cancelledAt: now, cancelledByUserId: by.actorUserId, cancellationReason: reason } });
   const voided = await tx.ticket.updateMany({
     where: { orderId: input.orderId, validity: { not: "void" } },

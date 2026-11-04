@@ -23,7 +23,8 @@ export async function GET(request: Request, context: RouteContext) {
   try {
     const organisation = await requireOrganisationAccessBySlug(orgSlug);
 
-    return NextResponse.json({ organisation });
+    // #21: staff-only details; no shared cache may keep them.
+    return NextResponse.json({ organisation }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return mapRouteError(error, {
       operation: "organisations.read",

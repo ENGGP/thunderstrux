@@ -60,7 +60,7 @@ export async function commerceCheckoutRoute(request: Request, family: CommerceKi
         routeErrorRule(GuestAccessError, (failure) => unauthorized(failure.message)),
         routeErrorRule(OrganisationAccessError, (failure) => forbidden(failure.message)),
         routeErrorRule(AccountVerificationError, (failure) => forbidden(failure.message)),
-        routeErrorRule(CommerceSelectionError, (failure) => validationError(failure.issues.map((issue) => ({ path: ["selection", ...issue.path.map(String)], message: issue.message })))),
+        routeErrorRule(CommerceSelectionError, (failure) => validationError(failure.issues.slice(0, 20).map((issue) => ({ path: ["selection", ...issue.path.map(String)], message: issue.message })))),
         // Nothing charged: the plan left sale, the dates are already covered, or a checkout for them is open.
         routeErrorRule(MembershipUnavailableError, (failure) => apiError("CONFLICT", failure.message, 409, [{ path: ["selection"], message: failure.message, reason: failure.reason, ...(failure.orderId ? { id: failure.orderId } : {}) }])),
         routeErrorRule(MerchandiseUnavailableError, (failure) =>

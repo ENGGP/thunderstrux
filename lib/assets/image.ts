@@ -1,6 +1,12 @@
 import { createHash } from "node:crypto";
 import sharp from "sharp";
 
+// SEC-055 (N1): one libvips thread, and at most two images decoding at once in this
+// process, so crafted uploads can't multiply decode memory past the container's limit.
+sharp.concurrency(1);
+export const maxImagesDecoding = 2;
+let decoding = 0;
+
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 export const maxStoredEdge = 2048;
 export class AssetError extends Error {
@@ -52,11 +58,25 @@ export async function sanitiseImage(bytes: Buffer, declaredType: string) {
   if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) throw new AssetError(413, "Images must be no larger than 5 MiB");
   const type = imageType(bytes);
   if (type !== declaredType) throw new AssetError(400, "Image content does not match its file type");
+  if (decoding >= maxImagesDecoding) throw new AssetError(503, "Other images are being processed. Try again in a few seconds.");
+  decoding += 1;
+  try {
+    return await decode(bytes);
+  } finally {
+    decoding -= 1;
+  }
+}
+
+async function decode(bytes: Buffer) {
   try {
     const image = sharp(bytes, { failOn: "warning", limitInputPixels: 4096 * 4096 });
     const metadata = await image.metadata();
     if (!metadata.width || !metadata.height || metadata.width > 4096 || metadata.height > 4096 || (metadata.pages ?? 1) !== 1)
       throw new AssetError(400, "Images must be static and no larger than 4096 by 4096 pixels");
+    // 16-bit channels and interlaced (Adam7) PNGs decode into several times the memory of an
+    // ordinary image, and nobody needs them for a logo or a cover (SEC-055).
+    if (metadata.depth !== "uchar" || (metadata.format === "png" && metadata.isProgressive))
+      throw new AssetError(400, "Use an 8-bit, non-interlaced image");
     // Stored at most 2048px on the longest side: every page shows the stored image (next/image is off), and
     // a phone at 3x needs no more for a full-width hero (PERF-004 tracks sized copies for lists).
     const { data, info } = await image

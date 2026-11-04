@@ -179,12 +179,15 @@ describe("ticket email outbox", () => {
     await expect(requeueFailedTicketEmail({ jobId: job.id, actorUserId, reason: "Provider issue resolved" })).rejects.toThrow("not eligible");
   });
 
-  test("automatic enqueue is idempotent while manual enqueue is repeatable", async () => {
+  test("automatic enqueue is idempotent while manual enqueue repeats once the waiting one is sent (SEC-057)", async () => {
     const order = await createPaidTicketOrder();
 
     await enqueueTicketEmail({ orderId: order.id, mode: "automatic" });
     await enqueueTicketEmail({ orderId: order.id, mode: "automatic" });
     await enqueueTicketEmail({ orderId: order.id, mode: "manual" });
+    // Still waiting: a second resend adds nothing.
+    await expect(enqueueTicketEmail({ orderId: order.id, mode: "manual" })).resolves.toEqual({ enqueued: false });
+    await prisma.emailOutbox.updateMany({ where: { orderId: order.id, mode: "manual" }, data: { status: "sent" } });
     await enqueueTicketEmail({ orderId: order.id, mode: "manual" });
 
     await expect(
@@ -513,16 +516,12 @@ describe("ticket email outbox", () => {
 
     try {
       const order = await createPaidTicketOrder("manual-outbox@example.com");
-      await enqueueTicketEmail({ orderId: order.id, mode: "manual" });
-      await enqueueTicketEmail({ orderId: order.id, mode: "manual" });
-      await makeOutboxJobsDue(order.id, new Date("2026-06-01T12:00:00.000Z"));
-
-      const result = await processTicketEmailOutboxBatch({
-        now: new Date("2026-06-01T12:05:00.000Z"),
-        limit: 2
-      });
-
-      expect(result).toMatchObject({ claimed: 2, sent: 2 });
+      // One resend at a time (SEC-057): the second is queued once the first was sent.
+      for (const minute of ["05", "10"]) {
+        await enqueueTicketEmail({ orderId: order.id, mode: "manual" });
+        await makeOutboxJobsDue(order.id, new Date("2026-06-01T12:00:00.000Z"));
+        expect(await processTicketEmailOutboxBatch({ now: new Date(`2026-06-01T12:${minute}:00.000Z`), limit: 2 })).toMatchObject({ claimed: 1, sent: 1 });
+      }
       const keys = fetchMock.mock.calls.map(
         (call) => (call[1]?.headers as Record<string, string>)["Idempotency-Key"]
       );

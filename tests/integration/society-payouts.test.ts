@@ -92,6 +92,20 @@ describe("what is held", () => {
     expect((await heldMoney(fixture.organisationId, fixture.accountId, now)).total).toBe(1836 - 918);
   });
 
+  // PAY-069: Refunded means no ticket is left, not that the money went back.
+  test("a refund that cancels every ticket holds what it didn't refund; a refund of everything holds nothing", async () => {
+    const fixture = await society();
+    const cent = await ticketSale(fixture, 5 * day, { refundStatus: "refunded" });
+    await prisma.refundRequest.create({ data: { orderId: cent.id, organisationId: fixture.organisationId, amount: 1, reason: "Every ticket cancelled for one cent.", operationKey: unique("refund"), status: "succeeded", resolvedAt: now } });
+    const full = await ticketSale(fixture, 20 * day, { refundStatus: "refunded" });
+    await prisma.refundRequest.create({ data: { orderId: full.id, organisationId: fixture.organisationId, amount: 2000, reason: "Refunded in full.", operationKey: unique("refund"), status: "succeeded", resolvedAt: now } });
+
+    const held = await heldMoney(fixture.organisationId, fixture.accountId, now);
+    // floor(1 × 1836 / 2000) = 0 was taken back, so the whole share waits for the event; the full refund holds nothing.
+    expect(held.events).toMatchObject({ amount: 1836, eventCount: 1 });
+    expect(held.events.nextEndsAt?.getTime()).toBe(now.getTime() + 5 * day);
+  });
+
   test("a lost dispute's money stays held until its transfer reversal settles (T53)", async () => {
     const fixture = await society();
     const order = await ticketSale(fixture, -10 * day, { disputeStatus: "lost" });
@@ -211,6 +225,34 @@ describe("payouts worker", () => {
     // Pending refunds or fees: -$10.00 is owed back out of what is available.
     expect(await societyHolding3672(8000, -1000)).toBe(7000 - 3672);
     expect(stripe.create).toHaveBeenCalledTimes(3);
+  });
+
+  // PAY-071: a held society sends nothing, and its account can't sit on Stripe's own schedule meanwhile.
+  test("a society whose payouts are held is paid nothing, and an account left on Stripe's schedule goes back to manual", async () => {
+    const fixture = await society();
+    await prisma.organisation.update({ where: { id: fixture.organisationId }, data: { payoutsHeldAt: now, payoutsHeldUntil: null } });
+    stripe.account.mockResolvedValue({ payments: { payouts: { schedule: { interval: "daily" } }, debit_negative_balances: true } });
+    stripe.balance.mockResolvedValue(balance(5000));
+
+    const result = await processPayoutBatch(100, now);
+    expect(result.results).not.toContainEqual(expect.objectContaining({ organisationId: fixture.organisationId }));
+    expect(stripe.update).toHaveBeenCalledWith(manualPayoutSettings, { stripeAccount: fixture.accountId });
+    expect(stripe.create).not.toHaveBeenCalled();
+    // Checked again only after an hour, like a society that is paid.
+    stripe.update.mockClear();
+    await processPayoutBatch(100, new Date(now.getTime() + 30 * 60_000));
+    expect(stripe.update).not.toHaveBeenCalled();
+  });
+
+  test("a hold set while a payout is being worked out still stops it", async () => {
+    const fixture = await society();
+    stripe.balance.mockImplementation(async () => {
+      await prisma.organisation.update({ where: { id: fixture.organisationId }, data: { payoutsHeldAt: now } });
+      return balance(5000);
+    });
+    await processPayoutBatch(100, now);
+    expect(stripe.balance).toHaveBeenCalled();
+    expect(stripe.create).not.toHaveBeenCalled();
   });
 
   test("nothing is paid out when pending money can't cover what is held", async () => {

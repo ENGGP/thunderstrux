@@ -19,7 +19,7 @@ import { cancelRecovery, completeRecovery, readRecoveryRequest, recoveryDelayMs,
 import { changeSociety } from "@/lib/platform/societies";
 import { createTestRateLimitBackend, setRateLimitTestBackend, setRateLimitTestEnabled } from "@/lib/security/rate-limit";
 import { totpCode } from "@/lib/security/staff-mfa";
-import { createOrganisationDashboardLink, disconnectAccount, StripeDisconnectBlockedError } from "@/lib/stripe/connect";
+import { continueOrganisationStripeOnboarding, createOrganisationDashboardLink, disconnectAccount, startOrganisationStripeOnboarding, StripeDisconnectBlockedError } from "@/lib/stripe/connect";
 import { setMockSession } from "@/tests/helpers/auth";
 import { jsonRequest, parseJsonResponse } from "@/tests/helpers/http";
 import { enrolStaffMfa } from "@/tests/helpers/mfa";
@@ -208,6 +208,9 @@ describe("restricting a society and holding its payouts", () => {
     expect((await listingAvailability([event.id])).get(event.id)).toEqual({ state: "sales_closed" });
     expect((await getPublishedEventDetail(event.id))?.salesOpen).toBe(false);
     await expect(createOrganisationDashboardLink(owner.organisation.id, { actor: { id: owner.user.id } })).rejects.toThrow("restricted");
+    // Onboarding collects the payout bank account, so it stops too.
+    await expect(startOrganisationStripeOnboarding(owner.organisation.id, { actor: { id: owner.user.id } })).rejects.toThrow("restricted");
+    await expect(continueOrganisationStripeOnboarding(owner.organisation.id, { actor: { id: owner.user.id } })).rejects.toThrow("restricted");
     await expect(disconnectAccount(owner.organisation.id, { actor: { id: owner.user.id } })).rejects.toBeInstanceOf(StripeDisconnectBlockedError);
     expect((await prisma.organisation.findUniqueOrThrow({ where: { id: owner.organisation.id } })).stripeAccountId).not.toBeNull();
     expect(await processPayoutBatch(25, step.now)).toEqual({ processed: 0, results: [] });
@@ -231,6 +234,9 @@ describe("restricting a society and holding its payouts", () => {
     await expect(changeSociety(actor, "hold_payouts", owner.organisation.id, { ...step.input, heldUntil: new Date(step.now.getTime() - 1000) }, step.now)).rejects.toThrow("future");
     await changeSociety(actor, "hold_payouts", owner.organisation.id, { ...step.input, heldUntil: new Date(step.now.getTime() + 86_400_000) }, step.now);
     expect(await processPayoutBatch(25, step.now)).toEqual({ processed: 0, results: [] });
+    // PAY-070, PAY-071: the society can't route the held money out through Stripe either.
+    await expect(disconnectAccount(owner.organisation.id, { actor: { id: owner.user.id } })).rejects.toThrow("holding this society's payouts");
+    await expect(createOrganisationDashboardLink(owner.organisation.id, { actor: { id: owner.user.id } })).rejects.toThrow("holding this society's payouts");
     // After the end date, the worker takes it again (its Stripe call fails inside the batch here).
     expect((await processPayoutBatch(25, new Date(step.now.getTime() + 2 * 86_400_000))).processed).toBe(1);
     const release = next();

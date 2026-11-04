@@ -8,7 +8,7 @@ import { formatDate } from "@/lib/format";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { organisationRolesWithPermission } from "@/lib/permissions";
 import { requireFreshStaffMfa } from "@/lib/security/fresh-staff-mfa";
-import { keepStripePayoutsManual, payoutSummary, restoreStripePayoutSchedule, type PayoutSummary } from "@/lib/payouts/payouts";
+import { keepStripePayoutsManual, payoutSummary, payoutsHeld, restoreStripePayoutSchedule, type PayoutSummary } from "@/lib/payouts/payouts";
 import { heldMoney } from "@/lib/payouts/release";
 import { logWarn } from "@/lib/ops/logger";
 import { getAppUrl, getStripe, StripeConfigurationError } from "@/lib/stripe";
@@ -81,6 +81,8 @@ export class StripeDisconnectBlockedError extends Error {
 
 // T55: a restricted society can't change where its money goes until support lifts it.
 const societyRestricted = "Thunderstrux support has restricted this society, so its Stripe account can't be changed or opened. The owners were emailed.";
+// PAY-070: a hold (support's, or the 7 days after an ownership recovery) keeps the money where it is.
+const payoutsHeldBlocks = "Thunderstrux support is holding this society's payouts, so its Stripe account can't be disconnected or opened until the hold ends. The owners were emailed.";
 
 export class StripeDisconnectUnavailableError extends Error {
   constructor() {
@@ -589,9 +591,12 @@ export async function disconnectAccount(
 
   // PAY-005: before unlinking, Stripe takes payouts back, so the money still
   // held for events isn't left waiting. A disconnect then refused under the lock
-  // below is put back on manual payouts by the payouts worker's next check.
-  const linked = await prisma.organisation.findUnique({ where: { id: orgId }, select: { stripeAccountId: true, restrictedAt: true } });
+  // below goes straight back on manual payouts.
+  const linked = await prisma.organisation.findUnique({ where: { id: orgId }, select: { stripeAccountId: true, restrictedAt: true, payoutsHeldAt: true, payoutsHeldUntil: true } });
   if (linked?.restrictedAt) throw new StripeDisconnectBlockedError(0, societyRestricted);
+  // PAY-070: Stripe's schedule would pay out money support is holding.
+  if (linked?.stripeAccountId && payoutsHeld(linked)) throw new StripeDisconnectBlockedError(0, payoutsHeldBlocks);
+  let scheduleRestored = false;
   if (linked?.stripeAccountId) {
     const open = await countOpenObligations(prisma, orgId, linked.stripeAccountId);
     if (open > 0) throw new StripeDisconnectBlockedError(open);
@@ -605,6 +610,7 @@ export async function disconnectAccount(
         throw new StripeDisconnectBlockedError(0, heldMoneyBlocksDisconnect);
       }
       await restoreStripePayoutSchedule(linked.stripeAccountId);
+      scheduleRestored = true;
     } catch (error) {
       if (error instanceof StripeDisconnectBlockedError) throw error;
       // An account out of this platform's reach has no schedule to give back and
@@ -617,18 +623,42 @@ export async function disconnectAccount(
     }
   }
 
+  try {
+    await unlinkAccount(orgId, actor.id, scheduleRestored);
+  } catch (error) {
+    // Refused after Stripe's schedule came back: put the account on manual payouts again
+    // now, as its money still waits for this platform.
+    if (scheduleRestored && linked?.stripeAccountId) {
+      try {
+        await keepStripePayoutsManual(linked.stripeAccountId);
+      } catch (restoreError) {
+        // The payouts worker puts a held or restricted account back within the hour (PAY-071).
+        logWarn("stripe_connect.manual_not_restored", { organisationId: orgId, stripeAccountId: linked.stripeAccountId, error: restoreError });
+      }
+    }
+    throw error;
+  }
+}
+
+// `recheckHeld`: Stripe's schedule was given back, so money held since must stop the unlink;
+// an account out of this platform's reach is unlinked whatever it holds (see above).
+async function unlinkAccount(orgId: string, actorUserId: string, recheckHeld: boolean) {
   await prisma.$transaction(async (tx) => {
     // Locked so a concurrent connect or disconnect sees one outcome.
-    const [organisation] = await tx.$queryRaw<Array<{ id: string; stripeAccountId: string | null; restrictedAt: Date | null }>>`
-      SELECT "id", "stripeAccountId", "restrictedAt" FROM "Organisation" WHERE "id" = ${orgId} FOR UPDATE
+    const [organisation] = await tx.$queryRaw<Array<{ id: string; stripeAccountId: string | null; restrictedAt: Date | null; payoutsHeldAt: Date | null; payoutsHeldUntil: Date | null }>>`
+      SELECT "id", "stripeAccountId", "restrictedAt", "payoutsHeldAt", "payoutsHeldUntil" FROM "Organisation" WHERE "id" = ${orgId} FOR UPDATE
     `;
     if (!organisation) throw new OrganisationStripeConnectNotFoundError();
     if (organisation.restrictedAt) throw new StripeDisconnectBlockedError(0, societyRestricted);
+    // With no account (PLATFORM_NOT_READY) nothing can move, so only the local reset follows.
+    if (organisation.stripeAccountId && payoutsHeld(organisation)) throw new StripeDisconnectBlockedError(0, payoutsHeldBlocks);
 
     // No account (for example PLATFORM_NOT_READY): only the local state is reset.
     if (organisation.stripeAccountId) {
       const open = await countOpenObligations(tx, organisation.id, organisation.stripeAccountId);
       if (open > 0) throw new StripeDisconnectBlockedError(open);
+      // A sale paid since the check above holds money again (read as committed, under this lock).
+      if (recheckHeld && (await heldMoney(organisation.id, organisation.stripeAccountId)).total > 0) throw new StripeDisconnectBlockedError(0, heldMoneyBlocksDisconnect);
     }
 
     await tx.organisation.update({
@@ -644,7 +674,7 @@ export async function disconnectAccount(
     await tx.auditLog.create({
       data: {
         organisationId: organisation.id,
-        actorUserId: actor.id,
+        actorUserId,
         action: "stripe_connect.disconnected",
         targetType: "Organisation",
         targetId: organisation.id,
@@ -686,10 +716,19 @@ export async function markAccountStatusError(
 
 type FreshCode = { actor: { id: string; mfaSessionId?: string }; mfaCode?: string };
 
+// A restricted society can't change where its money goes, so onboarding stops too (T55).
+async function refuseRestricted(orgId: string) {
+  const organisation = await prisma.organisation.findUnique({ where: { id: orgId }, select: { restrictedAt: true } });
+  if (organisation?.restrictedAt) {
+    throw new OrganisationStripeConnectValidationError(societyRestricted, [{ path: ["organisationId"], message: societyRestricted }]);
+  }
+}
+
 // Stripe's onboarding collects the bank account payouts go to, so starting or
 // continuing it needs a fresh authenticator code, like the dashboard link.
 export async function startOrganisationStripeOnboarding(orgId: string, { actor, mfaCode }: FreshCode, returnOrigin?: string) {
   await requireFreshStaffMfa(actor, mfaCode, "Enter your authenticator code to continue to Stripe");
+  await refuseRestricted(orgId);
   const { accountId, orgSlug } = await createExpressAccount(orgId, actor.id);
   return createOnboardingLink(accountId, orgSlug, returnOrigin);
 }
@@ -698,11 +737,15 @@ export async function continueOrganisationStripeOnboarding(orgId: string, { acto
   await requireFreshStaffMfa(actor, mfaCode, "Enter your authenticator code to continue to Stripe");
   const organisation = await prisma.organisation.findUnique({
     where: { id: orgId },
-    select: { slug: true, stripeAccountId: true }
+    select: { slug: true, stripeAccountId: true, restrictedAt: true }
   });
 
   if (!organisation) {
     throw new OrganisationStripeConnectNotFoundError();
+  }
+
+  if (organisation.restrictedAt) {
+    throw new OrganisationStripeConnectValidationError(societyRestricted, [{ path: ["organisationId"], message: societyRestricted }]);
   }
 
   if (!organisation.stripeAccountId) {
@@ -732,10 +775,14 @@ export async function continueOrganisationStripeOnboarding(orgId: string, { acto
 export async function createOrganisationDashboardLink(orgId: string, { actor, mfaCode }: FreshCode) {
   await requireFreshStaffMfa(actor, mfaCode, "Enter your authenticator code to open the Stripe dashboard");
   const actorUserId = actor.id;
-  const organisation = await prisma.organisation.findUnique({ where: { id: orgId }, select: { stripeAccountId: true, stripeDetailsSubmitted: true, restrictedAt: true } });
+  const organisation = await prisma.organisation.findUnique({ where: { id: orgId }, select: { stripeAccountId: true, stripeDetailsSubmitted: true, restrictedAt: true, payoutsHeldAt: true, payoutsHeldUntil: true } });
   if (!organisation) throw new OrganisationStripeConnectNotFoundError();
   if (organisation.restrictedAt) {
     throw new OrganisationStripeConnectValidationError(societyRestricted, [{ path: ["organisationId"], message: societyRestricted }]);
+  }
+  // PAY-071: the Express Dashboard can pay out and change the bank, so a hold closes the platform's link to it.
+  if (payoutsHeld(organisation)) {
+    throw new OrganisationStripeConnectValidationError(payoutsHeldBlocks, [{ path: ["organisationId"], message: payoutsHeldBlocks }]);
   }
   if (!organisation.stripeAccountId || !organisation.stripeDetailsSubmitted) {
     throw new OrganisationStripeConnectValidationError("Stripe setup is not finished", [

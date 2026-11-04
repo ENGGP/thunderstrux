@@ -20,7 +20,8 @@ export async function lockOrganisationActor(tx: Prisma.TransactionClient, actor:
   if (mode !== "off") {
     const enrollment = await tx.userMfa.findUnique({ where: { userId: actor.id }, select: { enabledAt: true } });
     const digest = mfaGrantDigest(actor.mfaSessionId);
-    const grant = digest ? await tx.mfaGrant.findFirst({ where: { userId: actor.id, sessionDigest: digest, expiresAt: { gt: new Date() } } }) : null;
+    const now = new Date();
+    const grant = digest ? await tx.mfaGrant.findFirst({ where: { userId: actor.id, sessionDigest: digest, expiresAt: { gt: now }, verifiedAt: { lte: now } } }) : null;
     if ((!enrollment?.enabledAt && mode === "enforce") || (enrollment?.enabledAt && !grant)) throw new StaffMfaRequiredError("Staff authenticator verification required");
   }
   return organisation;

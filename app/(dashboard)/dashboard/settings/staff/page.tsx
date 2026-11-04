@@ -7,6 +7,7 @@ import { requireAuthenticatedUser } from "@/lib/auth/access";
 import { readTimeZone } from "@/lib/organisations/profile";
 import { listHandoverTargets, listOrganisationStaff, listPastStaffInvites } from "@/lib/staff/management";
 import { StaffHandover } from "@/components/settings/staff-handover";
+import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
 
 export const metadata: Metadata = { title: "Staff" };
 
@@ -28,6 +29,7 @@ export default async function StaffSettingsPage() {
       />
       <StaffManagement
         canManageOwners={organisation.staffRole === "owner"}
+        codeNeeded={mfaEnforcementMode() !== "off"}
         initialInvites={invites}
         initialStaff={staff}
         pastInvites={pastInvites}

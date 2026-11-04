@@ -124,6 +124,8 @@ describe("who reaches the admin portal", () => {
     expect(adminHostAllowed("evil.example:3091")).toBe(false);
     expect(adminHostAllowed("localhost.evil.example:3091")).toBe(false);
     expect(adminHostAllowed(null)).toBe(false);
+    // A Host is a name and port only (#12).
+    for (const host of ["localhost:3091/x", "evil@localhost:3091", "localhost:3091?x", "localhost:3091#x", "localhost:3091\\x"]) expect(adminHostAllowed(host)).toBe(false);
   });
 });
 

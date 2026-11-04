@@ -52,6 +52,8 @@ vi.mock("@/lib/commerce/families", async () => {
 
 beforeEach(() => {
   vi.stubEnv("ADMIN_PORTAL_ENABLED", "true");
+  // The admin process trusts its own sign-in origin (AUTH_URL), not the public app URL.
+  vi.stubEnv("AUTH_URL", "http://localhost:3000");
   vi.stubEnv("RATE_LIMIT_ENABLED", "true");
   setRateLimitTestEnabled(true);
   setRateLimitTestBackend(createTestRateLimitBackend());
@@ -77,6 +79,8 @@ async function operator(role: "admin" | "support" = "admin") {
 }
 
 const trail = (action: string) => prisma.platformAuditLog.findMany({ where: { action } });
+// The notices a recovery request sent, accepted by the provider (completion waits for them).
+const deliver = () => prisma.notificationOutbox.updateMany({ where: { acceptedAt: null }, data: { status: "sent", acceptedAt: new Date() } });
 const notices = (template: string) => prisma.notificationOutbox.findMany({ where: { template }, select: { recipient: true, privacy: true, organisationId: true } });
 
 describe("every change needs the permission, a fresh code and a reason", () => {
@@ -267,6 +271,9 @@ describe("delayed recovery", () => {
     advance(recoveryDelayMs);
     const ready = next();
     expect((await readNeeds(ready.now)).find((need) => need.href === `/admin/recovery/${requestId}`)).toMatchObject({ level: "hot", title: "Recovery ready to complete" });
+    // Nobody heard yet: the 72 hours protect only people who were told (#42).
+    await expect(completeRecovery(actor, requestId, ready.input, ready.now)).rejects.toThrow("everyone it names has been told");
+    await deliver();
     await completeRecovery(actor, requestId, ready.input, ready.now);
     expect(await prisma.userMfa.count({ where: { userId: owner.user.id } })).toBe(0);
     expect(await prisma.mfaRecoveryCode.count({ where: { userId: owner.user.id } })).toBe(0);
@@ -287,7 +294,7 @@ describe("delayed recovery", () => {
     await prisma.user.update({ where: { id: owner.user.id }, data: { disabledAt: new Date() } });
     const changed = next();
     await expect(completeRecovery(actor, requestId, changed.input, changed.now)).rejects.toThrow("changed since it was made");
-    expect((await readRecoveryRequest(requestId))?.checks.map((check) => check.ok)).toEqual([false, true, true, true]);
+    expect((await readRecoveryRequest(requestId))?.checks.map((check) => check.ok)).toEqual([false, true, true, true, true, false]);
     const cancel = next("Someone objected");
     await cancelRecovery(actor, requestId, cancel.input, cancel.now);
     expect(await notices("recovery_cancelled")).toHaveLength(1);
@@ -318,6 +325,7 @@ describe("delayed recovery", () => {
     await expect(requestRecovery(actor, { ...second.input, kind: "ownership", userId: other.id, organisationId: owner.organisation.id, evidence: "Club register lists them" }, second.now)).rejects.toThrow("already open");
 
     advance(recoveryDelayMs);
+    await deliver();
     const ready = next();
     await completeRecovery(actor, requestId, ready.input, ready.now);
     expect(await prisma.organisationStaff.findUnique({ where: { organisationId_userId: { organisationId: owner.organisation.id, userId: president.id } }, select: { role: true, status: true } }))
@@ -329,6 +337,45 @@ describe("delayed recovery", () => {
     expect(await processPayoutBatch(25, ready.now)).toEqual({ processed: 0, results: [] });
     expect(await prisma.auditLog.count({ where: { organisationId: owner.organisation.id, action: "platform.ownership_recovered" } })).toBe(1);
     expect(await notices("ownership_recovered")).toHaveLength(4);
+  });
+});
+
+describe("recovery needs its requester's standing", () => {
+  test("a request can't be completed once its operator was revoked, demoted or disabled; it can still be cancelled (SEC-047)", async () => {
+    const asker = await operator();
+    const completer = await operator();
+    const owner = await createOrganisationAccount();
+    await enrolStaffMfa(owner.user, "target-session");
+    const step = asker.next();
+    const { requestId } = await requestRecovery(asker.actor, { ...step.input, kind: "mfa_reset", userId: owner.user.id, evidence: "Wrote from the account's own address" }, step.now);
+    await deliver();
+    completer.advance(recoveryDelayMs);
+    await revokePlatformOperator({ email: asker.user.email, reason: "Integration test revoke", by: "cli:test" });
+    const revoked = completer.next();
+    await expect(completeRecovery(completer.actor, requestId, revoked.input, revoked.now)).rejects.toThrow("can no longer do recoveries");
+    expect((await readRecoveryRequest(requestId))?.checks.map((check) => check.ok)).toEqual([true, true, true, true, false, true]);
+    await grantPlatformOperator({ email: asker.user.email, role: "support", note: "Back as support only", by: "cli:test" });
+    const demoted = completer.next();
+    await expect(completeRecovery(completer.actor, requestId, demoted.input, demoted.now)).rejects.toThrow("can no longer do recoveries");
+    await grantPlatformOperator({ email: asker.user.email, role: "admin", note: "Back as an admin again", by: "cli:test" });
+    await prisma.user.update({ where: { id: asker.user.id }, data: { disabledAt: new Date() } });
+    const disabled = completer.next();
+    await expect(completeRecovery(completer.actor, requestId, disabled.input, disabled.now)).rejects.toThrow("can no longer do recoveries");
+    expect(await prisma.userMfa.count({ where: { userId: owner.user.id } })).toBe(1);
+    const cancel = completer.next("The asker left the support team");
+    await cancelRecovery(completer.actor, requestId, cancel.input, cancel.now);
+    expect((await prisma.platformRecoveryRequest.findUniqueOrThrow({ where: { id: requestId } })).status).toBe("cancelled");
+  });
+
+  test("an authenticator reset on any staff member tells their society's owners and admins (#43)", async () => {
+    const { actor, next } = await operator();
+    const owner = await createOrganisationAccount();
+    const manager = await createMember();
+    await createOrganisationStaff({ organisationId: owner.organisation.id, userId: manager.id, role: "event_manager" });
+    await enrolStaffMfa(manager, "target-session");
+    const step = next();
+    await requestRecovery(actor, { ...step.input, kind: "mfa_reset", userId: manager.id, evidence: "Wrote from the account's own address" }, step.now);
+    expect((await notices("mfa_reset_requested")).map((row) => row.recipient).sort()).toEqual([manager.email, owner.user.email].sort());
   });
 });
 
@@ -385,6 +432,10 @@ describe("the admin API", () => {
     const body = { action: "sign_out_everywhere", targetId: member.id, reason: "Integration test change", code: "123456" };
     expect((await adminAction(jsonRequest("http://localhost:3000/api/admin/actions", body))).status).toBe(404);
     expect((await adminAction(jsonRequest("http://localhost:3000/api/admin/actions", body, { headers: { origin: "https://evil.example" } }))).status).toBe(403);
+    // The public site's own origin isn't trusted by the admin process either (#11).
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://app.example");
+    expect((await adminAction(jsonRequest("http://localhost:3000/api/admin/actions", body, { headers: { origin: "https://app.example" } }))).status).toBe(403);
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "http://localhost:3000");
 
     const user = await createMember();
     await grantPlatformOperator({ email: user.email, role: "support", note: "Integration test operator", by: "cli:test" });

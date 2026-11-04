@@ -3,6 +3,7 @@ import { lockAccount, requireSecurityActor, type AccountActor } from "@/lib/auth
 import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
 import { staffHandoverSchema } from "@/lib/validators/staff";
 import { revokeOrganisationStaffInvites } from "@/lib/staff/invite-cancellation";
+import { livePlatformRole } from "@/lib/platform/operators";
 
 export class StaffHandoverError extends Error {
   constructor(readonly kind: "authority" | "conflict", message: string) { super(message); }
@@ -32,7 +33,8 @@ export async function handOverOrganisationOwnership(actor: AccountActor, organis
     const incoming = await tx.organisationStaff.findFirst({ where: { id: request.incomingStaffId, organisationId }, include: {
       user: { select: { id: true, disabledAt: true, emailVerifiedAt: true, mfa: { select: { enabledAt: true } } } }
     } });
-    if (!incoming || incoming.userId !== targetSnapshot.userId || incoming.status !== "active" || incoming.user.disabledAt || !incoming.user.emailVerifiedAt)
+    if (!incoming || incoming.userId !== targetSnapshot.userId || incoming.status !== "active" || incoming.user.disabledAt || !incoming.user.emailVerifiedAt ||
+        await livePlatformRole(tx, incoming.user))
       throw new StaffHandoverError("conflict", "Choose another eligible staff member in this organisation");
     if (mfaEnforcementMode() === "enforce") {
       const actorMfa = await tx.userMfa.findUnique({ where: { userId: actor.id }, select: { enabledAt: true } });

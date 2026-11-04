@@ -2,6 +2,7 @@ import { forbidden } from "@/lib/api/errors";
 import { logWarn } from "@/lib/ops/logger";
 import { hasAuthSessionCookie, verifyCsrfTokenForRequest } from "@/lib/security/csrf";
 import { appUrl } from "@/lib/app-url";
+import { isAdminPortalEnabled } from "@/lib/platform/mode";
 
 const TRUSTED_ORIGIN_ERROR = "Untrusted request origin";
 type RejectReason =
@@ -29,7 +30,9 @@ function parseOriginHeader(value: string): string | null {
 function configuredTrustedOrigins(): Set<string> {
   const trusted = new Set<string>();
   const candidates = [
-    appUrl(),
+    // The admin process trusts its own sign-in origin, never the public site's
+    // (whose URL it keeps only for links in notices), so a public page can't post to it.
+    isAdminPortalEnabled() ? process.env.AUTH_URL ?? process.env.NEXTAUTH_URL : appUrl(),
     ...(process.env.TRUSTED_APP_ORIGINS ?? "")
       .split(",")
       .map((value) => value.trim())

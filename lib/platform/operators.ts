@@ -36,10 +36,11 @@ async function assertDedicatedAccount(tx: Prisma.TransactionClient, email: strin
   if (!live.emailVerifiedAt) throw new PlatformOperatorError(`${email} isn't verified yet. Verify the email first.`);
   if (live.accountRole !== "member") throw new PlatformOperatorError(`${email} is a society login. Operators use a dedicated member account.`);
   const [staff, legacy] = await Promise.all([
-    tx.organisationStaff.count({ where: { userId: user.id, status: "active" } }),
+    // Any status (SEC-048): a revoked row could otherwise be reactivated onto the operator.
+    tx.organisationStaff.count({ where: { userId: user.id } }),
     tx.organisation.count({ where: { accountUserId: user.id } })
   ]);
-  if (staff || legacy) throw new PlatformOperatorError(`${email} is staff of ${staff + legacy} ${staff + legacy === 1 ? "society" : "societies"}. Operators use a dedicated account with no society roles.`);
+  if (staff || legacy) throw new PlatformOperatorError(`${email} has or had a role in ${staff + legacy} ${staff + legacy === 1 ? "society" : "societies"}. Operators use a dedicated account that never held society roles.`);
   return live;
 }
 

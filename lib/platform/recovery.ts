@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { lockAccount } from "@/lib/auth/account-lock";
 import { roleLabels } from "@/lib/audit/history";
 import { formatDateTime } from "@/lib/format";
+import { hasPlatformPermission } from "@/lib/permissions/platform";
 import { PlatformRefusal, type PlatformActor } from "./authority";
 import { notifyPeople, platformWrite, societyHistory, type ChangeInput, type Recipient } from "./changes";
 import { livePlatformRole } from "./operators";
@@ -18,6 +19,8 @@ import { lockSociety, societySelect } from "./societies";
 export const recoveryDelayMs = 72 * 60 * 60_000;
 export const ownershipPayoutHoldMs = 7 * 24 * 60 * 60_000;
 const changed = "This request can't be completed: the account or society changed since it was made. Cancel it and start a new one if it's still needed.";
+const requesterGone = "This request can't be completed: the operator who made it can no longer do recoveries. Cancel it and start a new one if it's still needed.";
+const untold = "This request can't be completed until everyone it names has been told: a notice is still waiting or failed. Cancel it and start a new one if one failed.";
 const name = (user: { displayName: string | null; firstName: string | null; lastName: string | null; email: string }) =>
   user.displayName || [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email;
 const requestedKey = (id: string) => `platform-recovery/${id}/requested`;
@@ -30,11 +33,12 @@ async function eligibleTarget(tx: Prisma.TransactionClient, userId: string) {
   return user;
 }
 
-// Everyone an MFA reset tells: the person, and when they own a society, its other owners and admins.
+// Everyone an MFA reset tells: the person, and the owners and admins of every society they're staff of,
+// so a reset aimed at anyone with society access reaches someone who can object.
 async function mfaResetRecipients(tx: Prisma.TransactionClient, user: { id: string; email: string }): Promise<Recipient[]> {
-  const owned = await tx.organisationStaff.findMany({ where: { userId: user.id, status: "active", role: "owner" }, select: { organisationId: true } });
-  const colleagues = owned.length ? await tx.organisationStaff.findMany({
-    where: { organisationId: { in: owned.map((row) => row.organisationId) }, status: "active", role: { in: ["owner", "admin"] }, userId: { not: user.id }, user: { disabledAt: null } },
+  const memberships = await tx.organisationStaff.findMany({ where: { userId: user.id, status: "active" }, select: { organisationId: true } });
+  const colleagues = memberships.length ? await tx.organisationStaff.findMany({
+    where: { organisationId: { in: memberships.map((row) => row.organisationId) }, status: "active", role: { in: ["owner", "admin"] }, userId: { not: user.id }, user: { disabledAt: null } },
     select: { role: true, user: { select: { id: true, email: true } } }
   }) : [];
   return [{ email: user.email, userId: user.id, relation: "account holder" }, ...colleagues.map((row) => ({ email: row.user.email, userId: row.user.id, relation: roleLabels[row.role].toLowerCase() }))];
@@ -100,24 +104,40 @@ async function told(tx: Prisma.TransactionClient | typeof prisma, requestId: str
   return tx.notificationOutbox.findMany({ where: { eventKey: requestedKey(requestId) }, orderBy: { createdAt: "asc" }, select: { recipient: true, userId: true, status: true, acceptedAt: true } });
 }
 
-// The request, locked in the order every change takes: its target account, then its society, then the request.
+// Whether the operator who asked can still do recoveries: one revoked, demoted or
+// disabled since must not have a request completed for them (SEC-047).
+async function requesterStanding(db: Pick<Prisma.TransactionClient, "platformOperator">, user: { id: string; disabledAt: Date | null; closedAt: Date | null } | null) {
+  const role = user && !user.closedAt ? await livePlatformRole(db, user) : null;
+  return role !== null && hasPlatformPermission(role, "platform:recovery");
+}
+
+const everyoneTold = (people: Array<{ acceptedAt: Date | null }>) => people.length > 0 && people.every((row) => row.acceptedAt !== null);
+
+// The request, locked in the order every change takes: its accounts (target and
+// requester, sorted), then its society, then the request.
 async function lockRequest(tx: Prisma.TransactionClient, requestId: string) {
-  const head = await tx.platformRecoveryRequest.findUnique({ where: { id: requestId }, select: { targetUserId: true, organisationId: true } });
+  const head = await tx.platformRecoveryRequest.findUnique({ where: { id: requestId }, select: { targetUserId: true, organisationId: true, requestedByUserId: true } });
   if (!head) throw new PlatformRefusal("That request doesn't exist.");
+  for (const id of [head.targetUserId, head.requestedByUserId].sort()) await lockAccount(tx, id);
   const user = await eligibleTarget(tx, head.targetUserId);
+  const requester = await requesterStanding(tx, await tx.user.findUnique({ where: { id: head.requestedByUserId } }));
   const society = head.organisationId ? await lockSociety(tx, head.organisationId) : null;
   await tx.$queryRaw`SELECT "id" FROM "PlatformRecoveryRequest" WHERE "id" = ${requestId} FOR UPDATE`;
   const request = await tx.platformRecoveryRequest.findUniqueOrThrow({ where: { id: requestId } });
   if (request.status !== "pending") throw new PlatformRefusal(`This request is already ${request.status}.`);
-  return { request, user, society };
+  return { request, user, society, requester };
 }
 
 export async function completeRecovery(actor: PlatformActor, requestId: string, input: ChangeInput, now = new Date()) {
   return platformWrite(actor, "platform:recovery", input, async (tx) => {
-    const { request, user, society } = await lockRequest(tx, requestId);
+    const { request, user, society, requester } = await lockRequest(tx, requestId);
     if (now < request.executeAfter) throw new PlatformRefusal(`Not ready yet: it can be completed from ${formatDateTime(request.executeAfter)}, Brisbane time.`);
+    if (!requester) throw new PlatformRefusal(requesterGone);
     if (!user) throw new PlatformRefusal(changed);
-    const recipients = (await told(tx, request.id)).map((row) => ({ email: row.recipient, userId: row.userId, relation: "told" }));
+    const people = await told(tx, request.id);
+    // The 72 hours protect only people who heard about it (#42).
+    if (!everyoneTold(people)) throw new PlatformRefusal(untold);
+    const recipients = people.map((row) => ({ email: row.recipient, userId: row.userId, relation: "told" }));
     const base = { targetType: "Recovery" as const, targetId: request.id };
     const complete = () => tx.platformRecoveryRequest.update({ where: { id: request.id }, data: { status: "completed", completedAt: now } });
     if (request.kind === "mfa_reset") {
@@ -184,7 +204,7 @@ export async function readRecoveryRequest(id: string) {
     target: { select: { id: true, email: true, firstName: true, lastName: true, displayName: true, emailVerifiedAt: true, disabledAt: true, closedAt: true,
       platformOperator: { select: { status: true } }, mfa: { select: { enabledAt: true } } } },
     organisation: { select: { id: true, name: true, staff: { where: { status: "active", role: "owner" }, select: { userId: true } } } },
-    requestedBy: { select: { email: true, firstName: true, lastName: true, displayName: true } },
+    requestedBy: { select: { id: true, email: true, firstName: true, lastName: true, displayName: true, disabledAt: true, closedAt: true } },
     cancelledBy: { select: { email: true, firstName: true, lastName: true, displayName: true } }
   } });
   if (!request) return null;
@@ -200,7 +220,9 @@ export async function readRecoveryRequest(id: string) {
     request.kind === "mfa_reset"
       ? { ok: target.mfa?.enabledAt != null, text: "The authenticator is still set up" }
       : { ok: !request.organisation?.staff.some((row) => row.userId === target.id), text: `${name(target)} isn't an owner yet` },
-    { ok: otherOpen === 0, text: request.organisation ? "No other request is open for this society" : "No other request is open for this account" }
+    { ok: otherOpen === 0, text: request.organisation ? "No other request is open for this society" : "No other request is open for this account" },
+    { ok: await requesterStanding(prisma, request.requestedBy), text: `${name(request.requestedBy)}, who asked, can still do recoveries` },
+    { ok: everyoneTold(people), text: "Everyone it names was told" }
   ];
   return { request, people, checks };
 }

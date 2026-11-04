@@ -32,7 +32,7 @@ sources: [auth.ts, proxy.ts, lib/permissions/index.ts, lib/auth/access.ts, lib/a
 | Fragment capture for emailed links | `lib/auth/account-link-capture.ts` |
 | Safe callback paths | `lib/security/safe-return-path.ts` |
 | Guest access | `lib/guest/guest-access.ts`, `lib/guest/guest-csrf.ts`, `lib/guest/guest-claim.ts` |
-| Staff | `lib/staff/invites.ts`, `lib/staff/invite-authority.ts`, `lib/staff/management.ts`, `lib/staff/handover.ts` |
+| Staff | `lib/staff/invites.ts`, `lib/staff/invite-authority.ts`, `lib/staff/invite-http.ts`, `lib/staff/management.ts`, `lib/staff/handover.ts`, `lib/staff/owner-notice.ts` |
 | Sign-out | `lib/client/sign-out.ts`: `signOutTo` |
 | Tests | `tests/integration/auth-access.test.ts`, `tests/integration/live-staff-authority.test.ts`, `tests/integration/staff-mfa.test.ts`, `tests/integration/staff-context.test.ts`, `tests/integration/account-verification.test.ts`, `tests/integration/password-recovery.test.ts`, `tests/integration/email-change.test.ts`, `tests/integration/account-closure.test.ts`, `tests/integration/guest-access.test.ts`, `tests/integration/guest-claim.test.ts`, `tests/integration/staff-invites.test.ts`, `tests/integration/staff-handover.test.ts`, `tests/integration/proxy-session-cookie.test.ts`, `tests/integration/dependency-security.test.ts` (real Auth.js sign-in, session, sign-out and proxy), `tests/e2e/account-lifecycle.spec.ts`, `tests/e2e/mfa-enforced.spec.ts` |
 
@@ -162,9 +162,11 @@ Extra rules outside the matrix: only an `owner` may invite an owner, change an o
 
 ## Staff invitations
 
-- Create and resend need live `staff:manage`, a verified issuer, staff MFA and both invite limits; only owners invite owners. The invite, the encrypted email and the audit row commit together; responses carry metadata only, never the token. Lists are capped at 100 staff and 100 pending invitations.
+- Create and resend need live `staff:manage`, a verified issuer, staff MFA and both invite limits; only owners invite owners. Unless MFA mode is `off`, they also need a fresh authenticator code (`requireStaffGrantCode`, SEC-046), as do a role change and a reactivation on the staff page: a stolen session's login grant can't hand out access. Revoking staff or an invitation needs only the login grant, so it stays fast in an incident. The invite, the encrypted email and the audit row commit together; responses carry metadata only, never the token. Lists are capped at 100 staff and 100 pending invitations.
 - Links last seven days. Resend rotates the token digest and version, replaces the issuer and cancels older queued emails; revoke cancels pending delivery.
 - Acceptance (`/staff/invites/accept`) is an explicit POST by the matching verified, non-disabled identity. It rechecks the issuer's live authority under sorted User, Organisation and invite locks. An existing active role is kept; replaying an accepted token reports current access and never restores a revoked one.
+- Every active owner, the acting one included, gets a society notice (`business_notice`, `staff-access/…`, `notifyOwnersOfStaffGrant`) when someone accepts an invitation into a new or revoked role, or a role is changed or reactivated, so a grant nobody meant is seen. Keeping an existing active role sends nothing.
+- An operator account never holds a staff role (T54): acceptance, reactivation of a revoked row and handover to it are refused, and the CLI won't grant operator to an account with any staff row, revoked ones included (SEC-048).
 - Revoking a staff member (directly, or as the outgoing owner of a handover) revokes their pending invitations to that society, so they can't rejoin without a manager (SEC-006). Closure cancels invitations sent by the closed account. Acceptance never selects a context.
 
 ## Owner handover

@@ -10,7 +10,8 @@ export function isAdminPortalEnabled() {
 // rebinds its own name to 127.0.0.1 can't (DNS rebinding).
 export function adminHostAllowed(host: string | null) {
   const authUrl = process.env.AUTH_URL ?? process.env.NEXTAUTH_URL;
-  if (!authUrl || !host) return false;
+  // A Host header is a name and port only: userinfo, a path, a query or a fragment is refused, not parsed around.
+  if (!authUrl || !host || /[@/\\?#]/.test(host)) return false;
   try {
     const expected = new URL(authUrl);
     const actual = new URL(`http://${host.toLowerCase()}`);

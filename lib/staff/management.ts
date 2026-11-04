@@ -5,6 +5,8 @@ import { liveStaffRole, roleHasPermission } from "@/lib/staff/live-authority";
 import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
 import { mfaGrantDigest } from "@/lib/security/csrf";
 import { revokeOrganisationStaffInvites } from "@/lib/staff/invite-cancellation";
+import { notifyOwnersOfStaffGrant } from "@/lib/staff/owner-notice";
+import { livePlatformRole } from "@/lib/platform/operators";
 export class StaffUpdateError extends Error {
   constructor(readonly kind: "not_found" | "stale_session" | "authority" | "conflict", message: string) { super(message); }
 }
@@ -24,7 +26,7 @@ export async function updateOrganisationStaff(actor: AccountActor, organisationI
     if (mode !== "off") {
       const enrollment = await tx.userMfa.findUnique({ where: { userId: actor.id }, select: { enabledAt: true } });
       const digest = mfaGrantDigest(actor.mfaSessionId);
-      const grant = digest ? await tx.mfaGrant.findFirst({ where: { userId: actor.id, sessionDigest: digest, expiresAt: { gt: now } } }) : null;
+      const grant = digest ? await tx.mfaGrant.findFirst({ where: { userId: actor.id, sessionDigest: digest, expiresAt: { gt: now }, verifiedAt: { lte: now } } }) : null;
       if ((!enrollment?.enabledAt && mode === "enforce") || (enrollment?.enabledAt && !grant)) throw new StaffUpdateError("authority", "Staff authenticator verification required");
     }
     const existing = await tx.organisationStaff.findFirst({ where: { id: staffId, organisationId }, include: { user: { select: { disabledAt: true } } } });
@@ -33,13 +35,17 @@ export async function updateOrganisationStaff(actor: AccountActor, organisationI
     if ((existing.role === "owner" || nextRole === "owner") && actorRole !== "owner")
       throw new StaffUpdateError("authority", "Only owners can change owner authority");
     if (nextStatus === "active" && existing.user.disabledAt) throw new StaffUpdateError("conflict", "Disabled accounts cannot hold active staff access");
+    // SEC-048 (T54 Q1): an operator login stays dedicated, so a revoked row can't come back on it.
+    if (nextStatus === "active" && await livePlatformRole(tx, { id: existing.userId })) throw new StaffUpdateError("conflict", "Thunderstrux operator accounts can't hold society roles");
     if (existing.role === "owner" && existing.status === "active" && (nextRole !== "owner" || nextStatus !== "active") &&
         await tx.organisationStaff.count({ where: { organisationId, role: "owner", status: "active" } }) <= 1) throw new StaffUpdateError("conflict", "At least one active owner is required");
     const staff = await tx.organisationStaff.update({ where: { id: staffId }, data: { role: nextRole, status: nextStatus, revokedAt: nextStatus === "revoked" ? now : null, revokedById: nextStatus === "revoked" ? actor.id : null },
       select: { id: true, role: true, status: true, acceptedAt: true, revokedAt: true, user: { select: { id: true, email: true } } } });
     if (nextStatus === "revoked") await revokeOrganisationStaffInvites(tx, organisationId, staff.user.email, now);
-    await tx.auditLog.create({ data: { organisationId, actorUserId: actor.id, action: "staff.updated", targetType: "OrganisationStaff", targetId: staff.id,
+    const audit = await tx.auditLog.create({ data: { organisationId, actorUserId: actor.id, action: "staff.updated", targetType: "OrganisationStaff", targetId: staff.id,
       metadata: { previousRole: existing.role, previousStatus: existing.status, nextRole, nextStatus } } });
+    if (nextStatus === "active" && (existing.status !== "active" || existing.role !== nextRole))
+      await notifyOwnersOfStaffGrant(tx, { organisationId, eventKey: `staff-access/${staff.id}/${audit.id}`, email: staff.user.email, role: nextRole });
     return staff;
   }, { timeout: 15000 });
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { logError } from "@/lib/ops/logger";
+import { PasswordBusyError, passwordBusyRetrySeconds } from "@/lib/auth/password-hash";
 
 export type ApiErrorCode =
   | "BAD_REQUEST"
@@ -102,6 +103,13 @@ export function routeErrorRule<T extends Error>(
   };
 }
 
+// SEC-019 (N2): the password-work gate is full; every route that checks a password says so the same way.
+export function passwordBusyResponse() {
+  const response = serviceUnavailable(new PasswordBusyError().message);
+  response.headers.set("Retry-After", String(passwordBusyRetrySeconds));
+  return response;
+}
+
 export function mapRouteError(
   error: unknown,
   {
@@ -114,6 +122,7 @@ export function mapRouteError(
     rules?: RouteErrorRule[];
   }
 ) {
+  if (error instanceof PasswordBusyError) return passwordBusyResponse();
   const rule = rules.find((candidate) => candidate.matches(error));
 
   if (rule) {

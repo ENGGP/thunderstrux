@@ -514,6 +514,105 @@ describe("rate-limited routes", () => {
     expect((await signIn("someone-else@example.com")).status).toBe(401);
   });
 
+  // A fresh route module with Auth.js replaced, the rate limiter on and a clean in-memory backend.
+  async function authRoute(nextAuthPost: (request: Request) => Promise<Response>) {
+    vi.resetModules();
+    vi.doMock("@/auth", () => ({ authSecret: "integration-auth-secret", handlers: { GET: vi.fn(), POST: nextAuthPost } }));
+    const rateLimit = await import("@/lib/security/rate-limit");
+    rateLimit.setRateLimitTestBackend(rateLimit.createTestRateLimitBackend());
+    rateLimit.setRateLimitTestBackendFailure(null);
+    rateLimit.setRateLimitTestEnabled(true);
+    return { rateLimit, POST: (await import("@/app/api/auth/[...nextauth]/route")).POST };
+  }
+  const form = { "content-type": "application/x-www-form-urlencoded" };
+
+  test("every Auth.js POST reads at most 10 KB and counts on the per-address limit (SEC-049)", async () => {
+    const nextAuthPost = vi.fn(async () => new Response(null, { status: 302 }));
+    const { rateLimit, POST } = await authRoute(nextAuthPost);
+    for (const path of ["signout", "session", "signin", "signin/credentials"]) {
+      const response = await POST(new NextRequest(`http://localhost/api/auth/${path}`, { method: "POST", headers: form, body: `csrfToken=${"a".repeat(11_000)}` }));
+      expect(response.status).toBe(400);
+    }
+    // A streamed body is cut off near the cap, never read to its end.
+    let pulled = 0;
+    const stream = new ReadableStream<Uint8Array>({ pull(controller) {
+      if (pulled >= 8_000_000) return controller.close();
+      pulled += 65_536; controller.enqueue(new Uint8Array(65_536).fill(97));
+    } });
+    const streamed = await POST(new NextRequest(new Request("http://localhost/api/auth/signout", { method: "POST", headers: form, body: stream, duplex: "half" } as RequestInit)));
+    expect(streamed.status).toBe(400);
+    expect(pulled).toBeLessThan(1_000_000);
+    expect(nextAuthPost).not.toHaveBeenCalled();
+    expect((await POST(new NextRequest("http://localhost/api/auth/signout", { method: "POST", headers: form, body: "csrfToken=x" }))).status).toBe(302);
+
+    const spent = new Request("http://localhost/api/auth/signout", { method: "POST" });
+    for (let attempt = 1; attempt < policies.login_ip_global.limit; attempt += 1) {
+      await rateLimit.enforceRateLimit({ policy: "login_ip_global", request: spent, keyParts: [rateLimit.getRateLimitClientIp(spent)] });
+    }
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect((await POST(new NextRequest("http://localhost/api/auth/signout", { method: "POST", headers: form, body: "csrfToken=x" }))).status).toBe(429);
+    expect(nextAuthPost).toHaveBeenCalledTimes(1);
+  });
+
+  test("a browser that signed in before still gets in while anonymous guesses lock the account (SEC-050)", async () => {
+    const user = await createMember();
+    const { rateLimit, POST } = await authRoute(async (request) => new URLSearchParams(await request.text()).get("password") === "password123"
+      ? new Response(null, { status: 302, headers: { location: "http://localhost/dashboard", "set-cookie": "authjs.session-token=signed; Path=/; HttpOnly" } })
+      : new Response(null, { status: 302, headers: { location: "http://localhost/login?error=CredentialsSignin" } }));
+    const signIn = (password: string, cookie?: string) => POST(new NextRequest("http://localhost/api/auth/callback/credentials", {
+      method: "POST", headers: { ...form, ...(cookie ? { cookie } : {}) }, body: new URLSearchParams({ email: user.email, password })
+    }));
+    expect((await signIn("wrong")).headers.getSetCookie().some((cookie) => cookie.startsWith("thunderstrux-known-device="))).toBe(false);
+    const device = (await signIn("password123")).headers.getSetCookie().find((cookie) => cookie.startsWith("thunderstrux-known-device="))!;
+    expect(device).toContain("HttpOnly");
+    expect(device).toContain("Path=/api/auth/callback/credentials");
+    const cookie = device.split(";", 1)[0];
+
+    // Thirty guesses from other addresses spend the account's hour.
+    const elsewhere = new Request("http://localhost/api/auth/callback/credentials", { method: "POST" });
+    for (let attempt = 0; attempt < 30; attempt += 1) await rateLimit.enforceRateLimit({ policy: "login_email", request: elsewhere, keyParts: [user.email] });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect((await signIn("password123")).status).toBe(429);
+    expect((await signIn("password123", cookie)).status).toBe(302);
+    expect((await signIn("password123", `thunderstrux-known-device=${"A".repeat(22)}.forged`)).status).toBe(429);
+    // A password reset, email change or support sign-out bumps authVersion, which ends the exemption.
+    await prisma.user.update({ where: { id: user.id }, data: { authVersion: { increment: 1 } } });
+    expect((await signIn("password123", cookie)).status).toBe(429);
+  });
+
+  test("signing out ends that login's staff MFA grant, and only that one (#49)", async () => {
+    const user = await createMember();
+    const { POST } = await authRoute(async () => new Response(null, { status: 302 }));
+    const { mfaGrantDigest } = await import("@/lib/security/csrf");
+    const { encode } = await import("next-auth/jwt");
+    const { resolveAuthSecret } = await import("@/lib/auth/secret");
+    for (const login of ["login-a", "login-b"]) {
+      await prisma.mfaGrant.create({ data: { userId: user.id, sessionDigest: mfaGrantDigest(login)!, verifiedAt: new Date(), expiresAt: new Date(Date.now() + 3_600_000) } });
+    }
+    const token = await encode({ secret: resolveAuthSecret(), salt: "authjs.session-token", token: { userId: user.id, authVersion: 0, staffMfaSessionId: "login-a" } });
+    await POST(new NextRequest("http://localhost/api/auth/signout", { method: "POST", headers: { ...form, cookie: `authjs.session-token=${token}` }, body: "csrfToken=x" }));
+    expect((await prisma.mfaGrant.findMany({ select: { sessionDigest: true } })).map((grant) => grant.sessionDigest)).toEqual([mfaGrantDigest("login-b")]);
+  });
+
+  test("password checks past the gate are refused with 503 and Retry-After, not queued (SEC-019)", async () => {
+    const nextAuthPost = vi.fn(async () => new Response(null, { status: 302 }));
+    const { POST } = await authRoute(nextAuthPost);
+    const { comparePassword, maxPasswordWork, PasswordBusyError } = await import("@/lib/auth/password-hash");
+    const { mapRouteError } = await import("@/lib/api/errors");
+    const { hash } = await import("bcryptjs");
+    const digest = await hash("secret-value", 12);
+    const running = Array.from({ length: maxPasswordWork }, () => comparePassword("secret-value", digest));
+    await expect(comparePassword("secret-value", digest)).rejects.toBeInstanceOf(PasswordBusyError);
+    const busy = await POST(new NextRequest("http://localhost/api/auth/callback/credentials", { method: "POST", headers: form, body: "email=member%40example.com&password=wrong" }));
+    expect(busy.status).toBe(503);
+    expect(busy.headers.get("Retry-After")).toBe("5");
+    expect(nextAuthPost).not.toHaveBeenCalled();
+    const mapped = mapRouteError(new PasswordBusyError(), { operation: "test" });
+    expect([mapped.status, mapped.headers.get("Retry-After")]).toEqual([503, "5"]);
+    expect(await Promise.all(running)).toEqual(Array(maxPasswordWork).fill(true));
+    await expect(comparePassword("secret-value", digest)).resolves.toBe(true);
+  });
+
   test("an unknown reset token costs no password hash (SEC-019)", async () => {
     vi.resetModules();
     const hashMock = vi.fn(async () => "hashed-password");

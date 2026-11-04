@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { compare } from "bcryptjs";
+import { comparePassword } from "@/lib/auth/password-hash";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { lockAccount } from "@/lib/auth/account-lock";
@@ -191,7 +191,7 @@ export async function getStaffMfaStatus(userId: string) {
 // its own phone and lock the real person out.
 export async function confirmPasswordForMfaSetup(userId: string, password: string) {
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { password: true } });
-  if (!user || !(await compare(password, user.password))) throw new MfaInputError("Your password is incorrect");
+  if (!user || !(await comparePassword(password, user.password))) throw new MfaInputError("Your password is incorrect");
 }
 
 export async function beginStaffMfaEnrollment(userId: string, email: string, now = new Date()) {

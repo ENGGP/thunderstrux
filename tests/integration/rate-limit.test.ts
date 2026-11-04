@@ -582,7 +582,10 @@ describe("rate-limited routes", () => {
 
   test("signing out ends that login's staff MFA grant, and only that one (#49)", async () => {
     const user = await createMember();
-    const { POST } = await authRoute(async () => new Response(null, { status: 302 }));
+    // Auth.js clears the session cookie only when the sign-out passed its CSRF check.
+    const { POST } = await authRoute(async (request) => new URLSearchParams(await request.text()).get("csrfToken") === "valid"
+      ? new Response(null, { status: 302, headers: { "set-cookie": "authjs.session-token=; Path=/; Max-Age=0" } })
+      : new Response(null, { status: 302, headers: { location: "http://localhost/api/auth/signin?error=MissingCSRF" } }));
     const { mfaGrantDigest } = await import("@/lib/security/csrf");
     const { encode } = await import("next-auth/jwt");
     const { resolveAuthSecret } = await import("@/lib/auth/secret");
@@ -590,7 +593,10 @@ describe("rate-limited routes", () => {
       await prisma.mfaGrant.create({ data: { userId: user.id, sessionDigest: mfaGrantDigest(login)!, verifiedAt: new Date(), expiresAt: new Date(Date.now() + 3_600_000) } });
     }
     const token = await encode({ secret: resolveAuthSecret(), salt: "authjs.session-token", token: { userId: user.id, authVersion: 0, staffMfaSessionId: "login-a" } });
-    await POST(new NextRequest("http://localhost/api/auth/signout", { method: "POST", headers: { ...form, cookie: `authjs.session-token=${token}` }, body: "csrfToken=x" }));
+    const signOut = (csrfToken: string) => POST(new NextRequest("http://localhost/api/auth/signout", { method: "POST", headers: { ...form, cookie: `authjs.session-token=${token}` }, body: `csrfToken=${csrfToken}` }));
+    await signOut("forged");
+    expect(await prisma.mfaGrant.count()).toBe(2);
+    await signOut("valid");
     expect((await prisma.mfaGrant.findMany({ select: { sessionDigest: true } })).map((grant) => grant.sessionDigest)).toEqual([mfaGrantDigest("login-b")]);
   });
 

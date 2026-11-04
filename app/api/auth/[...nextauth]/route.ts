@@ -22,8 +22,10 @@ const formContentType = /^application\/x-www-form-urlencoded(\s*;\s*charset=utf-
 // An address, a password, a CSRF token and a callback URL, encoded (SEC-041). Every
 // other Auth.js POST (sign-out, session update, sign-in start) is smaller still.
 const maxAuthBodyBytes = 10_000;
-// Auth.js sets this (chunked as .0, .1, … when large) only when a sign-in succeeded.
+// Auth.js sets this (chunked as .0, .1, … when large) only when a sign-in succeeded,
+// and clears it (an empty value) only when a sign-out did.
 const sessionCookie = /^(__Secure-)?authjs\.session-token(\.\d+)?=[^;]+/;
+const clearedSessionCookie = /^(__Secure-)?authjs\.session-token(\.\d+)?=;/;
 
 export async function POST(request: NextRequest) {
   const pathname = new URL(request.url).pathname;
@@ -36,7 +38,7 @@ export async function POST(request: NextRequest) {
   const body = await readBodyUpTo(request.clone(), maxAuthBodyBytes);
   if (body === null) return badRequest("Request body is too large");
 
-  if (pathname.endsWith("/api/auth/signout")) await endMfaGrant(request);
+  if (pathname.endsWith("/api/auth/signout")) return signOut(request);
   if (!pathname.endsWith("/api/auth/callback/credentials")) return nextAuthPost(request);
 
   if (!formContentType.test(request.headers.get("content-type") ?? "")) return badRequest("Sign in through the sign-in form");
@@ -52,8 +54,8 @@ export async function POST(request: NextRequest) {
 
   // Per account across addresses, so guesses spread over many IPs still stop (DEBT-002);
   // a browser that signed in to it before counts on its own bucket (SEC-050).
-  const account = await prisma.user.findUnique({ where: { email }, select: { authVersion: true } });
-  const device = account ? knownDeviceId(request.cookies.get(knownDeviceCookie)?.value, email, account.authVersion) : null;
+  const account = await prisma.user.findUnique({ where: { email }, select: { id: true, email: true, authVersion: true } });
+  const device = account ? knownDeviceId(request.cookies.get(knownDeviceCookie)?.value, account) : null;
   const accountLimitResponse = device
     ? await enforceRateLimit({ policy: "login_known_device", request, keyParts: [email, device] })
     : await enforceRateLimit({ policy: "login_email", request, keyParts: [email] });
@@ -62,18 +64,21 @@ export async function POST(request: NextRequest) {
   // Password checks run on the event loop: past the gate, refuse rather than queue (SEC-019).
   if (passwordWorkBusy()) return passwordBusyResponse();
   const response = await nextAuthPost(request);
-  if (!response.headers.getSetCookie().some((cookie) => sessionCookie.test(cookie))) return response;
-  const signedIn = await prisma.user.findUnique({ where: { email }, select: { authVersion: true } });
-  if (!signedIn) return response;
+  if (!account || !response.headers.getSetCookie().some((cookie) => sessionCookie.test(cookie))) return response;
   const headers = new Headers(response.headers);
-  headers.append("Set-Cookie", knownDeviceSetCookie(email, signedIn.authVersion));
+  headers.append("Set-Cookie", knownDeviceSetCookie(account));
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
 // Signing out ends this login's staff MFA grant too, so a copied session token
-// can't keep using it until it expires (#49).
-async function endMfaGrant(request: NextRequest) {
+// can't keep using it until it expires (#49). Only once Auth.js accepted the
+// sign-out (its CSRF check passed and it cleared the session cookie).
+async function signOut(request: NextRequest) {
   const token = await getToken({ req: request, secret: authSecret, secureCookie: publicOriginIsHttps(request.url) }).catch(() => null);
+  const response = await nextAuthPost(request);
   const digest = mfaGrantDigest(typeof token?.staffMfaSessionId === "string" ? token.staffMfaSessionId : undefined);
-  if (digest) await prisma.mfaGrant.deleteMany({ where: { sessionDigest: digest } });
+  if (digest && response.headers.getSetCookie().some((cookie) => clearedSessionCookie.test(cookie))) {
+    await prisma.mfaGrant.deleteMany({ where: { sessionDigest: digest } });
+  }
+  return response;
 }

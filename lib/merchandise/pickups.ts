@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
+import { clipText } from "@/lib/email/templates";
 import type { AccountActor } from "@/lib/auth/account-lifecycle";
 import { appendCommerceLifecycleEvent, lockCommerceOrder } from "@/lib/commerce/orders";
 import { prisma } from "@/lib/db";
@@ -130,7 +131,7 @@ export async function markPickup(actor: AccountActor, organisationId: string, or
       payload: {
         message:
           step === "ready"
-            ? `Your order ${reference} from ${order.sellerName} is ready to collect.${organisation.pickupPolicy ? ` Collect it from: ${organisation.pickupPolicy}` : ""} Show order ${reference} when you collect.`
+            ? `Your order ${reference} from ${order.sellerName} is ready to collect.${organisation.pickupPolicy ? ` Collect it from: ${clipText(organisation.pickupPolicy, 600)}` : ""} Show order ${reference} when you collect.`
             : `You collected order ${reference} from ${order.sellerName} on ${formatDateTime(done.updatedAt, zone)}.`
       }
     });

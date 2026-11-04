@@ -20,7 +20,7 @@ sources: [lib/email/ticket-delivery.ts, lib/email/ticket-email-outbox.ts, lib/em
 | Ticket outbox: enqueue, claim, send, requeue | `lib/email/ticket-email-outbox.ts` |
 | Notifications: enqueue, claim, send, failed list, requeue | `lib/email/notification-outbox.ts` |
 | Payload encryption | `lib/email/notification-crypto.ts` |
-| Templates and payload schema | `lib/email/templates.ts`: `notificationTemplateSchema`, `renderNotification` |
+| Templates and payload schema | `lib/email/templates.ts`: `notificationTemplateSchema`, `renderNotification`, `clipText` |
 | Ticket email refusals (resend, requeue, worker) | `lib/email/ticket-delivery.ts`: `ticketEmailRefusal`; resend `lib/orders/order-detail.ts`: `enqueueOrganisationOrderTicketEmail` |
 | Workers | `scripts/process-email-outbox.ts`, `scripts/process-notifications.ts` |
 | Notification producers | `lib/events/event-changes.ts`, `lib/memberships/reminders.ts`, `lib/payments/compensation-notices.ts`, and the services in the matrix below |
@@ -71,6 +71,7 @@ One email per ticket order with every `active` ticket. Text and HTML, with each 
 - **Unique intent:** `(eventKey, recipient, templateVersion)`. A repeat insert does nothing, so each key below is sent at most once per recipient. A key holds only while its row exists ([[#Retention]]).
 - **Privacy:** `business_notice`, `event_cancelled`, `society_enquiry`, `society_restricted` and `society_unrestricted` jobs (`businessTemplates`) are `business` and must name a society; every other template is `security` and must not. Security jobs never show to societies and have no tenant requeue.
 - **Frozen content:** subject, text, HTML and sender (`EMAIL_FROM`) are rendered once at enqueue and encrypted with AES-256-GCM (`encryptNotification`). The key is `NOTIFICATION_ENCRYPTION_KEY`, 32 bytes in base64; the job id is the authenticated data, and decryption requires the full 16-byte tag. Readiness (`lib/ops/readiness.ts`) and every token-issuing path refuse a missing or invalid key. Hosted services read it through `NOTIFICATION_ENCRYPTION_KEY_FILE`.
+- **Message length:** a message over 2,000 characters ends in an ellipsis instead of failing, because a refusal inside a payment's transaction would stop the sale settling (DEF-097). Society text inside a message (the pickup policy) is clipped to 600 so the order reference and links always fit.
 - **Links** (`payload.link`) must be on the configured app origin, `https` (or `http` on localhost), without credentials.
 - **Statuses** (a string with a database check): `pending`, `processing`, `sent`, `failed`, `cancelled`.
 - **Claim:** due `pending` and `processing` older than 10 minutes, `FOR UPDATE SKIP LOCKED`, 25 a batch, with a rotating `processingToken`. Jobs with an `authTokenId` or `guestAccessGrantId` come first, then `nextAttemptAt` order: someone is waiting on a sign-in or guest link, and it can expire behind a bulk event-change email (DEF-067). A run takes batches until nothing is due or `emailRunBudgetMs` has passed.

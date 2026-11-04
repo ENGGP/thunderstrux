@@ -8,6 +8,7 @@ import { POST as webhookRoute } from "@/app/api/payments/webhook/route";
 import { createCommerceCheckout } from "@/lib/commerce/checkout";
 import { expireStaleCommerceOrders } from "@/lib/orders/stale-orders";
 import { prisma } from "@/lib/db";
+import { orderReference } from "@/lib/format";
 import { decryptNotification } from "@/lib/email/notification-crypto";
 import { processNotificationClaim } from "@/lib/email/notification-outbox";
 import { GuestAccessError, guestCookieName, readGuestSession, redeemGuestAccess, requestGuestRecovery } from "@/lib/guest/guest-access";
@@ -173,6 +174,21 @@ describe("merchandise sale", () => {
     await expect(buy(organisation.id, await member(), [{ variantId: y, quantity: 1, unitPrice: 2000 }, { variantId: x, quantity: 1, unitPrice: 1000 }])).rejects.toMatchObject({ reason: "sold_out", variantId: x });
     expect(await prisma.commerceOrder.count({ where: { organisationId: organisation.id } })).toBe(before);
     expect((await quoteBasket({ society: organisation.slug, items: [{ variantId: y, quantity: 10 }] }))?.lines[0].available).toBe(3);
+  });
+
+  test("a pickup policy as long as the profile allows still settles the sale, with a receipt that keeps its reference and link (DEF-097)", async () => {
+    const { organisation, variants } = await shop([{ priceAmount: 0, remaining: 3 }]);
+    await prisma.organisation.update({ where: { id: organisation.id }, data: { pickupPolicy: "Collect from the stall. ".repeat(220).trim().slice(0, 5000) } });
+    const guest = await verifiedGuest();
+    const bought = await buy(organisation.id, { guest }, [{ variantId: variants[0].id, quantity: 1, unitPrice: 0 }]);
+    expect(bought.status).toBe("fulfilled");
+    if (bought.status !== "fulfilled") throw new Error("not fulfilled");
+    const job = await prisma.notificationOutbox.findFirstOrThrow({ where: { eventKey: `merchandise-receipt/${bought.commerceOrderId}` } });
+    const { text } = tokenIn(job);
+    const message = text.split("\n\n")[0];
+    expect(message.length).toBeLessThanOrEqual(2000);
+    expect(message).toContain(orderReference(bought.commerceOrderId));
+    expect(message).toContain("Open your order with the link below.");
   });
 
   test("a free basket completes in checkout once, for a member or a verified guest, with a receipt naming the pickup", async () => {

@@ -753,11 +753,25 @@ describe("rate-limited routes", () => {
 
     expect(throttled.status).toBe(429);
     expect(fetchMock).not.toHaveBeenCalled();
+    // SEC-057: a resend already waiting is the one the buyer gets, so ten requests queue one email.
     await expect(
       prisma.emailOutbox.count({
         where: { orderId: order.id, mode: "manual" }
       })
-    ).resolves.toBe(10);
+    ).resolves.toBe(1);
+
+    // One society's resends share a budget, so it can't fill the queue every society uses.
+    const another = await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: ticketType.id, userId: member.id, status: "paid", paidAt: new Date() });
+    const elsewhere = new Request("http://localhost/api/orders/x/resend", { method: "POST" });
+    for (let spent = 10; spent < policies.order_resend_society.limit; spent += 1) {
+      await enforceRateLimit({ policy: "order_resend_society", request: elsewhere, keyParts: [organisation.id] });
+    }
+    const societyThrottled = await resendTickets(
+      jsonRequest(`http://localhost/api/orders/${another.id}/resend`, undefined, { method: "POST" }),
+      routeContext({ orderId: another.id })
+    );
+    expect(societyThrottled.status).toBe(429);
+    expect(await prisma.emailOutbox.count({ where: { orderId: another.id, mode: "manual" } })).toBe(0);
   });
 
   test("organisation create throttling prevents organisation writes", async () => {

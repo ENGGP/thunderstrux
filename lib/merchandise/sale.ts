@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
+import { clipText } from "@/lib/email/templates";
 import type { CommerceFamilyAdapter, CommerceOrderForHooks } from "@/lib/commerce/families";
 import { enqueueNotification } from "@/lib/email/notification-outbox";
 import { formatMoney, orderReference } from "@/lib/format";
@@ -164,7 +165,8 @@ export const merchandiseFamily: CommerceFamilyAdapter<z.infer<typeof selection>>
     });
     const items = lines.map((line) => `${line.quantity} × ${line.nameSnapshot}${line.variantSnapshot ? ` (${line.variantSnapshot})` : ""}`).join(", ");
     const total = purchase.totalAmount ? formatMoney(purchase.totalAmount) : "Free";
-    const pickup = purchase.organisation.pickupPolicy ? ` Collect it in person: ${purchase.organisation.pickupPolicy}` : " Collect it in person.";
+    // Clipped, so the reference, total and guest link sentence always fit the 2,000-character notice (DEF-097).
+    const pickup = purchase.organisation.pickupPolicy ? ` Collect it in person: ${clipText(purchase.organisation.pickupPolicy, 600)}` : " Collect it in person.";
     const receipt = `Your order ${orderReference(order.id)} from ${purchase.sellerName} is confirmed: ${items}. Total: ${total}.${pickup} Bring your order reference.`;
     if (order.guestIdentityId && !order.userId) {
       // A guest's receipt carries the link back to this one order, so it goes

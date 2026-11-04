@@ -14,6 +14,7 @@ export type RateLimitPolicy =
   | "login_ip_email"
   | "login_email"
   | "login_known_device"
+  | "order_resend_society"
   | "login_ip_global"
   | "signup_ip"
   | "signup_email"
@@ -40,6 +41,8 @@ export type RateLimitPolicy =
   | "guest_token_digest"
   | "data_export"
   | "society_enquiry"
+  | "society_enquiry_ip"
+  | "merchandise_quote"
   | "ticket_code_check"
   | "platform_read"
   | "platform_write"
@@ -93,6 +96,8 @@ export const policies: Record<RateLimitPolicy, RateLimitPolicyConfig> = {
   },
   checkout_create: { limit: 5, windowSeconds: 10 * 60, failureMode: "open" },
   order_resend: { limit: 10, windowSeconds: 15 * 60, failureMode: "open" },
+  // SEC-057 (N7): a society's resends together, so one society can't fill the email queue every society shares.
+  order_resend_society: { limit: 200, windowSeconds: 60 * 60, failureMode: "closed" },
   organisation_join_leave: {
     limit: 30,
     windowSeconds: 10 * 60,
@@ -118,6 +123,10 @@ export const policies: Record<RateLimitPolicy, RateLimitPolicyConfig> = {
   data_export: { limit: 20, windowSeconds: 60 * 60, failureMode: "closed" },
   // "Contact {society}" takes no session: per address and society, and per sender (DEBT-002).
   society_enquiry: { limit: 5, windowSeconds: 60 * 60, failureMode: "closed" },
+  // #19: one address across every society, so it can't write to all of them at five each.
+  society_enquiry_ip: { limit: 30, windowSeconds: 60 * 60, failureMode: "closed" },
+  // #72: anyone may price a basket; each quote reads the catalogue and stock.
+  merchandise_quote: { limit: 300, windowSeconds: 10 * 60, failureMode: "open" },
   // A ticket code read on the event or checkout page, per address and event, so codes can't be guessed by
   // trying them. Each buyer on a shared code link spends two or more reads, so a campus needs this many.
   ticket_code_check: { limit: 600, windowSeconds: 10 * 60, failureMode: "open" },

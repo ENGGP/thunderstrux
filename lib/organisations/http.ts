@@ -20,7 +20,7 @@ export function organisationError(error: unknown) {
     rules: [
       authenticationRule,
       routeErrorRule(OrganisationAccessError, (denied) => denied.message === "Organisation not found or access denied" ? notFound("Organisation was not found") : forbidden(denied.message)),
-      routeErrorRule(ZodError, (invalid) => validationError(invalid.issues.map((issue) => ({ path: issue.path.map(String), message: issue.message })))),
+      routeErrorRule(ZodError, (invalid) => validationError(invalid.issues.slice(0, 20).map((issue) => ({ path: issue.path.map(String), message: issue.message })))),
       routeErrorRule(AssetError, (failed) => apiError(failed.status === 404 ? "NOT_FOUND" : failed.status === 409 ? "CONFLICT" : failed.status === 429 ? "RATE_LIMITED" : failed.status === 503 ? "SERVICE_UNAVAILABLE" : "BAD_REQUEST", failed.message, failed.status))
     ]
   });

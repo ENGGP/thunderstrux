@@ -52,6 +52,19 @@ test("a large photo is stored at most 2048px on its longest side, and the stored
   expect({ width: result.width, height: result.height, byteSize: result.byteSize }).toEqual({ width: 2048, height: 683, byteSize: result.bytes.length });
   expect(result.sha256).toBe(createHash("sha256").update(result.bytes).digest("hex"));
 });
+test("16-bit and interlaced PNGs are refused, and a third image decoding at once gets 503 (SEC-055)", async () => {
+  const base = sharp({ create: { width: 16, height: 16, channels: 3, background: "#3366cc" } });
+  const deep = await base.clone().toColourspace("rgb16").png().toBuffer();
+  const interlaced = await base.clone().png({ progressive: true }).toBuffer();
+  const plain = await base.clone().png().toBuffer();
+  await expect(sanitiseImage(deep, "image/png")).rejects.toMatchObject({ status: 400, message: "Use an 8-bit, non-interlaced image" });
+  await expect(sanitiseImage(interlaced, "image/png")).rejects.toMatchObject({ status: 400, message: "Use an 8-bit, non-interlaced image" });
+  const running = [sanitiseImage(plain, "image/png"), sanitiseImage(plain, "image/png")];
+  await expect(sanitiseImage(plain, "image/png")).rejects.toMatchObject({ status: 503 });
+  await Promise.all(running);
+  await expect(sanitiseImage(plain, "image/png")).resolves.toMatchObject({ width: 16, height: 16 });
+});
+
 test("multipart reader bounds streamed bytes and accepts one file only", async () => {
   const form = new FormData(); form.set("file", new File([new Uint8Array(await png())], "test.png", { type: "image/png" }));
   expect((await readImageForm(new Request("http://localhost", { method: "POST", body: form }))).type).toBe("image/png");

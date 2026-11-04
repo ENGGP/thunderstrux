@@ -595,7 +595,7 @@ export async function disconnectAccount(
   const linked = await prisma.organisation.findUnique({ where: { id: orgId }, select: { stripeAccountId: true, restrictedAt: true, payoutsHeldAt: true, payoutsHeldUntil: true } });
   if (linked?.restrictedAt) throw new StripeDisconnectBlockedError(0, societyRestricted);
   // PAY-070: Stripe's schedule would pay out money support is holding.
-  if (linked && payoutsHeld(linked)) throw new StripeDisconnectBlockedError(0, payoutsHeldBlocks);
+  if (linked?.stripeAccountId && payoutsHeld(linked)) throw new StripeDisconnectBlockedError(0, payoutsHeldBlocks);
   let scheduleRestored = false;
   if (linked?.stripeAccountId) {
     const open = await countOpenObligations(prisma, orgId, linked.stripeAccountId);
@@ -650,7 +650,8 @@ async function unlinkAccount(orgId: string, actorUserId: string, recheckHeld: bo
     `;
     if (!organisation) throw new OrganisationStripeConnectNotFoundError();
     if (organisation.restrictedAt) throw new StripeDisconnectBlockedError(0, societyRestricted);
-    if (payoutsHeld(organisation)) throw new StripeDisconnectBlockedError(0, payoutsHeldBlocks);
+    // With no account (PLATFORM_NOT_READY) nothing can move, so only the local reset follows.
+    if (organisation.stripeAccountId && payoutsHeld(organisation)) throw new StripeDisconnectBlockedError(0, payoutsHeldBlocks);
 
     // No account (for example PLATFORM_NOT_READY): only the local state is reset.
     if (organisation.stripeAccountId) {

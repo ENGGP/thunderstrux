@@ -468,14 +468,12 @@ describe("pending order cleanup", () => {
             message: "Stale cleanup limit must be an integer between 1 and 1000."
           }
         }),
+        // The alert leaves the host, so it carries the error's name only (#31); the log above keeps the message.
         expect.objectContaining({
           event: "stale_order_worker_failed",
           dryRun: false,
           limit: 0,
-          error: {
-            name: "Error",
-            message: "Stale cleanup limit must be an integer between 1 and 1000."
-          }
+          errorName: "Error"
         })
       ])
     );

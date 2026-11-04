@@ -43,7 +43,11 @@ export async function heldMoney(organisationId: string, stripeAccountId: string,
   // A nullable column: NOT refunded would also drop the never-refunded rows. A
   // refund made outside Thunderstrux and not taken back from the society keeps it (PAY-027).
   const unreversed = { externalUnreversedAmount: { gt: 0 } };
-  const paidTo = { sellerStripeAccountId: stripeAccountId, paymentKind: "stripe" as const, paidAt: { gt: capped }, OR: [{ refundStatus: null }, { refundStatus: "processing" as const }, unreversed] };
+  // PAY-069: Refunded says no ticket is left, not that the money went back. A
+  // 1-cent refund that cancels every ticket still leaves the rest of the sale, so
+  // a sale refunded here is held by what share() nets, not dropped.
+  const refundedHere = { refundStatus: "refunded" as const, refundRequests: { some: { status: "succeeded" as const } } };
+  const paidTo = { sellerStripeAccountId: stripeAccountId, paymentKind: "stripe" as const, paidAt: { gt: capped }, OR: [{ refundStatus: null }, { refundStatus: "processing" as const }, unreversed, refundedHere] };
   // A lost dispute's money stays held until its transfer reversal settles (T53).
   const reversing = { disputes: { some: { reversalStatus: { in: ["pending" as const, "uncertain" as const] } } } };
   // PAY-033: a refund still being sent holds its sale, so a late reversal never debits the society's bank.
@@ -54,7 +58,7 @@ export async function heldMoney(organisationId: string, stripeAccountId: string,
   // PAY-012: a lost dispute whose money is already back from the society holds nothing.
   const notRecovered = { OR: [{ disputeStatus: null }, { disputeStatus: { not: "lost" as const } }, { disputes: { none: { reversalStatus: "succeeded" as const } } }, reversing] };
   const ended = new Date(now.getTime() - ticketHoldAfterEventMs);
-  const [tickets, commerce] = await Promise.all([
+  const [ticketSales, commerceSales] = await Promise.all([
     prisma.order.findMany({
       // The event owns a ticket order (Event.organisationId is canonical).
       where: { ...paidTo, event: { organisationId }, AND: [
@@ -75,6 +79,9 @@ export async function heldMoney(organisationId: string, stripeAccountId: string,
       select: { totalAmount: true, feeAmount: true, externalRefundedAmount: true, externalUnreversedAmount: true, ...shareRefundsSelect }
     })
   ]);
+  // A sale refunded in full holds nothing, and doesn't count as an event waiting.
+  const tickets = ticketSales.filter((order) => share(order) > 0);
+  const commerce = commerceSales.filter((order) => share(order) > 0);
   const eventAmount = tickets.reduce((sum, order) => sum + share(order), 0);
   const latestEnd = ({ endTime, latestEndTime }: (typeof tickets)[number]["event"]) => (latestEndTime && latestEndTime > endTime ? latestEndTime : endTime);
   const upcoming = tickets.map((order) => latestEnd(order.event)).filter((endTime) => endTime > now).sort((a, b) => a.getTime() - b.getTime());

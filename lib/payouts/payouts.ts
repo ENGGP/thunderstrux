@@ -106,6 +106,8 @@ async function payOut(stripe: Stripe, organisation: { id: string; stripeAccountI
   });
   const smallAllowed = !lastPaid || now.getTime() - lastPaid.createdAt.getTime() >= smallPayoutAfterMs;
   if (amount < (smallAllowed ? smallPayout : minPayout)) return { sent: 0 };
+  // PAY-071: a hold or restriction set during this run's Stripe calls still stops the payout.
+  if ((await prisma.organisation.count({ where: { id: organisation.id, ...payoutsAllowedWhere(now) } })) === 0) return { sent: 0 };
   // One key per attempt: Stripe keeps a refusal under its key and refuses that key
   // with another amount, so a per-day key blocked the rest of the day. The SDK's
   // own network retries reuse this key. A payout Stripe made despite an error is
@@ -128,7 +130,35 @@ export const payoutsAllowedWhere = (now: Date): Prisma.OrganisationWhereInput =>
   restrictedAt: null, OR: [{ payoutsHeldAt: null }, { payoutsHeldUntil: { lte: now } }]
 });
 
+// The same hold test on a row already read (payoutsAllowedWhere's opposite, without the restriction).
+export const payoutsHeld = (organisation: { payoutsHeldAt: Date | null; payoutsHeldUntil: Date | null }, now = new Date()) =>
+  organisation.payoutsHeldAt !== null && (organisation.payoutsHeldUntil === null || organisation.payoutsHeldUntil > now);
+
+// PAY-071: a held or restricted society sends nothing, but its account is still put
+// back on manual payouts each hour, so one left on Stripe's schedule (a failed switch,
+// a disconnect refused after the schedule changed) can't pay its held money out meanwhile.
+async function keepHeldAccountsManual(limit: number, now: Date) {
+  // Spelled out rather than NOT payoutsAllowedWhere: an open-ended hold's null end compares as unknown, not false.
+  const heldOrRestricted = { OR: [{ restrictedAt: { not: null } }, { payoutsHeldAt: { not: null }, OR: [{ payoutsHeldUntil: null }, { payoutsHeldUntil: { gt: now } }] }] };
+  const held = await prisma.organisation.findMany({
+    where: { stripeAccountId: { not: null }, AND: [heldOrRestricted, { OR: [{ payoutCheckedAt: null }, { payoutCheckedAt: { lt: new Date(now.getTime() - checkEveryMs) } }] }] },
+    orderBy: [{ payoutCheckedAt: { sort: "asc", nulls: "first" } }, { id: "asc" }],
+    take: Math.max(1, Math.min(limit, 100)),
+    select: { id: true, stripeAccountId: true, payoutCheckedAt: true }
+  });
+  for (const organisation of held) {
+    const claimed = await prisma.organisation.updateMany({ where: { id: organisation.id, payoutCheckedAt: organisation.payoutCheckedAt }, data: { payoutCheckedAt: now } });
+    if (claimed.count !== 1) continue;
+    try {
+      await ensureManualPayouts(getStripe(), organisation.stripeAccountId as string);
+    } catch (error) {
+      logWarn("payouts.manual_not_restored", { organisationId: organisation.id, stripeAccountId: organisation.stripeAccountId, error });
+    }
+  }
+}
+
 export async function processPayoutBatch(limit = 25, now = new Date()) {
+  await keepHeldAccountsManual(limit, now);
   const due = await prisma.organisation.findMany({
     // T55: a restricted or held society waits (payoutsAllowedWhere).
     where: { stripeAccountId: { not: null }, stripePayoutsEnabled: true, AND: [payoutsAllowedWhere(now), { OR: [{ payoutCheckedAt: null }, { payoutCheckedAt: { lt: new Date(now.getTime() - checkEveryMs) } }] }] },

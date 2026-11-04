@@ -122,6 +122,38 @@ describe("disconnect", () => {
     expect((await prisma.organisation.findUniqueOrThrow({ where: { id: fixture.owner.organisation.id } })).stripeAccountId).toBeNull();
   });
 
+  // PAY-070: support's hold, or the 7 days after an ownership recovery, keeps the money where it is.
+  test("is refused while support holds the society's payouts, before Stripe's schedule is touched; the dashboard link too (PAY-071)", async () => {
+    const owner = await createOrganisationAccount({ stripeReady: true });
+    const actor = { id: owner.user.id };
+    const linked = async () => (await prisma.organisation.findUniqueOrThrow({ where: { id: owner.organisation.id } })).stripeAccountId;
+    restoreSchedule.mockClear();
+    await prisma.organisation.update({ where: { id: owner.organisation.id }, data: { payoutsHeldAt: new Date(), payoutsHeldUntil: new Date(Date.now() + 7 * 86_400_000) } });
+
+    await expect(disconnectAccount(owner.organisation.id, { actor })).rejects.toThrow("holding this society's payouts");
+    expect(restoreSchedule).not.toHaveBeenCalled();
+    expect(await linked()).not.toBeNull();
+    await expect(createOrganisationDashboardLink(owner.organisation.id, { actor })).rejects.toThrow("holding this society's payouts");
+    expect(await prisma.auditLog.count({ where: { action: "stripe_connect.dashboard_opened" } })).toBe(0);
+
+    // A hold whose end has passed no longer stops it.
+    await prisma.organisation.update({ where: { id: owner.organisation.id }, data: { payoutsHeldUntil: new Date(Date.now() - 1000) } });
+    await disconnectAccount(owner.organisation.id, { actor });
+    expect(await linked()).toBeNull();
+  });
+
+  test("refused under the lock after Stripe's schedule came back, the account goes straight back on manual payouts", async () => {
+    const owner = await createOrganisationAccount({ stripeReady: true });
+    keepManual.mockClear();
+    restoreSchedule.mockImplementationOnce(async () => {
+      await prisma.organisation.update({ where: { id: owner.organisation.id }, data: { payoutsHeldAt: new Date() } });
+    });
+
+    await expect(disconnectAccount(owner.organisation.id, { actor: { id: owner.user.id } })).rejects.toThrow("holding this society's payouts");
+    expect(keepManual).toHaveBeenCalledWith(owner.organisation.stripeAccountId);
+    expect((await prisma.organisation.findUniqueOrThrow({ where: { id: owner.organisation.id } })).stripeAccountId).not.toBeNull();
+  });
+
   test("a membership order still being paid, refunded or disputed also blocks it", async () => {
     const owner = await createOrganisationAccount({ stripeReady: true });
     const now = Date.now();

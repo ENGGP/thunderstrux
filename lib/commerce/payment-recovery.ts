@@ -7,8 +7,9 @@ import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logInfo, logWarn } from "@/lib/ops/logger";
 import { stageDisputeEvidence } from "@/lib/payments/dispute-evidence";
 import { outsideRefundOwed, queueDisputeReversal } from "@/lib/payments/dispute-reversals";
-import { closeRepaidReview, openCommerceCompensation, reopenRepaidReview } from "@/lib/payments/order-refunds";
-import { alertOutsideRefundNotReversed, alertPartReturned, isInquiry, journal, journalled, outcomeOf, worstOutcome } from "@/lib/payments/purchase-disputes";
+import { closeRepaidReview, openCommerceCompensation, refundedSoFar, reopenRepaidReview } from "@/lib/payments/order-refunds";
+import { caseTypeOf, outcomeOf } from "@/lib/payments/dispute-outcome";
+import { alertDisputeReview, alertDisputeUnmatched, alertOutsideRefundNotReversed, alertPartReturned, cancelQueuedReversals, journal, journalled, recordDispute, type DisputeReview } from "@/lib/payments/purchase-disputes";
 import { getStripe } from "@/lib/stripe";
 
 // PAY-003: what Stripe reports about a membership or merchandise payment that
@@ -48,10 +49,12 @@ async function endMemberships(tx: Prisma.TransactionClient, commerceOrderId: str
   return (await tx.membershipGrant.updateMany({ where: { line: { orderId: commerceOrderId }, revokedAt: null }, data: { revokedAt: now, revocationReason: reason } })).count;
 }
 
-// charge.dispute.*: an open dispute pauses refunds and hand-over; a lost one
-// ends memberships, cancels an uncollected pickup and closes a review it repaid; a
-// won one clears the order, which keeps the dispute in its history, and opens a held
-// compensation refund.
+// charge.dispute.*: an open dispute pauses refunds and hand-over. A loss of the
+// whole payment ends memberships, cancels an uncollected pickup and closes a review
+// it repaid; a loss of part keeps them and alerts (PAY-074). A win clears the order,
+// which keeps the dispute in its history, and opens a held compensation refund; a
+// win after a loss cancels the reversal still owed and alerts, since a membership
+// may be ended or merchandise collected (PAY-072, PAY-073).
 export async function reconcileCommerceDisputeEvent(event: Stripe.Event) {
   const dispute = event.data.object as Stripe.Dispute;
   const intentId = idOf(dispute.payment_intent);
@@ -60,40 +63,40 @@ export async function reconcileCommerceDisputeEvent(event: Stripe.Event) {
   const stripe = getStripe();
   const payment = await verifiedCommercePayment(stripe, intentId);
   if (!payment) return false;
-  if (!payment.order || payment.chargeId !== idOf(dispute.charge) || dispute.currency !== payment.order.currency || dispute.amount > payment.order.totalAmount) {
-    logWarn("commerce.dispute.unmatched", { stripeEventId: event.id, disputeId: dispute.id });
-    emitOperationalAlert("purchase_dispute_unmatched", { stripeEventId: event.id, disputeId: dispute.id });
-    return true;
-  }
+  // PAY-078: no amount check. A currency conversion can make a verified dispute larger than its order.
+  if (!payment.order) { alertDisputeUnmatched(event, dispute, "no_order"); return true; }
+  if (payment.chargeId !== idOf(dispute.charge)) { alertDisputeUnmatched(event, dispute, "other_charge"); return true; }
+  if (dispute.currency !== payment.order.currency) { alertDisputeUnmatched(event, dispute, "currency"); return true; }
+  // Read before Stripe answers, so a slower read of an older state loses (PAY-076).
+  const readAt = new Date();
   const current = await stripe.disputes.retrieve(dispute.id);
-  const outcome = outcomeOf(current.status);
+  const outcome = outcomeOf(current.status, caseTypeOf(current));
   const { id: commerceOrderId, organisationId } = payment.order;
   const now = new Date();
   let partReturned = false as boolean;
+  let review = null as DisputeReview | null;
   const opened = await prisma.$transaction(async (tx) => {
     if (!(await journal(tx, event)) || !(await lockCommerceOrderForFamily(tx, commerceOrderId))) return false;
-    const existing = await tx.purchaseDispute.findUnique({ where: { stripeDisputeId: current.id } });
-    const fields = {
-      providerStatus: current.status, amount: current.amount, reason: current.reason,
-      evidenceDueBy: current.evidence_details?.due_by ? new Date(current.evidence_details.due_by * 1000) : null,
-      closedAt: outcome === "open" ? null : existing?.closedAt ?? now
-    };
-    await tx.purchaseDispute.upsert({
-      where: { stripeDisputeId: current.id },
-      create: { ...fields, commerceOrderId, organisationId, stripeDisputeId: current.id, stripeChargeId: payment.chargeId as string, currency: current.currency },
-      update: fields
-    });
-    if (existing && outcomeOf(existing.providerStatus) === outcome && isInquiry(existing.providerStatus) === isInquiry(current.status)) return false;
-    const worst = worstOutcome((await tx.purchaseDispute.findMany({ where: { commerceOrderId }, select: { providerStatus: true } })).map((row) => row.providerStatus));
-    const review = await tx.commerceOrder.update({
-      where: { id: commerceOrderId }, data: { disputeStatus: worst === "won" ? null : worst, stripePaymentIntentId: intentId }, select: { requiresCompensationReview: true, reviewReason: true, refundStatus: true }
+    const record = await recordDispute(tx, { current, readAt, now, chargeId: payment.chargeId as string, organisationId, scope: { commerceOrderId } });
+    if (!record) return false;
+    const { existing, worst } = record;
+    review = record.review;
+    const order = await tx.commerceOrder.update({
+      where: { id: commerceOrderId }, data: { disputeStatus: worst === "won" ? null : worst, stripePaymentIntentId: intentId },
+      select: { requiresCompensationReview: true, reviewReason: true, refundStatus: true, totalAmount: true, externalRefundedAmount: true }
     });
     if (!existing) {
       await appendCommerceLifecycleEvent(tx, { commerceOrderId, type: "dispute_opened", source: "stripe_webhook", stripeEventId: event.id, reason: current.reason, facts: { amount: current.amount } });
     }
-    const ended = outcome === "lost" ? await endMemberships(tx, commerceOrderId, "The buyer's bank returned the payment after a dispute", now) : 0;
-    // PAY-004: the society bears a lost dispute; the refunds worker takes the money back.
-    if (outcome === "lost") await queueDisputeReversal(tx, current.id, now);
+    let ended = 0;
+    if (outcome === "lost") {
+      // PAY-004: the society bears a lost dispute; the refunds worker takes the money back.
+      await queueDisputeReversal(tx, current.id, now);
+      const refundedHere = await refundedSoFar(tx, { orderId: null, commerceOrderId });
+      if (record.lostAmount + refundedHere + order.externalRefundedAmount >= order.totalAmount) {
+        ended = await endMemberships(tx, commerceOrderId, "The buyer's bank returned the payment after a dispute", now);
+      } else if (!order.requiresCompensationReview) review = "lost_for_part";
+    }
     if (outcome !== "open") {
       await appendCommerceLifecycleEvent(tx, { commerceOrderId, type: "dispute_closed", source: "stripe_webhook", stripeEventId: event.id, reason: current.status, facts: { membershipsEnded: ended } });
     }
@@ -101,14 +104,19 @@ export async function reconcileCommerceDisputeEvent(event: Stripe.Event) {
       organisationId, actorUserId: null, action: `commerce_order.dispute_${existing ? outcome : "opened"}`, targetType: "CommerceOrder", targetId: commerceOrderId,
       metadata: { disputeId: current.id, providerStatus: current.status, amount: current.amount }
     } });
-    // PAY-056: the last dispute holding this order's compensation refund went the society's way.
-    if (worst === "won" && ((await reopenRepaidReview(tx, { orderId: null, commerceOrderId }, event.id)) || review.requiresCompensationReview)) {
-      await openCommerceCompensation(tx, { id: commerceOrderId, organisationId }, review.reviewReason ?? "compensation_review_required");
+    if (worst === "won" && record.previous === "lost") {
+      await cancelQueuedReversals(tx, { commerceOrderId });
+      review = "won_after_loss";
     }
-    if (outcome === "lost") partReturned = !(await closeRepaidReview(tx, { orderId: null, commerceOrderId, organisationId }, { source: "stripe_webhook", stripeEventId: event.id })) && review.requiresCompensationReview && review.refundStatus !== "processing";
+    // PAY-056: the last dispute holding this order's compensation refund went the society's way.
+    if (worst === "won" && ((await reopenRepaidReview(tx, { orderId: null, commerceOrderId }, event.id)) || order.requiresCompensationReview)) {
+      await openCommerceCompensation(tx, { id: commerceOrderId, organisationId }, order.reviewReason ?? "compensation_review_required");
+    }
+    if (outcome === "lost") partReturned = !(await closeRepaidReview(tx, { orderId: null, commerceOrderId, organisationId }, { source: "stripe_webhook", stripeEventId: event.id })) && order.requiresCompensationReview && order.refundStatus !== "processing";
     return !existing;
   });
   if (partReturned) alertPartReturned({ commerceOrderId });
+  if (review) alertDisputeReview({ commerceOrderId }, current, review);
   if (opened) {
     emitOperationalAlert("purchase_dispute_opened", { commerceOrderId, disputeId: current.id, evidenceDueBy: current.evidence_details?.due_by ?? null });
     await stageDisputeEvidence(current, { commerceOrderId });

@@ -801,3 +801,35 @@ describe("commerce compensation", () => {
     expect((await prisma.auditLog.findFirstOrThrow({ where: { targetId: fixture.order.id, action: "commerce_order.compensation_refund_queued" } })).actorUserId).toBeNull();
   });
 });
+
+// Run-2 audit: the same dispute transitions on a membership or merchandise order.
+describe("commerce dispute transitions", () => {
+  const send = async (fixture: Fixture, status: string, amount: number) => {
+    const object = { ...dispute(fixture, status), amount };
+    stripe.dispute.mockResolvedValue(object);
+    expect((await postSigned(signedEvent("charge.dispute.updated", object))).status).toBe(200);
+  };
+  const alertsOf = (spy: { mock: { calls: unknown[][] } }, name: string) =>
+    spy.mock.calls.map(([line]) => String(line)).filter((line) => line.includes(`"event":"${name}"`)).map((line) => JSON.parse(line));
+
+  test("a dispute larger than the order is still recorded and fences it (PAY-078)", async () => {
+    const fixture = await paid("membership");
+    await send(fixture, "needs_response", fixture.order.totalAmount + 400);
+    expect((await order(fixture.order.id)).disputeStatus).toBe("open");
+  });
+
+  test("a loss of part of the payment keeps the membership and alerts; a win after a loss cancels the reversal and alerts (PAY-073, PAY-074)", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const part = await paid("membership");
+    await send(part, "lost", Math.floor(part.order.totalAmount / 2));
+    expect((await grantOf(part)).revokedAt).toBeNull();
+    expect(alertsOf(error, "purchase_dispute_needs_review")).toEqual([expect.objectContaining({ commerceOrderId: part.order.id, reason: "lost_for_part" })]);
+
+    const late = await paid("membership");
+    await send(late, "lost", late.order.totalAmount);
+    expect((await grantOf(late)).revokedAt).not.toBeNull();
+    await send(late, "won", late.order.totalAmount);
+    expect((await prisma.purchaseDispute.findUniqueOrThrow({ where: { stripeDisputeId: `dp_${late.order.id}` } })).reversalStatus).toBe("cancelled");
+    expect(alertsOf(error, "purchase_dispute_needs_review").map((alert) => alert.reason)).toEqual(["lost_for_part", "won_after_loss"]);
+  });
+});

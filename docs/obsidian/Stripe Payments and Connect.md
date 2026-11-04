@@ -167,7 +167,7 @@ A free price completes without reading any Stripe configuration. Commerce checko
 
 | Endpoint | Secret | Events handled |
 | --- | --- | --- |
-| `POST /api/payments/webhook` | `STRIPE_WEBHOOK_SECRET` | `checkout.session.completed`, `checkout.session.expired`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed` (PAY-030), `refund.created`, `refund.updated`, `refund.failed`, `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed`, `radar.early_fraud_warning.created` |
+| `POST /api/payments/webhook` | `STRIPE_WEBHOOK_SECRET` | `checkout.session.completed`, `checkout.session.expired`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed` (PAY-030), `refund.created`, `refund.updated`, `refund.failed`, `charge.dispute.*` (`created`, `updated`, `closed`, `funds_reinstated`, `funds_withdrawn`), `radar.early_fraud_warning.created` |
 | `POST /api/stripe/accounts/webhook` | `STRIPE_ACCOUNTS_WEBHOOK_SECRET` | Thin events (`parseEventNotification`): `v2.core.account.closed`, `v2.core.account[identity]`, `[requirements]` and `[configuration.merchant]`/`[configuration.recipient]` `.updated`, and those configurations' `.capability_status_updated`; others are ignored |
 | `POST /api/stripe/connect/webhook` | `STRIPE_CONNECT_WEBHOOK_SECRET` | `account.external_account.created`, `account.external_account.updated`, `payout.created`, `payout.paid`, `payout.failed`, `payout.canceled`, `payout.updated` |
 
@@ -195,7 +195,7 @@ Payments routing:
 | `charge.dispute.*` | `reconcileCommerceDisputeEvent`, else `reconcileDisputeEvent` |
 | `radar.early_fraud_warning.created` | `reconcileEarlyFraudWarning` (`lib/payments/fraud-warnings.ts`): refunds an unused order automatically ([[Payment Lifecycle Refunds and Disputes#Early fraud warnings]]) |
 
-What each handler does to orders, and its checks (amount, currency, metadata, destination, the order's bound Session), is in [[Payment Lifecycle]]. Identity alerts raised there: `payment_reconciliation_ambiguous_order`, `ticket_webhook_identity_mismatch` (a paid Session that isn't the order's, PAY-010), `commerce_webhook_identity_mismatch`, `purchase_dispute_unmatched`, `paid_but_unfulfilled_compensation_required`.
+What each handler does to orders, and its checks, is in [[Payment Lifecycle]] and [[Payment Disputes]]. Identity alerts raised there: `payment_reconciliation_ambiguous_order`, `ticket_webhook_identity_mismatch` (PAY-010), `commerce_webhook_identity_mismatch`, `purchase_dispute_unmatched`, `paid_but_unfulfilled_compensation_required`.
 
 **Idempotency.** Stripe may deliver twice and out of order.
 - Checkout events go through `settleCheckoutSession` (`lib/payments/checkout-settlement.ts`), the same path the reconciliation sweep uses, and are idempotent through order state under row locks.
@@ -214,7 +214,7 @@ Use test-mode keys in `.env`: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STR
 ```bash
 stripe login
 stripe listen --latest \
-  --events checkout.session.completed,checkout.session.expired,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,refund.created,refund.updated,refund.failed,charge.dispute.created,charge.dispute.updated,charge.dispute.closed,radar.early_fraud_warning.created,account.external_account.created,account.external_account.updated,payout.created,payout.paid,payout.failed,payout.canceled,payout.updated \
+  --events checkout.session.completed,checkout.session.expired,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,refund.created,refund.updated,refund.failed,charge.dispute.created,charge.dispute.updated,charge.dispute.closed,charge.dispute.funds_reinstated,charge.dispute.funds_withdrawn,radar.early_fraud_warning.created,account.external_account.created,account.external_account.updated,payout.created,payout.paid,payout.failed,payout.canceled,payout.updated \
   --forward-to localhost:3000/api/payments/webhook \
   --forward-connect-to localhost:3000/api/stripe/connect/webhook
 ```

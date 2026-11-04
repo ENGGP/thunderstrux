@@ -11,6 +11,7 @@ import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo, logWarn } from "@/lib/ops/logger";
 import { isDefiniteProviderFailure } from "@/lib/payments/checkout-attempts";
 import { queueCommerceReviewClosedNotice, queueTicketReviewClosedNotice } from "@/lib/payments/compensation-notices";
+import { reversesTransfer } from "@/lib/payments/dispute-reversals";
 import { appendOrderLifecycleEvent, lockOrder } from "@/lib/payments/order-lifecycle";
 import { getStripe } from "@/lib/stripe";
 
@@ -363,7 +364,7 @@ async function verifiedPayment(request: Purchase & { id: string; amount: number;
     : await prisma.order.findUniqueOrThrow({ where: { id: request.orderId as string }, select });
   const named = request.commerceOrderId ? "commerceOrderId" : "orderId";
   const stripe = getStripe();
-  const session = await stripe.checkout.sessions.retrieve(order.stripeSessionId as string, { expand: ["payment_intent", "payment_intent.latest_charge"] });
+  const session = await stripe.checkout.sessions.retrieve(order.stripeSessionId as string, { expand: ["payment_intent", "payment_intent.latest_charge", "payment_intent.latest_charge.transfer"] });
   const intent = typeof session.payment_intent === "object" ? session.payment_intent : null;
   const charge = intent && typeof intent.latest_charge === "object" ? intent.latest_charge : null;
   // Not `charge.disputed`: Stripe keeps it true after a dispute closes, so a won
@@ -382,7 +383,7 @@ async function verifiedPayment(request: Purchase & { id: string; amount: number;
     .filter((refund) => refund !== own && refund.status !== "failed" && refund.status !== "canceled")
     .reduce((sum, refund) => sum + refund.amount, 0);
   const recorded = (await refundedSoFar(prisma, request, request.id)) + order.externalRefundedAmount;
-  return { stripe, intent, own: own ?? null, left: charge.amount - charge.amount_refunded, unrecorded: elsewhere !== recorded };
+  return { stripe, intent, charge, own: own ?? null, left: charge.amount - charge.amount_refunded, unrecorded: elsewhere !== recorded };
 }
 
 // A refund made in Stripe got there first, so the request has nothing left to send.
@@ -395,7 +396,7 @@ async function sendRefund(requestId: string, token: string, source: "staff_actio
   // may already exist: a failed read proves nothing, and only Stripe's outcome settles it (SEC-011).
   const mayExist = request.stripePaymentIntentId !== null;
   try {
-    const { stripe, intent, own, left, unrecorded } = await verifiedPayment(request);
+    const { stripe, intent, charge, own, left, unrecorded } = await verifiedPayment(request);
     // PAY-049: a refund made in Stripe after this one was queued leaves less to send. The buyer
     // was promised this one and nobody is watching, so it sends what is left, or closes if that
     // is nothing. Staff confirmed their amount, so they review what Stripe has instead, even if
@@ -416,7 +417,8 @@ async function sendRefund(requestId: string, token: string, source: "staff_actio
     const refund = own ?? await stripe.refunds.create({
       payment_intent: intent.id,
       amount: send.amount,
-      reverse_transfer: true,
+      // PAY-072: not once a lost dispute's reversal took the whole transfer back.
+      reverse_transfer: await reversesTransfer(stripe, charge),
       refund_application_fee: true,
       metadata: refundMetadata(request.id, request)
     }, { idempotencyKey: send.operationKey });

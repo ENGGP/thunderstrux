@@ -387,7 +387,7 @@ async function OrderResults({
       <StatusBadge status={order.projection} />
       {order.requiresCompensationReview ? <p className="max-w-56 text-sm font-medium text-warning">Payment received; fulfilment review required</p> : null}
       {/* Under Refunded, because the bank returned the money. */}
-      {order.disputeStatus === "lost" ? <p className="max-w-56 text-sm text-ink-soft">Dispute lost: the bank returned the payment.</p> : null}
+      {order.disputeStatus === "lost" ? <p className="max-w-56 text-sm text-ink-soft">Dispute lost: the bank returned the disputed amount.</p> : null}
     </div>
   );
 

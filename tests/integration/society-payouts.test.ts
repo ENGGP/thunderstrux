@@ -127,11 +127,18 @@ describe("what is held", () => {
     const lost = await ticketSale(fixture, 5 * day, { disputeStatus: "lost" });
     await prisma.purchaseDispute.create({ data: {
       orderId: lost.id, organisationId: fixture.organisationId, stripeDisputeId: unique("dp"), stripeChargeId: unique("ch"),
-      amount: 2000, currency: "aud", providerStatus: "lost", reversalStatus: "succeeded"
+      amount: 2000, currency: "aud", providerStatus: "lost", reversalStatus: "succeeded", reversalAmount: 1836
     } });
     // A lost dispute the society never paid back (no transfer reversal) still waits with the event.
     await ticketSale(fixture, 5 * day, { disputeStatus: "lost" });
     expect((await heldMoney(fixture.organisationId, fixture.accountId, now)).total).toBe(1836);
+    // PAY-074: a dispute lost for part of a sale holds what its reversal didn't take back.
+    const part = await ticketSale(fixture, 5 * day, { disputeStatus: "lost" });
+    await prisma.purchaseDispute.create({ data: {
+      orderId: part.id, organisationId: fixture.organisationId, stripeDisputeId: unique("dp"), stripeChargeId: unique("ch"),
+      amount: 1000, currency: "aud", providerStatus: "lost", reversalStatus: "succeeded", reversalAmount: 1000
+    } });
+    expect((await heldMoney(fixture.organisationId, fixture.accountId, now)).total).toBe(1836 + 836);
   });
 
   test("staff can't release held money early: a manual refund mark or an end moved earlier still waits for the event", async () => {

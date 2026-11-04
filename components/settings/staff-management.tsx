@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -81,9 +81,12 @@ export function StaffManagement({
   initialInvites,
   pastInvites,
   canManageOwners,
+  codeNeeded,
   timeZone
 }: {
   canManageOwners: boolean;
+  // SEC-046: giving access needs a fresh authenticator code unless staff MFA is off.
+  codeNeeded: boolean;
   orgSlug: string;
   initialStaff: StaffRow[];
   initialInvites: InviteRow[];
@@ -108,18 +111,10 @@ export function StaffManagement({
   // Revoking an invitation kills its emailed link, so it asks first, like revoking staff.
   const [revokingInvite, setRevokingInvite] = useState<{ id: string; email: string } | null>(null);
   const [pending, setPending] = useState<PendingChange | null>(null);
-  // SEC-046: giving access (an invitation, a resend, a role change) needs a fresh
-  // authenticator code unless staff MFA is off. The server decides; this only
-  // chooses whether to show the field, and shows it until the answer arrives.
-  const [codeNeeded, setCodeNeeded] = useState(true);
   const [mfaCode, setMfaCode] = useState("");
   const [codeFor, setCodeFor] = useState<{ kind: "invite" } | { kind: "resend"; inviteId: string; email: string } | null>(null);
   const [dialogError, setDialogError] = useState<string>();
   const withCode = () => (mfaCode.trim() ? { mfaCode: mfaCode.trim() } : {});
-
-  useEffect(() => {
-    fetchJson<{ mode: string }>("/api/me/mfa/status").then((mfa) => setCodeNeeded(mfa.mode !== "off"), () => undefined);
-  }, []);
 
   function askForCode(action: NonNullable<typeof codeFor>) {
     setMfaCode(""); setDialogError(undefined); setCodeFor(action);

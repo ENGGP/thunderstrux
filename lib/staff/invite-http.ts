@@ -41,7 +41,7 @@ export async function invitationIssuanceLimits(request: Request, actorId: string
 }
 export async function manageStaffInviteRequest(request: Request, context: { params: Promise<{ orgSlug: string; inviteId: string }> }, action: "resend" | "revoke") {
   const denied = enforceTrustedMutationRequest(request); if (denied) return denied;
-  const input = await validateJson(request, action === "resend" ? z.object({ mfaCode: staffGrantCodeSchema }).strict() : z.object({}).strict());
+  const input = await validateJson(request, z.object({ mfaCode: staffGrantCodeSchema }).strict());
   if (!input.success) return validationError(input.details);
   try {
     const actor = await requireVerifiedUser();
@@ -49,7 +49,7 @@ export async function manageStaffInviteRequest(request: Request, context: { para
     const organisationId = await organisationIdBySlug(orgSlug);
     if (!organisationId) return notFound("Organisation was not found");
     await requireOrganisationPermission(organisationId, "staff:manage");
-    if (action === "resend") { const code = await requireStaffGrantCode(request, actor, (input.data as { mfaCode?: string }).mfaCode); if (code) return code; }
+    if (action === "resend") { const code = await requireStaffGrantCode(request, actor, input.data.mfaCode); if (code) return code; }
     const invite = await prisma.organisationStaffInvite.findFirst({ where: { id: inviteId, organisationId }, select: { email: true } });
     if (!invite) return badRequest("Invitation is unavailable");
     const limited = action === "resend" ? await invitationIssuanceLimits(request, actor.id, organisationId, invite.email) :

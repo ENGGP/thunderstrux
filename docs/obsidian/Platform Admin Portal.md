@@ -140,7 +140,7 @@ Account changes never touch your own account or an operator's (`pnpm ops:operato
 | A change answers "That code was already used" | Each 30-second code works once, the window's included | Wait for the next code; the reason is kept |
 | Rolling back to a build before T55 | An older payouts worker ignores `restrictedAt` and the payout hold | Pause the `refunds` job first ([[Production Operations#Backup, restore and rollback]]) |
 | `pnpm ops:admin` says the port is in use | Another admin portal is running | Stop it (Ctrl-C in its terminal) |
-| After a restore | `fence-restored-identity.sql` empties grants, so every operator verifies again, and cancels pending recovery requests, whose notices and objections after the restore point are gone; operator rows come back as they were at the backup | Re-apply operator revocations made after the restore point, read from the `platform_operator_changed` alerts ([[Production Operations#Failure and recovery]]) |
+| After a restore | `fence-restored-identity.sql` empties grants, so every operator verifies again, and cancels pending recovery requests and their queued notices, whose notices and objections after the restore point are gone; operator rows come back as they were at the backup | Re-apply operator revocations made after the restore point, read from the `platform_operator_changed` alerts ([[Production Operations#Failure and recovery]]) |
 
 ## Related
 

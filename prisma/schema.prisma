@@ -743,6 +743,10 @@ model PurchaseDispute {
   currency         String
   reason           String?
   providerStatus   String
+  // The card case type (block, chargeback, compliance, inquiry, resolution); a prevented dispute is won only when blocked.
+  caseType         String?
+  // When this row was last read from Stripe: an older read never overwrites it.
+  providerReadAt   DateTime?
   evidenceDueBy    DateTime?
   closedAt         DateTime?
   resolvedAt       DateTime?
@@ -801,6 +805,8 @@ enum DisputeReversalStatus {
   uncertain
   succeeded
   failed
+  // Stripe turned the dispute won before the reversal was sent (PAY-072).
+  cancelled
 }
 
 model Ticket {

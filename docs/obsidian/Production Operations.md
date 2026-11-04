@@ -88,7 +88,7 @@ Create both in Stripe Workbench (live for production, test for staging) as **sna
 
 | Endpoint | Listens to | Events | Secret |
 | --- | --- | --- | --- |
-| `https://<app>/api/payments/webhook` | your account | `checkout.session.completed`, `checkout.session.expired`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `refund.created`, `refund.updated`, `refund.failed`, `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed`, `radar.early_fraud_warning.created` | `STRIPE_WEBHOOK_SECRET` |
+| `https://<app>/api/payments/webhook` | your account | `checkout.session.completed`, `checkout.session.expired`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `refund.created`, `refund.updated`, `refund.failed`, `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed`, `charge.dispute.funds_reinstated`, `charge.dispute.funds_withdrawn`, `radar.early_fraud_warning.created` | `STRIPE_WEBHOOK_SECRET` |
 | `https://<app>/api/stripe/accounts/webhook` | your account; an **event destination** with **thin** payloads (PAY-023) | `v2.core.account.closed`, `v2.core.account[identity].updated`, `v2.core.account[requirements].updated`, `v2.core.account[configuration.merchant].updated`, `v2.core.account[configuration.merchant].capability_status_updated`, `v2.core.account[configuration.recipient].updated`, `v2.core.account[configuration.recipient].capability_status_updated` | `STRIPE_ACCOUNTS_WEBHOOK_SECRET` |
 | `https://<app>/api/stripe/connect/webhook` | connected accounts | `account.external_account.created`, `account.external_account.updated`, `payout.created`, `payout.paid`, `payout.failed`, `payout.canceled`, `payout.updated` | `STRIPE_CONNECT_WEBHOOK_SECRET` |
 

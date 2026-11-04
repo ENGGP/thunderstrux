@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo, logWarn } from "@/lib/ops/logger";
 import { queueCompensationRefundNotice, queueCompensationRefundReturnedNotice } from "@/lib/payments/compensation-notices";
-import { keptApplicationFee, unreversedRefundAmount } from "@/lib/payments/dispute-reversals";
+import { keptApplicationFee, reversesTransfer, unreversedRefundAmount } from "@/lib/payments/dispute-reversals";
 import { appendOrderLifecycleEvent, lockOrder } from "@/lib/payments/order-lifecycle";
 import { getStripe } from "@/lib/stripe";
 
@@ -346,7 +346,7 @@ async function recordVerifiedPaymentIntent(job: ClaimedRefund, paymentIntentId: 
 async function retrieveEligiblePayment(job: ClaimedRefund) {
   const stripe = getStripe();
   const session = await stripe.checkout.sessions.retrieve(job.stripeSessionId, {
-    expand: ["payment_intent", "payment_intent.latest_charge"]
+    expand: ["payment_intent", "payment_intent.latest_charge", "payment_intent.latest_charge.transfer"]
   });
   const intent = typeof session.payment_intent === "object"
     ? session.payment_intent
@@ -382,23 +382,24 @@ async function retrieveEligiblePayment(job: ClaimedRefund) {
     refund.currency.toLowerCase() === job.currency &&
     paymentIntentId(refund) === intent.id
   );
-  if (owned) return { stripe, intent, existing: owned };
+  if (owned) return { stripe, intent, latestCharge, existing: owned };
   if (refunds.data.length > 0) {
     throw new CompensationRefundVerificationError("existing_refund_requires_review");
   }
-  return { stripe, intent, existing: null };
+  return { stripe, intent, latestCharge, existing: null };
 }
 
 export async function processCompensationRefund(job: ClaimedRefund) {
   try {
-    const { stripe, intent, existing } = await retrieveEligiblePayment(job);
+    const { stripe, intent, latestCharge, existing } = await retrieveEligiblePayment(job);
     // Persist the verified provider identity before creating the refund so an
     // immediately delivered webhook can be correlated without trusting metadata alone.
     await recordVerifiedPaymentIntent(job, intent.id);
     const refund = existing ?? await stripe.refunds.create({
       payment_intent: intent.id,
       amount: job.amount,
-      reverse_transfer: true,
+      // PAY-072: not once a lost dispute's reversal took the whole transfer back.
+      reverse_transfer: await reversesTransfer(stripe, latestCharge),
       refund_application_fee: true,
       metadata: {
         compensationRefundJobId: job.id,

@@ -37,9 +37,11 @@ export function StripeReviewNotice({ orderId, kind, review, canAct, timeZone }: 
     );
   }
   if (review.disputeStatus === "lost" && dispute) {
+    // PAY-074: a loss of part of the payment ends nothing; a person decides in Stripe.
+    const part = dispute.amount < review.totalAmount;
     return (
-      <Notice title="The buyer won the dispute" tone="danger">
-        <p>Their bank returned {formatMoney(dispute.amount)} to them{dispute.closedAt ? ` on ${date(dispute.closedAt)}` : ""}. {ended}</p>
+      <Notice title={part ? "The buyer won part of the dispute" : "The buyer won the dispute"} tone="danger">
+        <p>Their bank returned {formatMoney(dispute.amount)}{part ? ` of ${formatMoney(review.totalAmount)}` : ""} to them{dispute.closedAt ? ` on ${date(dispute.closedAt)}` : ""}. {part ? (kind === "membership" ? "The membership stays active; check the dispute in Stripe." : "The order stays on hold; check the dispute in Stripe.") : ended}</p>
         {link}
       </Notice>
     );

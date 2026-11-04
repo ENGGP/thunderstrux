@@ -365,6 +365,31 @@ function ReviewNotice({ order, canAct, timeZone }: { order: Awaited<ReturnType<t
         </Notice>
       );
     }
+    // PAY-074: the bank took back part of the payment, so the tickets stand until staff pick the ones it covered
+    // (a loss of the whole payment voids every ticket).
+    if (!ticketless && order.tickets.some((ticket) => ticket.validity === "active")) {
+      return (
+        <Notice
+          action={canAct && !order.externalRefundReviewedAt ? (
+            <OrderReviewActions
+              action="mark_reviewed"
+              covering="dispute"
+              orderId={order.id}
+              preselect={Math.floor(dispute.amount / order.unitPrice)}
+              tickets={order.tickets.filter((ticket) => ticket.validity === "active").map((ticket) => ({ id: ticket.id, reference: ticketReference(ticket.id), type: ticket.ticketType.name }))}
+            />
+          ) : undefined}
+          title="The buyer won part of the dispute"
+          tone="danger"
+        >
+          <p>
+            Their bank returned {formatMoney(dispute.amount)} of {formatMoney(order.totalAmount)} to them{dispute.closedAt ? ` on ${formatDate(dispute.closedAt, timeZone)}` : ""}.{" "}
+            {order.externalRefundReviewedAt ? `Reviewed on ${formatDate(order.externalRefundReviewedAt, timeZone)}; the tickets left stay valid.` : "The tickets stay valid until you pick the ones it covered."}
+          </p>
+          {link}
+        </Notice>
+      );
+    }
     return (
       <Notice title="The buyer won the dispute" tone="danger">
         <p>Their bank returned {formatMoney(dispute.amount)} to them{dispute.closedAt ? ` on ${formatDate(dispute.closedAt, timeZone)}` : ""}. {ended}</p>

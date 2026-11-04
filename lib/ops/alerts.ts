@@ -30,6 +30,9 @@ export type OperationalAlertName =
   | "outside_refund_not_reversed"
   | "purchase_dispute_opened"
   | "purchase_dispute_unmatched"
+  // PAY-073 to PAY-075: a dispute moved in a way only a person can settle: lost for part of a
+  // payment, won after its loss on a used order, lost after a restore, or prevented without a block.
+  | "purchase_dispute_needs_review"
   // A dispute's draft answer couldn't be staged in Stripe, or its due date is close.
   | "dispute_evidence_not_staged"
   | "purchase_dispute_evidence_due"

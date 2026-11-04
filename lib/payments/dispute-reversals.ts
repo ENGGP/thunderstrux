@@ -8,6 +8,7 @@ import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logInfo, logWarn } from "@/lib/ops/logger";
 import { isDefiniteProviderFailure } from "@/lib/payments/checkout-attempts";
 import { appendOrderLifecycleEvent, lockOrder } from "@/lib/payments/order-lifecycle";
+import { caseTypeOf, outcomeOf } from "@/lib/payments/dispute-outcome";
 import { getStripe } from "@/lib/stripe";
 
 // PAY-004: on destination charges Stripe takes a lost dispute's amount and fee
@@ -63,15 +64,30 @@ export async function outsideRefundOwed(stripe: Stripe, paymentIntentId: string)
   }
 }
 
+// PAY-072: whether a refund can still take its part back from the society's transfer.
+// Once a lost dispute's reversal took the whole transfer, asking Stripe to reverse it
+// again fails the refund, so Thunderstrux pays it from what the reversal returned.
+// A transfer it can't read is asked to reverse, as before: Stripe refuses only when nothing is left.
+export async function reversesTransfer(stripe: Stripe, charge: Stripe.Charge) {
+  let transfer: Stripe.Transfer | null = null;
+  try {
+    transfer = typeof charge.transfer === "string" ? await stripe.transfers.retrieve(charge.transfer) : charge.transfer ?? null;
+  } catch {
+    logWarn("stripe.transfer.unread", { chargeId: charge.id });
+  }
+  return !transfer || transfer.amount_reversed < transfer.amount;
+}
+
 // Called with the purchase locked, when Stripe has just closed the dispute as lost.
+// A reversal cancelled by a win comes back if the dispute is lost again.
 export async function queueDisputeReversal(tx: Prisma.TransactionClient, stripeDisputeId: string, now: Date) {
   await tx.purchaseDispute.updateMany({
-    where: { stripeDisputeId, reversalStatus: null },
+    where: { stripeDisputeId, OR: [{ reversalStatus: null }, { reversalStatus: "cancelled" }] },
     data: { reversalStatus: "pending", reversalNextAttemptAt: now }
   });
 }
 
-type ReversalOutcome = "succeeded" | "failed" | "uncertain";
+type ReversalOutcome = "succeeded" | "failed" | "uncertain" | "cancelled";
 
 async function release(id: string, token: string, data: Prisma.PurchaseDisputeUpdateManyMutationInput) {
   await prisma.purchaseDispute.updateMany({ where: { id, reversalProcessingToken: token }, data: { reversalProcessingToken: null, reversalProcessingStartedAt: null, ...data } });
@@ -112,6 +128,14 @@ async function sendReversal(id: string, token: string, now: Date): Promise<Rever
   try {
     reversal = (await stripe.transfers.listReversals(transfer.id, { limit: 100 })).data.find((item) => item.metadata?.disputeId === dispute.stripeDisputeId);
     if (!reversal) {
+      // PAY-072: Stripe may have turned the dispute won since it was queued; then
+      // nothing is owed, and the society keeps its share. An appeal is no win (PAY-068).
+      const live = await stripe.disputes.retrieve(dispute.stripeDisputeId);
+      if (outcomeOf(live.status, caseTypeOf(live)) === "won") {
+        await release(dispute.id, token, { reversalStatus: "cancelled", reversalNextAttemptAt: null, reversalLastError: null });
+        logInfo("dispute_reversal.cancelled", { disputeId: dispute.stripeDisputeId, providerStatus: live.status });
+        return "cancelled";
+      }
       // A refund may already have reversed part of the transfer.
       const amount = Math.min(dispute.amount, transfer.amount - transfer.amount_reversed);
       if (amount <= 0) return fail(dispute, token, "nothing_to_reverse");

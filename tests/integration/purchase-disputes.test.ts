@@ -6,7 +6,7 @@ import { POST as webhookRoute } from "@/app/api/payments/webhook/route";
 import { prisma } from "@/lib/db";
 import { enqueueOrganisationOrderTicketEmail, markOrganisationOrderManuallyRefunded } from "@/lib/orders/order-detail";
 import { processDisputeReversalBatch } from "@/lib/payments/dispute-reversals";
-import { orderReference, requestOrderRefund } from "@/lib/payments/order-refunds";
+import { orderReference, processOrderRefundBatch, requestOrderRefund } from "@/lib/payments/order-refunds";
 import { reconcileDisputeEvent, reconcileExternalRefundEvent } from "@/lib/payments/purchase-disputes";
 import { buyerPurchaseBadge, ticketOrderProjection } from "@/lib/purchases/projection";
 import { getOwnTicketPurchase } from "@/lib/purchases/ticket-purchases";
@@ -349,7 +349,8 @@ describe("disputes", () => {
     const twoDisputes = async () => {
       const fixture = await paidOrder();
       const now: Record<string, string> = {};
-      stripe.dispute.mockImplementation(async (id: string) => disputeObject(fixture, now[id], { id }));
+      // A prevented dispute counts as won only when the network blocked it (PAY-075).
+      stripe.dispute.mockImplementation(async (id: string) => disputeObject(fixture, now[id], { id, payment_method_details: { card: { case_type: now[id] === "prevented" ? "block" : "chargeback" } } }));
       const deliver = async (name: string, status: string) => {
         const id = `${name}_${fixture.order.id}`;
         now[id] = status;
@@ -747,5 +748,207 @@ describe("places back on sale", () => {
     expect(buyerPurchaseBadge(order)).toEqual({ status: "refunded", label: "Refunded by your bank" });
     const purchase = await getOwnTicketPurchase(fixture.owner.user.id, fixture.order.id);
     expect(purchase?.history.map((entry) => entry.label)).toEqual(["Refunded by your bank", "Payment disputed"]);
+  });
+});
+
+// Run-2 audit: every move Stripe can make on a dispute (PAY-072 to PAY-078).
+describe("dispute transitions", () => {
+  const deliver = async (fixture: Fixture, status: string, extra: Record<string, unknown> = {}, type = "charge.dispute.updated") => {
+    stripe.dispute.mockResolvedValue(disputeObject(fixture, status, extra));
+    await reconcileDisputeEvent(signedEvent(type, disputeObject(fixture, status, extra)));
+  };
+  const alertsOf = (spy: { mock: { calls: unknown[][] } }, name: string) =>
+    spy.mock.calls.map(([line]) => String(line)).filter((line) => line.includes(`"event":"${name}"`)).map((line) => JSON.parse(line));
+  const disputeRow = (fixture: Fixture) => prisma.purchaseDispute.findUniqueOrThrow({ where: { stripeDisputeId: `dp_${fixture.order.id}` } });
+  const refundsSent = (fixture: Fixture) => {
+    stripe.create.mockImplementation(async (params: { amount: number; metadata: Record<string, string> }) => ({ id: unique("re"), status: "succeeded", amount: params.amount, currency: "aud", payment_intent: fixture.intentId, metadata: params.metadata }));
+  };
+
+  test("a dispute larger than the order, as a currency conversion makes it, still fences it (PAY-078)", async () => {
+    const fixture = await paidOrder();
+    await deliver(fixture, "needs_response", { amount: 3400 }, "charge.dispute.created");
+    const state = await orderState(fixture.order.id);
+    expect(state.disputeStatus).toBe("open");
+    expect(state.tickets.every((ticket) => ticket.validity === "refund_review")).toBe(true);
+  });
+
+  test("an event that names another charge alerts with its reason and changes nothing (#38)", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fixture = await paidOrder();
+    await deliver(fixture, "needs_response", { charge: "ch_someone_else" }, "charge.dispute.created");
+    expect((await orderState(fixture.order.id)).disputeStatus).toBeNull();
+    expect(alertsOf(error, "purchase_dispute_unmatched")).toEqual([expect.objectContaining({ reason: "other_charge" })]);
+  });
+
+  test("a slower read of an older state never overwrites a newer one (PAY-076)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const fixture = await paidOrder();
+    vi.setSystemTime(new Date(Date.now() + 60_000));
+    await deliver(fixture, "lost", {}, "charge.dispute.closed");
+    // An earlier read that answered after it: still lost.
+    vi.setSystemTime(new Date(Date.now() - 30_000));
+    await deliver(fixture, "needs_response", {}, "charge.dispute.created");
+    vi.useRealTimers();
+    expect((await orderState(fixture.order.id)).disputeStatus).toBe("lost");
+    expect((await disputeRow(fixture)).providerStatus).toBe("lost");
+  });
+
+  test("a dispute lost after staff restored the tickets voids them, takes the money back and alerts (PAY-076)", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fixture = await paidOrder();
+    await deliver(fixture, "needs_response", {}, "charge.dispute.created");
+    await deliver(fixture, "won");
+    expect((await reviewAs(fixture, { action: "restore_tickets", reason: "Stripe closed it in our favour." })).status).toBe(200);
+    await deliver(fixture, "lost");
+    const state = await orderState(fixture.order.id);
+    expect(state.disputeStatus).toBe("lost");
+    expect(state.tickets).toEqual([{ validity: "void", validityReason: "dispute_lost" }, { validity: "void", validityReason: "dispute_lost" }]);
+    expect(await disputeRow(fixture)).toMatchObject({ resolvedAt: null, reversalStatus: "pending" });
+    expect(alertsOf(error, "purchase_dispute_needs_review")).toEqual([expect.objectContaining({ reason: "lost_after_restore" })]);
+  });
+
+  test("lost, then won before the reversal went: the reversal is cancelled and the buyer refunded from the transfer (PAY-072, PAY-073)", async () => {
+    const fixture = await paidOrder();
+    await deliver(fixture, "needs_response", {}, "charge.dispute.created");
+    await deliver(fixture, "lost");
+    await deliver(fixture, "won");
+    expect(await disputeRow(fixture)).toMatchObject({ reversalStatus: "cancelled" });
+    const [request, ...more] = await prisma.refundRequest.findMany({ where: { orderId: fixture.order.id } });
+    expect(more).toEqual([]);
+    expect(request).toMatchObject({ amount: 3000, actorUserId: null });
+    expect((await reviewAs(fixture, { action: "restore_tickets", reason: "Stripe closed it in our favour." })).status).toBe(409);
+    expect(await processDisputeReversalBatch(25, new Date(Date.now() + 1000))).toMatchObject({ processed: 0 });
+    refundsSent(fixture);
+    await processOrderRefundBatch(25, new Date(Date.now() + 1000));
+    expect(stripe.create).toHaveBeenCalledWith(expect.objectContaining({ amount: 3000, reverse_transfer: true }), expect.anything());
+    expect(stripe.reverse).not.toHaveBeenCalled();
+  });
+
+  test("lost, reversed, then won: the refund doesn't reverse the transfer again (PAY-072)", async () => {
+    const fixture = await paidOrder();
+    const transferId = `tr_${fixture.order.id}`;
+    stripe.charge.mockResolvedValue({ id: fixture.chargeId, transfer: transferId });
+    stripe.transfer.mockResolvedValue({ id: transferId, amount: 3000, amount_reversed: 0, currency: "aud", destination: fixture.owner.organisation.stripeAccountId });
+    stripe.reversals.mockResolvedValue({ data: [] });
+    stripe.reverse.mockImplementation(async (_id: string, params: { amount: number; metadata: Record<string, string> }) => ({ id: unique("trr"), amount: params.amount, metadata: params.metadata }));
+    await deliver(fixture, "lost", {}, "charge.dispute.closed");
+    expect(await processDisputeReversalBatch(25, new Date(Date.now() + 1000))).toMatchObject({ results: [{ status: "succeeded" }] });
+    await deliver(fixture, "won");
+    // The reversal took the whole transfer: Stripe would refuse to reverse it again.
+    const session = await stripe.retrieve();
+    stripe.retrieve.mockResolvedValue({ ...session, payment_intent: { ...session.payment_intent, latest_charge: { id: fixture.chargeId, disputed: true, transfer: { id: transferId, amount: 3000, amount_reversed: 3000 } } } });
+    refundsSent(fixture);
+    await processOrderRefundBatch(25, new Date(Date.now() + 2000));
+    expect(stripe.create).toHaveBeenCalledWith(expect.objectContaining({ amount: 3000, reverse_transfer: false }), expect.anything());
+  });
+
+  test("a reversal the worker claims after Stripe turned the dispute won is cancelled, never sent (PAY-072)", async () => {
+    const fixture = await paidOrder();
+    stripe.charge.mockResolvedValue({ id: fixture.chargeId, transfer: `tr_${fixture.order.id}` });
+    stripe.transfer.mockResolvedValue({ id: `tr_${fixture.order.id}`, amount: 3000, amount_reversed: 0, currency: "aud", destination: fixture.owner.organisation.stripeAccountId });
+    stripe.reversals.mockResolvedValue({ data: [] });
+    await deliver(fixture, "lost", {}, "charge.dispute.closed");
+    // Stripe already says won; its event hasn't arrived yet.
+    stripe.dispute.mockResolvedValue(disputeObject(fixture, "won"));
+    expect(await processDisputeReversalBatch(25, new Date(Date.now() + 1000))).toMatchObject({ results: [{ status: "cancelled" }] });
+    expect(stripe.reverse).not.toHaveBeenCalled();
+    expect(await disputeRow(fixture)).toMatchObject({ reversalStatus: "cancelled", reversalProcessingToken: null });
+    // Its won event arrives, then a loss again: queued again.
+    await deliver(fixture, "won");
+    await deliver(fixture, "lost");
+    expect((await disputeRow(fixture)).reversalStatus).toBe("pending");
+  });
+
+  test("a win never cancels a reversal whose outcome is unknown: the worker finds the one Stripe made, and an appeal sends it (PAY-072)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fixture = await paidOrder();
+    const transferId = `tr_${fixture.order.id}`;
+    stripe.charge.mockResolvedValue({ id: fixture.chargeId, transfer: transferId });
+    stripe.transfer.mockResolvedValue({ id: transferId, amount: 3000, amount_reversed: 0, currency: "aud", destination: fixture.owner.organisation.stripeAccountId });
+    stripe.reversals.mockResolvedValue({ data: [] });
+    stripe.reverse.mockRejectedValue(new Error("socket hang up"));
+    await deliver(fixture, "lost", {}, "charge.dispute.closed");
+    expect(await processDisputeReversalBatch(25, new Date(Date.now() + 1000))).toMatchObject({ results: [{ status: "uncertain" }] });
+    await deliver(fixture, "won");
+    expect((await disputeRow(fixture)).reversalStatus).toBe("uncertain");
+    stripe.reversals.mockResolvedValue({ data: [{ id: unique("trr"), amount: 3000, metadata: { disputeId: `dp_${fixture.order.id}` } }] });
+    expect(await processDisputeReversalBatch(25, new Date(Date.now() + 60 * 60_000))).toMatchObject({ results: [{ status: "succeeded" }] });
+
+    const appealed = await paidOrder();
+    stripe.charge.mockResolvedValue({ id: appealed.chargeId, transfer: `tr_${appealed.order.id}` });
+    stripe.transfer.mockResolvedValue({ id: `tr_${appealed.order.id}`, amount: 3000, amount_reversed: 0, currency: "aud", destination: appealed.owner.organisation.stripeAccountId });
+    stripe.reversals.mockResolvedValue({ data: [] });
+    stripe.reverse.mockImplementation(async (_id: string, params: { amount: number; metadata: Record<string, string> }) => ({ id: unique("trr"), amount: params.amount, metadata: params.metadata }));
+    await deliver(appealed, "lost", {}, "charge.dispute.closed");
+    stripe.dispute.mockResolvedValue(disputeObject(appealed, "appeal_under_review"));
+    expect(await processDisputeReversalBatch(25, new Date(Date.now() + 2 * 60 * 60_000))).toMatchObject({ results: [{ status: "succeeded" }] });
+  });
+
+  test("a win after a loss on a checked-in order is a person's call: no refund, an alert (PAY-073)", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fixture = await paidOrder();
+    await deliver(fixture, "lost", {}, "charge.dispute.closed");
+    await prisma.ticket.updateMany({ where: { orderId: fixture.order.id }, data: { checkedInAt: new Date() } });
+    await deliver(fixture, "won");
+    expect(await prisma.refundRequest.count({ where: { orderId: fixture.order.id } })).toBe(0);
+    expect(alertsOf(error, "purchase_dispute_needs_review")).toEqual([expect.objectContaining({ reason: "won_after_loss" })]);
+  });
+
+  test("a dispute lost for part of the payment keeps the tickets for staff to pick, and alerts (PAY-074)", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fixture = await paidOrder();
+    await deliver(fixture, "needs_response", { amount: 1500 }, "charge.dispute.created");
+    await deliver(fixture, "lost", { amount: 1500 });
+    const state = await orderState(fixture.order.id);
+    expect(state.disputeStatus).toBe("lost");
+    expect(state.tickets.every((ticket) => ticket.validity === "active")).toBe(true);
+    expect(alertsOf(error, "purchase_dispute_needs_review")).toEqual([expect.objectContaining({ reason: "lost_for_part" })]);
+    const [first] = await prisma.ticket.findMany({ where: { orderId: fixture.order.id }, orderBy: { issueSequence: "asc" }, select: { id: true } });
+    expect((await reviewAs(fixture, { action: "mark_reviewed", ticketIds: [first.id] })).status).toBe(200);
+    expect((await orderState(fixture.order.id)).tickets).toEqual([{ validity: "void", validityReason: "dispute_lost" }, { validity: "active", validityReason: null }]);
+  });
+
+  test("restoring after a won chargeback leaves a bank's open inquiry live, so its loss still counts (PAY-077)", async () => {
+    const fixture = await paidOrder();
+    const statuses: Record<string, string> = {};
+    stripe.dispute.mockImplementation(async (id: string) => disputeObject(fixture, statuses[id], { id }));
+    const send = async (id: string, status: string) => {
+      statuses[id] = status;
+      await reconcileDisputeEvent(signedEvent("charge.dispute.updated", disputeObject(fixture, status, { id })));
+    };
+    await send("dp_chargeback", "needs_response");
+    await send("dp_inquiry", "warning_needs_response");
+    await send("dp_chargeback", "won");
+    expect((await reviewAs(fixture, { action: "restore_tickets", reason: "Stripe closed it in our favour." })).status).toBe(200);
+    expect((await prisma.purchaseDispute.findUniqueOrThrow({ where: { stripeDisputeId: "dp_inquiry" } })).resolvedAt).toBeNull();
+    await send("dp_inquiry", "needs_response");
+    await send("dp_inquiry", "lost");
+    const state = await orderState(fixture.order.id);
+    expect(state.disputeStatus).toBe("lost");
+    expect(state.tickets.every((ticket) => ticket.validity === "void")).toBe(true);
+  });
+
+  test("a prevented dispute is won only when the network blocked it; otherwise it stays open and alerts (PAY-075)", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const blocked = await paidOrder();
+    await deliver(blocked, "prevented", { payment_method_details: { card: { case_type: "block" } } }, "charge.dispute.closed");
+    expect((await orderState(blocked.order.id)).disputeStatus).toBe("won");
+    const resolution = await paidOrder();
+    await deliver(resolution, "prevented", { payment_method_details: { card: { case_type: "resolution" } } }, "charge.dispute.closed");
+    expect((await orderState(resolution.order.id)).disputeStatus).toBe("open");
+    const unknown = await paidOrder();
+    await deliver(unknown, "prevented", {}, "charge.dispute.closed");
+    expect((await orderState(unknown.order.id)).disputeStatus).toBe("open");
+    expect((await disputeRow(resolution)).caseType).toBe("resolution");
+    expect(alertsOf(error, "purchase_dispute_needs_review").map((alert) => alert.reason)).toEqual(["prevented_unconfirmed", "prevented_unconfirmed"]);
+  });
+
+  test("Stripe moving the disputed money is re-read like any dispute event (#97)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const fixture = await paidOrder();
+    disputeNow(fixture, "needs_response");
+    expect((await postSigned(signedEvent("charge.dispute.funds_withdrawn", disputeObject(fixture, "needs_response")))).status).toBe(200);
+    expect((await orderState(fixture.order.id)).disputeStatus).toBe("open");
   });
 });

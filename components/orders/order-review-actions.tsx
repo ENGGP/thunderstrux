@@ -14,13 +14,16 @@ export function OrderReviewActions({
   orderId,
   action,
   tickets = [],
-  preselect = 0
+  preselect = 0,
+  covering = "refund"
 }: {
   orderId: string;
   action: "restore_tickets" | "mark_reviewed";
   tickets?: Array<{ id: string; reference: string; type: string }>;
   // How many tickets the refund covers whole, picked first.
   preselect?: number;
+  // What returned the money: a refund made in Stripe, or a dispute lost for part (PAY-074).
+  covering?: "refund" | "dispute";
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -52,7 +55,7 @@ export function OrderReviewActions({
       <div className="grid gap-2">
         {tickets.length ? (
           <fieldset className="grid gap-1">
-            <legend className="mb-1 text-sm font-semibold text-ink">Tickets the refund covered</legend>
+            <legend className="mb-1 text-sm font-semibold text-ink">Tickets the {covering} covered</legend>
             {tickets.map((ticket) => (
               <label className="flex min-h-11 items-center gap-3" key={ticket.id}>
                 <input

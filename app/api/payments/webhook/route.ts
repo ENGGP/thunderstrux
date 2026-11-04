@@ -122,7 +122,10 @@ export async function POST(request: Request) {
 
     case "charge.dispute.created":
     case "charge.dispute.updated":
-    case "charge.dispute.closed": {
+    case "charge.dispute.closed":
+    // Stripe moved the disputed money; the dispute is re-read like any other event (PAY-076).
+    case "charge.dispute.funds_reinstated":
+    case "charge.dispute.funds_withdrawn": {
       // A membership or merchandise payment's dispute (PAY-003), else a ticket order's.
       if (!(await reconcileCommerceDisputeEvent(event))) await reconcileDisputeEvent(event);
       return NextResponse.json({ received: true });

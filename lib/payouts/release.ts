@@ -15,17 +15,26 @@ export const maxHoldMs = 80 * day;
 // What one sale leaves the society: the price less Thunderstrux's fee, anything
 // refunded outside Thunderstrux that Stripe shows taken back from its transfer
 // (PAY-027: a refund not yet reversed is still the society's to return), and the
-// society's part of refunds made here (DEBT-002). Stripe reverses a refund's
-// transfer pro rata, so that part is rounded down: the hold errs towards keeping more.
-type Sale = { totalAmount: number; feeAmount: number | null; externalRefundedAmount: number; externalUnreversedAmount?: number; refundRequests?: Array<{ amount: number }> };
+// society's part of refunds made here (DEBT-002), and what lost disputes' reversals
+// already took back from its transfer (PAY-074: a dispute lost for part of a sale holds
+// the rest). Stripe reverses a refund's transfer pro rata, so that part is rounded
+// down: the hold errs towards keeping more.
+type Sale = {
+  totalAmount: number; feeAmount: number | null; externalRefundedAmount: number; externalUnreversedAmount?: number;
+  refundRequests?: Array<{ amount: number }>; disputes?: Array<{ reversalAmount: number | null }>;
+};
 const share = (order: Sale) => {
   const kept = order.totalAmount - (order.feeAmount ?? 0);
   const refunded = (order.refundRequests ?? []).reduce((sum, request) => sum + request.amount, 0);
   const reversed = order.totalAmount > 0 ? Math.floor((refunded * kept) / order.totalAmount) : 0;
-  return Math.max(0, kept - (order.externalRefundedAmount - (order.externalUnreversedAmount ?? 0)) - reversed);
+  const recovered = (order.disputes ?? []).reduce((sum, dispute) => sum + (dispute.reversalAmount ?? 0), 0);
+  return Math.max(0, kept - (order.externalRefundedAmount - (order.externalUnreversedAmount ?? 0)) - reversed - recovered);
 };
-// The succeeded refunds made here, for share().
-export const shareRefundsSelect = { refundRequests: { where: { status: "succeeded" as const }, select: { amount: true } } };
+// The succeeded refunds made here and dispute reversals, for share().
+export const shareRefundsSelect = {
+  refundRequests: { where: { status: "succeeded" as const }, select: { amount: true } },
+  disputes: { where: { reversalStatus: "succeeded" as const }, select: { reversalAmount: true } }
+};
 
 export type HeldMoney = {
   // Ticket money waiting for events to end.
@@ -54,9 +63,9 @@ export async function heldMoney(organisationId: string, stripeAccountId: string,
   const refunding = [{ refundStatus: "processing" as const }, { refundRequests: { some: { status: { in: ["pending" as const, "uncertain" as const] } } } }];
   // PAY-037: a bank's inquiry moves no money, but can become a chargeback.
   const inquiry = { disputes: { some: { providerStatus: { in: ["warning_needs_response", "warning_under_review"] } } } };
+  // PAY-012: a lost dispute whose money is back from the society holds only what
+  // its reversal didn't take (share()); a sale that nets to nothing is dropped below.
   const stillOpen = [{ disputeStatus: "open" as const }, { requiresCompensationReview: true }, reversing, unreversed, ...refunding, inquiry];
-  // PAY-012: a lost dispute whose money is already back from the society holds nothing.
-  const notRecovered = { OR: [{ disputeStatus: null }, { disputeStatus: { not: "lost" as const } }, { disputes: { none: { reversalStatus: "succeeded" as const } } }, reversing] };
   const ended = new Date(now.getTime() - ticketHoldAfterEventMs);
   const [ticketSales, commerceSales] = await Promise.all([
     prisma.order.findMany({
@@ -67,7 +76,6 @@ export async function heldMoney(organisationId: string, stripeAccountId: string,
         // PAY-045: a cancelled event's buyer may still be owed a refund, so it holds to
         // the cap; a staff mark says they were repaid, so that sale waits only for the event.
         { OR: [{ event: { endTime: { gt: ended } } }, { event: { latestEndTime: { gt: ended } } }, { event: { cancelledAt: { not: null } }, isManuallyRefunded: false }, ...stillOpen] },
-        notRecovered,
         // A compensation refund returned the money (PAY-012). A staff mark proves
         // nothing at Stripe, so that sale waits for its event like any other.
         { OR: [{ isManuallyRefunded: false }, { compensationRefundJob: { is: null } }] }
@@ -75,7 +83,7 @@ export async function heldMoney(organisationId: string, stripeAccountId: string,
       select: { totalAmount: true, feeAmount: true, externalRefundedAmount: true, externalUnreversedAmount: true, ...shareRefundsSelect, eventId: true, event: { select: { endTime: true, latestEndTime: true } } }
     }),
     prisma.commerceOrder.findMany({
-      where: { ...paidTo, organisationId, AND: [{ OR: [{ paidAt: { gt: new Date(now.getTime() - commerceHoldMs) } }, ...stillOpen] }, notRecovered] },
+      where: { ...paidTo, organisationId, AND: [{ OR: [{ paidAt: { gt: new Date(now.getTime() - commerceHoldMs) } }, ...stillOpen] }] },
       select: { totalAmount: true, feeAmount: true, externalRefundedAmount: true, externalUnreversedAmount: true, ...shareRefundsSelect }
     })
   ]);

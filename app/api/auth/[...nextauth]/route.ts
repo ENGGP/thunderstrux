@@ -4,12 +4,11 @@ import { getToken } from "next-auth/jwt";
 import { enforceRateLimit, getRateLimitClientIp } from "@/lib/security/rate-limit";
 import { badRequest, passwordBusyResponse } from "@/lib/api/errors";
 import { readBodyUpTo } from "@/lib/api/request";
-import { prisma } from "@/lib/db";
 import { authSecret } from "@/lib/auth/secret";
 import { publicOriginIsHttps } from "@/lib/auth/public-origin";
 import { knownDeviceCookie, knownDeviceId, knownDeviceSetCookie } from "@/lib/auth/known-device";
 import { passwordWorkBusy } from "@/lib/auth/password-hash";
-import { mfaGrantDigest } from "@/lib/security/csrf";
+import { endLoginMfaGrant, signInAccount } from "@/lib/auth/sign-in-records";
 
 export const { GET } = handlers;
 
@@ -54,7 +53,7 @@ export async function POST(request: NextRequest) {
 
   // Per account across addresses, so guesses spread over many IPs still stop (DEBT-002);
   // a browser that signed in to it before counts on its own bucket (SEC-050).
-  const account = await prisma.user.findUnique({ where: { email }, select: { id: true, email: true, authVersion: true } });
+  const account = await signInAccount(email);
   const device = account ? knownDeviceId(request.cookies.get(knownDeviceCookie)?.value, account) : null;
   const accountLimitResponse = device
     ? await enforceRateLimit({ policy: "login_known_device", request, keyParts: [email, device] })
@@ -76,9 +75,8 @@ export async function POST(request: NextRequest) {
 async function signOut(request: NextRequest) {
   const token = await getToken({ req: request, secret: authSecret, secureCookie: publicOriginIsHttps(request.url) }).catch(() => null);
   const response = await nextAuthPost(request);
-  const digest = mfaGrantDigest(typeof token?.staffMfaSessionId === "string" ? token.staffMfaSessionId : undefined);
-  if (digest && response.headers.getSetCookie().some((cookie) => clearedSessionCookie.test(cookie))) {
-    await prisma.mfaGrant.deleteMany({ where: { sessionDigest: digest } });
+  if (response.headers.getSetCookie().some((cookie) => clearedSessionCookie.test(cookie))) {
+    await endLoginMfaGrant(typeof token?.staffMfaSessionId === "string" ? token.staffMfaSessionId : undefined);
   }
   return response;
 }

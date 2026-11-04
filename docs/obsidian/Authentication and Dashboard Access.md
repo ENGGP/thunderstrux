@@ -21,7 +21,7 @@ sources: [auth.ts, proxy.ts, lib/permissions/index.ts, lib/auth/access.ts, lib/a
 | Route helpers | `lib/auth/access.ts` (see [Auth helpers](#auth-helpers)); error rules `lib/api/route-rules.ts` |
 | Page helpers | `lib/auth/page-access.ts`: `requireManagementPage`, `redirectLegacyOrganisationPage` |
 | Locked recheck in services | `lib/organisations/authority.ts`: `lockOrganisationActor` |
-| Auth.js | `auth.ts` (Credentials provider, JWT and session callbacks), `lib/auth/credentials.ts`: `authorizeCredentials`, `lib/auth/secret.ts`: `resolveAuthSecret`, `lib/auth/password-hash.ts` (the password-work gate), `lib/auth/known-device.ts` |
+| Auth.js | `auth.ts` (Credentials provider, JWT and session callbacks), `lib/auth/credentials.ts`: `authorizeCredentials`, `lib/auth/secret.ts`: `resolveAuthSecret`, `lib/auth/password-hash.ts` (the password-work gate), `lib/auth/known-device.ts`, `lib/auth/sign-in-records.ts` |
 | Live session | `lib/auth/live-session.ts`: `getLiveSession`; `lib/auth/session-identity.ts`: `getSessionIdentity` |
 | Proxy | `proxy.ts`; cookie scheme `lib/auth/public-origin.ts`: `publicOriginIsHttps`, `appCookieSecure` |
 | Dashboard context | `lib/auth/context.ts`: `readAccountContext`, `contextChoices`; `lib/auth/context-cookie.ts` |

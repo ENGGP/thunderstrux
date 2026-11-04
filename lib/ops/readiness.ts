@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { checkRateLimitReadiness } from "@/lib/security/rate-limit";
+import { checkRateLimitReadiness, rateLimitEnabled } from "@/lib/security/rate-limit";
 import { assertStaffMfaConfiguration } from "@/lib/security/staff-mfa";
 import schemaContract from "@/config/schema-contract.json";
 import { assertLegacyOrganisationAccessConfigured } from "@/lib/staff/live-authority";
@@ -35,6 +35,8 @@ export async function checkDatabaseReadiness() {
 }
 
 export async function checkApplicationReadiness() {
+  // SEC-053 (N9): a production app always rate-limits sign-in and checkout, whatever the staff MFA mode.
+  if (process.env.NODE_ENV === "production" && !rateLimitEnabled()) throw new Error("RATE_LIMIT_ENABLED must be true in production");
   assertNotificationConfiguration();
   assertLegacyOrganisationAccessConfigured();
   assertStaffMfaConfiguration();

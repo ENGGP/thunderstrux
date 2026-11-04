@@ -48,6 +48,15 @@ export function releaseImages(manifest, { local }) {
   return { APP_IMAGE: manifest.web.ref, OPS_IMAGE: manifest.ops.ref };
 }
 
+// SEC-052 (N8): a real host deploys a pair only once GitHub proves this workflow built
+// both images on main from the manifest's revision, so a manifest can't name other code.
+export const releaseRepository = "ENGGP/thunderstrux";
+export function provenanceChecks(manifest) {
+  return ["web", "ops"].map((target) => ["attestation", "verify", `oci://${manifest[target].ref}`,
+    "--repo", releaseRepository, "--signer-workflow", `${releaseRepository}/.github/workflows/release.yml`,
+    "--source-ref", "refs/heads/main", "--source-digest", manifest.revision]);
+}
+
 function option(args, name, fallback) {
   const index = args.indexOf(name);
   return index === -1 ? fallback : args[index + 1];
@@ -156,6 +165,7 @@ async function deploy(args) {
   log("validate");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   const images = releaseImages(manifest, { local: target.local });
+  if (!target.local) for (const check of provenanceChecks(manifest)) await spawnText("gh", check);
   const release = option(args, "--release", manifest.revision.slice(0, 12));
   if (!/^[a-zA-Z0-9._-]{3,80}$/.test(release)) throw new Error("Invalid release name");
   const current = await readRemote(target, "current");
@@ -170,7 +180,9 @@ async function deploy(args) {
   const config = JSON.parse((await target.run(compose(["config", "--format", "json"]))).stdout);
   // The hosted contract holds on the real host; local ids aren't registry digests, so the rehearsal skips it.
   if (!target.local) validateHostedConfig(config);
-  if (!config.services.caddy || config.services.app.ports?.length) throw new Error("Only Caddy may publish ports");
+  // #108: any service, not only the app: a published database or worker port would skip the edge.
+  const published = Object.entries(config.services).filter(([name, service]) => name !== "caddy" && service.ports?.length).map(([name]) => name);
+  if (!config.services.caddy || published.length) throw new Error(`Only Caddy may publish ports${published.length ? ` (${published.join(", ")} does)` : ""}`);
 
   log("stop-workers", { previous: current });
   await target.run(compose(["stop", "-t", "60", ...workerServices]));

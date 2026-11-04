@@ -156,6 +156,7 @@ function isRateLimitEnabled() {
 
   return process.env.RATE_LIMIT_ENABLED === "true";
 }
+export const rateLimitEnabled = isRateLimitEnabled;
 
 function getKeyPrefix() {
   return process.env.RATE_LIMIT_KEY_PREFIX?.trim() || "thunderstrux";

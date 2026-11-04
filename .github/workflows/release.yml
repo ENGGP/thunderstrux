@@ -173,8 +173,8 @@ jobs:
           OPS_REF: ${{ needs.release-pair.outputs.ops-ref }}
         run: |
           for ref in "$WEB_REF" "$OPS_REF"; do
-            gh attestation verify "oci://${ref}" --repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" --source-ref refs/heads/main
-            gh attestation verify "oci://${ref}" --repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" --source-ref refs/heads/main --predicate-type https://spdx.dev/Document/v2.3
+            gh attestation verify "oci://${ref}" --repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" --source-ref refs/heads/main --source-digest "$GITHUB_SHA"
+            gh attestation verify "oci://${ref}" --repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" --source-ref refs/heads/main --source-digest "$GITHUB_SHA" --predicate-type https://spdx.dev/Document/v2.3
           done
       - name: Smoke the published images
         env:

@@ -12,7 +12,8 @@ import {
   assertRestoreDatabase,
   assertRollbackCompatibility,
   databaseUrlForRestore,
-  migrationDigest
+  migrationDigest,
+  shellEnv
 } from "../../scripts/operations-guards.mjs";
 
 test("a deploy refuses an env file with an empty EMAIL_FROM, before touching anything", async () => {
@@ -76,4 +77,9 @@ test("rollback declaration must be reviewed and match the actual release", async
   await assert.doesNotReject(assertRollbackCompatibility(path, expected));
   await writeFile(path, JSON.stringify({ ...expected, reviewed: false }));
   await assert.rejects(assertRollbackCompatibility(path, expected));
+});
+
+test("Compose never takes an app setting from the shell, so the env file decides it (#111)", () => {
+  const kept = shellEnv({ PATH: "/bin", DOCKER_HOST: "unix:///run/docker.sock", APP_IMAGE: "thunderstrux-app:r1", RATE_LIMIT_ENABLED: "false", MFA_ENFORCEMENT_MODE: "off", ADMIN_PORTAL_ENABLED: "true", DATABASE_URL: "postgresql://x", STRIPE_SECRET_KEY: "sk_live_x", AUTH_URL: "https://x", NEXT_PUBLIC_APP_URL: "https://x" });
+  assert.deepEqual(kept, { PATH: "/bin", DOCKER_HOST: "unix:///run/docker.sock", APP_IMAGE: "thunderstrux-app:r1" });
 });

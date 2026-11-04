@@ -37,8 +37,8 @@ To take a release:
 ```bash
 gh run list --workflow release.yml --branch main          # pick the run of that main commit
 gh run download <run-id> --repo ENGGP/thunderstrux --name release-<revision>
-gh attestation verify oci://<web ref@sha256> --repo ENGGP/thunderstrux --signer-workflow ENGGP/thunderstrux/.github/workflows/release.yml --source-ref refs/heads/main
-gh attestation verify oci://<ops ref@sha256> --repo ENGGP/thunderstrux --signer-workflow ENGGP/thunderstrux/.github/workflows/release.yml --source-ref refs/heads/main
+gh attestation verify oci://<web ref@sha256> --repo ENGGP/thunderstrux --signer-workflow ENGGP/thunderstrux/.github/workflows/release.yml --source-ref refs/heads/main --source-digest <revision>
+gh attestation verify oci://<ops ref@sha256> --repo ENGGP/thunderstrux --signer-workflow ENGGP/thunderstrux/.github/workflows/release.yml --source-ref refs/heads/main --source-digest <revision>
 ```
 
 Select by run id, never by artifact name alone: any workflow run can upload an artifact with that name.

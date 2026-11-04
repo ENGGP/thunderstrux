@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { assertImmutableImageRef, validateHostedConfig } from "../../scripts/container-config.mjs";
+import { assertDeployedAppEnvironment, assertImmutableImageRef, validateHostedConfig } from "../../scripts/container-config.mjs";
 
 const digest = "a".repeat(64);
 const image = `ghcr.io/enggp/thunderstrux@sha256:${digest}`;
@@ -70,7 +70,7 @@ test("hosted contract requires external services, file secrets, and runtime hard
   const moneyWorkerEnvironment = { ...workerEnvironment, ...stripeKey, ...notificationKey };
   const config = {
     services: {
-      app: hardenedService({ environment: { ...environment, RATE_LIMIT_ENABLED: "true", MFA_ENFORCEMENT_MODE: "enforce", LEGACY_ORGANISATION_ACCESS_MODE: "deny" }, healthcheck: { test: ["CMD", "node"] } }),
+      app: hardenedService({ environment: { ...environment, RATE_LIMIT_ENABLED: "true", RATE_LIMIT_TRUSTED_PROXY_HEADER: "x-thunderstrux-client-ip", MFA_ENFORCEMENT_MODE: "enforce", LEGACY_ORGANISATION_ACCESS_MODE: "deny" }, healthcheck: { test: ["CMD", "node"] } }),
       migration: hardenedService({ image: opsImage, profiles: ["tools"] }),
       "notification-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: { ...workerEnvironment, ...resendKey, ...notificationKey } }),
       "email-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: { ...workerEnvironment, ...resendKey } }),
@@ -137,4 +137,15 @@ test("hosted contract requires external services, file secrets, and runtime hard
     ...config,
     services: { ...config.services, app: { ...config.services.app, image: opsImage } }
   }), /web image/);
+});
+
+test("every deployed app rate-limits behind an overwritten client-IP header, with no admin portal, whatever its MFA mode (SEC-053)", () => {
+  const base = { RATE_LIMIT_ENABLED: "true", RATE_LIMIT_TRUSTED_PROXY_HEADER: "cf-connecting-ip", MFA_ENFORCEMENT_MODE: "off" };
+  assert.doesNotThrow(() => assertDeployedAppEnvironment(base));
+  assert.throws(() => assertDeployedAppEnvironment({ ...base, RATE_LIMIT_ENABLED: "false" }), /RATE_LIMIT_ENABLED/);
+  assert.throws(() => assertDeployedAppEnvironment({ ...base, RATE_LIMIT_ENABLED: undefined }), /RATE_LIMIT_ENABLED/);
+  for (const header of [undefined, "", "X-Forwarded-For"]) {
+    assert.throws(() => assertDeployedAppEnvironment({ ...base, RATE_LIMIT_TRUSTED_PROXY_HEADER: header }), /RATE_LIMIT_TRUSTED_PROXY_HEADER/);
+  }
+  assert.throws(() => assertDeployedAppEnvironment({ ...base, ADMIN_PORTAL_ENABLED: "false" }), /ADMIN_PORTAL_ENABLED/);
 });

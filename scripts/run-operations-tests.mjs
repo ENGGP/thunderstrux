@@ -205,6 +205,8 @@ const runtime = [
   "RATE_LIMIT_ENABLED=true",
   "RATE_LIMIT_REDIS_URL=redis://redis:6379",
   "RATE_LIMIT_KEY_PREFIX=ops",
+  // ops:deploy refuses the forgeable default (SEC-053).
+  "RATE_LIMIT_TRUSTED_PROXY_HEADER=x-thunderstrux-client-ip",
   "STRIPE_SECRET_KEY=",
   "STRIPE_WEBHOOK_SECRET=",
   "STRIPE_CONNECT_WEBHOOK_SECRET=",
@@ -301,8 +303,9 @@ try {
   await compose(["run", "--rm", "checkout-recovery-worker"], { env: { ...process.env, OPS_IMAGE: release.opsImageId } });
   await rehearseWorkerContract(release.opsImageId);
 
-  await compose(["run", "--rm", "migration", "node", "prisma/seed.mjs"], {
-    env: { ...process.env, OPS_IMAGE: release.opsImageId }
+  // SEC-051: a production container names no origin, so the seed needs its own password.
+  await compose(["run", "--rm", "-e", "SEED_DEMO_PASSWORD", "migration", "node", "prisma/seed.mjs"], {
+    env: { ...process.env, OPS_IMAGE: release.opsImageId, SEED_DEMO_PASSWORD: randomBytes(18).toString("base64url") }
   });
   await compose(["run", "--rm", "-e", "NOTIFICATION_ENCRYPTION_KEY", "migration", "node", "scripts/seed-operations-verification.mjs"], {
     env: { ...process.env, OPS_IMAGE: release.opsImageId, NOTIFICATION_ENCRYPTION_KEY: notificationKey }

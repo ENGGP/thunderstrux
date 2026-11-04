@@ -26,9 +26,11 @@ import {
   assertRestoreDatabase,
   assertRollbackCompatibility,
   databaseUrlForRestore,
-  migrationDigest
+  migrationDigest,
+  shellEnv
 } from "./operations-guards.mjs";
 import { describeReleasePair, gitRevision } from "./release-pair.mjs";
+import { assertDeployedAppEnvironment } from "./container-config.mjs";
 import { workerServices } from "./droplet.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -143,7 +145,7 @@ function context() {
 }
 
 function compose(ctx, commandArgs, options = {}) {
-  return run("docker", [...ctx.composeArgs, ...commandArgs], options);
+  return run("docker", [...ctx.composeArgs, ...commandArgs], { ...options, env: options.env ?? shellEnv() });
 }
 
 async function restrictStateDirectory(path) {
@@ -175,7 +177,7 @@ async function backup(ctx) {
       "docker",
       [...ctx.composeArgs, "exec", "-T", "db", "sh", "-c", 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc'],
       temporary,
-      process.env
+      shellEnv()
     );
     const size = (await stat(temporary)).size;
     if (size < 100) throw new Error("Backup archive is unexpectedly small");
@@ -277,7 +279,10 @@ async function deploy(ctx) {
   // T43: each release is a web image and an ops image (migration, workers) built from one revision.
   const image = `thunderstrux-app:${release}`;
   const opsImage = `thunderstrux-ops:${release}`;
-  const deploymentEnv = { ...process.env, APP_IMAGE: image, OPS_IMAGE: opsImage };
+  const deploymentEnv = { ...shellEnv(), APP_IMAGE: image, OPS_IMAGE: opsImage };
+  // SEC-053: refuse before anything stops, on the environment Compose will really give the app.
+  const configured = JSON.parse(await compose(ctx, ["config", "--format", "json"], { capture: true, env: deploymentEnv }));
+  assertDeployedAppEnvironment(configured.services?.app?.environment);
   const readinessAttempts = Number(option("--readiness-attempts", "60"));
   if (!Number.isInteger(readinessAttempts) || readinessAttempts < 1 || readinessAttempts > 120) {
     throw new Error("--readiness-attempts must be an integer from 1 to 120");
@@ -347,14 +352,14 @@ async function deploy(ctx) {
       if (!previousManifest?.imageRef) throw new Error("Previous release has no immutable image reference");
       const rollbackContext = contextWithEnvFile(ctx, activeEnvFile);
       await compose(rollbackContext, ["up", "-d", "--no-build", "--force-recreate", "app"], {
-        env: { ...process.env, APP_IMAGE: previousManifest.imageRef }
+        env: { ...shellEnv(), APP_IMAGE: previousManifest.imageRef }
       });
       try {
         await waitReady(url, Math.max(readinessAttempts, 30));
       } catch (rollbackError) {
         const logs = await compose(rollbackContext, ["logs", "--no-color", "--tail", "40", "app"], {
           capture: true,
-          env: { ...process.env, APP_IMAGE: previousManifest.imageRef }
+          env: { ...shellEnv(), APP_IMAGE: previousManifest.imageRef }
         }).catch(() => "logs unavailable");
         throw new Error(`Previous release failed readiness: ${rollbackError.message}; ${logs.slice(-1500)}`);
       }
@@ -397,7 +402,7 @@ async function deploy(ctx) {
       if (previousImageId) {
         const recoveryContext = hasActiveEnv ? contextWithEnvFile(ctx, activeEnvFile) : ctx;
         await compose(recoveryContext, ["up", "-d", "--no-build", "--force-recreate", "app"], {
-          env: { ...process.env, APP_IMAGE: previousManifest?.imageRef ?? previousImageId }
+          env: { ...shellEnv(), APP_IMAGE: previousManifest?.imageRef ?? previousImageId }
         }).catch(() => {});
       }
       // The stopped workers are the previous release's containers, unchanged.
@@ -439,7 +444,7 @@ async function restore(ctx) {
     const notificationKey = parseEnv(await readFile(ctx.envFile, "utf8")).NOTIFICATION_ENCRYPTION_KEY;
     // The URL holds the database password, so it travels in the environment, never in process arguments (T53).
     await compose(ctx, ["run", "--rm", "-e", "DATABASE_URL", "-e", "NOTIFICATION_ENCRYPTION_KEY", "migration", "node", "scripts/verify-restored-database.mjs"], {
-      env: { ...process.env, OPS_IMAGE: release.opsImageId ?? release.candidateImageId, DATABASE_URL: restoredUrl, NOTIFICATION_ENCRYPTION_KEY: notificationKey ?? "" }
+      env: { ...shellEnv(), OPS_IMAGE: release.opsImageId ?? release.candidateImageId, DATABASE_URL: restoredUrl, NOTIFICATION_ENCRYPTION_KEY: notificationKey ?? "" }
     });
     // SEC-023: sessions, MFA logins, links and invitations from before the
     // restore point end here, before the copy can serve anyone.
@@ -450,7 +455,7 @@ async function restore(ctx) {
     // Recovery runbook). A copy that can't be fenced is not promoted.
     const reason = `Restored from ${archive.split(/[\\/]/).pop()}: reconcile Stripe, refunds and the outbox, then resume`.slice(0, 200);
     await compose(ctx, ["run", "--rm", "-e", "DATABASE_URL", "migration", "node", "scripts/workers.mjs", "pause", "all", `--reason=${reason}`], {
-      env: { ...process.env, OPS_IMAGE: release.opsImageId ?? release.candidateImageId, DATABASE_URL: restoredUrl }
+      env: { ...shellEnv(), OPS_IMAGE: release.opsImageId ?? release.candidateImageId, DATABASE_URL: restoredUrl }
     });
     console.log(JSON.stringify({ status: "restored-and-verified", target, identityFenced: true, workersPaused: true }));
   } catch (error) {
@@ -477,7 +482,7 @@ async function admin(ctx) {
   const name = `${ctx.project}-admin`;
   const origin = `http://localhost:${ADMIN_PORTAL_PORT}`;
   console.error(`Starting the admin portal from ${manifest.imageRef ?? manifest.candidateImageId} on 127.0.0.1:${ADMIN_PORTAL_PORT}…`);
-  await compose(ctx, adminPortalRunArgs(ctx.project), { env: { ...process.env, APP_IMAGE: manifest.candidateImageId }, capture: true });
+  await compose(ctx, adminPortalRunArgs(ctx.project), { env: { ...shellEnv(), APP_IMAGE: manifest.candidateImageId }, capture: true });
   const stop = () => run("docker", ["stop", "-t", "10", name]).catch(() => {});
   try {
     await waitReady(origin, 60);
@@ -492,6 +497,8 @@ async function admin(ctx) {
   await new Promise((resolvePromise) => {
     process.once("SIGINT", resolvePromise);
     process.once("SIGTERM", resolvePromise);
+    // A closed terminal sends SIGHUP; the portal mustn't outlive it (#10).
+    process.once("SIGHUP", resolvePromise);
   });
   clearInterval(hold);
   await stop();

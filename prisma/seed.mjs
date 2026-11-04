@@ -1,20 +1,25 @@
 import { PrismaClient } from "@prisma/client";
 import { hash } from "bcryptjs";
 
-// SEC-015: the README publishes the seeded accounts' password, so a database behind a
-// public origin is seeded only with SEED_DEMO_PASSWORD, which replaces it for every account.
+// SEC-015, SEC-051: the README publishes the seeded accounts' password, so it is only
+// for a loopback dev app. A supplied SEED_DEMO_PASSWORD is always used, for every
+// account, and needs 16+ characters. A public origin, or a production run that names
+// no origin at all (a migration container), must supply one.
 const loopbackHosts = new Set(["localhost", "127.0.0.1", "[::1]"]);
-const publicOrigin = ["AUTH_URL", "NEXTAUTH_URL", "NEXT_PUBLIC_APP_URL"]
-  .map((name) => process.env[name])
-  .some((url) => url && !loopbackHosts.has(new URL(url).hostname));
+const origins = ["AUTH_URL", "NEXTAUTH_URL", "NEXT_PUBLIC_APP_URL"].map((name) => process.env[name]).filter(Boolean);
+const publicOrigin = origins.some((url) => !loopbackHosts.has(new URL(url).hostname));
 const demoPassword = process.env.SEED_DEMO_PASSWORD ?? "";
-if (publicOrigin && demoPassword.length < 16) {
-  console.error("Refusing to seed: this app is configured for a public origin. Set SEED_DEMO_PASSWORD (at least 16 characters) to seed demo accounts with it.");
+if (demoPassword && demoPassword.length < 16) {
+  console.error("Refusing to seed: SEED_DEMO_PASSWORD must be at least 16 characters.");
+  process.exit(1);
+}
+if (!demoPassword && (publicOrigin || (origins.length === 0 && process.env.NODE_ENV === "production"))) {
+  console.error("Refusing to seed: this app is configured for a public origin, or for production with no origin. Set SEED_DEMO_PASSWORD (at least 16 characters) to seed demo accounts with it.");
   process.exit(1);
 }
 
 const prisma = new PrismaClient();
-const defaultPassword = publicOrigin ? demoPassword : "password123";
+const defaultPassword = demoPassword || "password123";
 
 async function upsertUser(email, password = defaultPassword, data = {}) {
   const hashedPassword = await hash(password, 12);

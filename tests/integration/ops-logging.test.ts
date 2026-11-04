@@ -136,6 +136,21 @@ describe("ops logging foundation", () => {
     });
   });
 
+  test("a production app is not ready without rate limiting, whatever the staff MFA mode (SEC-053)", async () => {
+    const { checkApplicationReadiness } = await import("@/lib/ops/readiness");
+    const { setRateLimitTestEnabled } = await import("@/lib/security/rate-limit");
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("MFA_ENFORCEMENT_MODE", "off");
+    try {
+      setRateLimitTestEnabled(false);
+      await expect(checkApplicationReadiness()).rejects.toThrow("RATE_LIMIT_ENABLED must be true in production");
+      setRateLimitTestEnabled(true);
+      await expect(checkApplicationReadiness()).rejects.not.toThrow("RATE_LIMIT_ENABLED must be true in production");
+    } finally {
+      setRateLimitTestEnabled(null);
+    }
+  });
+
   test("readiness fails closed when the required schema migration is incomplete", async () => {
     await prisma.$executeRaw`
       UPDATE "_prisma_migrations"

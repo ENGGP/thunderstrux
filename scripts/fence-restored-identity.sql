@@ -14,4 +14,7 @@ UPDATE "AuthToken" SET "invalidatedAt" = now() WHERE "consumedAt" IS NULL AND "i
 UPDATE "GuestAccessGrant" SET "revokedAt" = now() WHERE "revokedAt" IS NULL;
 -- Pending staff invitations are issued again if still wanted.
 UPDATE "OrganisationStaffInvite" SET "revokedAt" = now() WHERE "acceptedAt" IS NULL AND "revokedAt" IS NULL;
+-- Support recovery requests (authenticator resets, ownership) start their 72 hours again: the
+-- notices and objections after the restore point are gone, so support files them again if still wanted.
+UPDATE "PlatformRecoveryRequest" SET "status" = 'cancelled', "cancelledAt" = now() WHERE "status" = 'pending';
 COMMIT;

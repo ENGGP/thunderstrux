@@ -133,6 +133,7 @@ One email per ticket order with every `active` ticket. Text and HTML, with each 
 | Email change confirmed | `account-security/{eventId}` | `email_changed` | `tests/integration/email-change.test.ts` |
 | Account closed | `account-security/{eventId}` | `account_closed` | `tests/integration/account-closure.test.ts` |
 | Staff invite, resend | `staff-invite/{inviteId}/{version}` | `staff_invite` | `tests/integration/staff-invites.test.ts` |
+| Staff access granted (accepted invitation, role change, reactivation), to every active owner | `staff-access/{staffId}/invite-{inviteId}-{version}`, `staff-access/{staffId}/{auditLogId}` | `business_notice` | `tests/integration/staff-invites.test.ts` |
 | Guest email confirmation | `guest/{grantId}` | `guest_access` | `tests/integration/guest-access.test.ts` |
 | Find your purchase (one per paid order) | `guest/{grantId}` | `guest_order_link` | `tests/integration/guest-checkout.test.ts` |
 | Paid or free ticket fulfilment | `EmailOutbox` automatic, one per order | ticket email | `tests/integration/email-outbox.test.ts`, `tests/integration/free-tickets.test.ts` |

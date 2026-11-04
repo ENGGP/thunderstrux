@@ -8,13 +8,14 @@ import {
   unauthorized,
   validationError
 } from "@/lib/api/errors";
-import { authenticationRule, organisationAccessRule } from "@/lib/api/route-rules";
+import { authenticationRule, freshStaffMfaRules, organisationAccessRule } from "@/lib/api/route-rules";
 import {
   requireAuthenticatedUser,
   requireOrganisationPermission
 } from "@/lib/auth/access";
 import { organisationIdBySlug } from "@/lib/organisations/authority";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
+import { requireStaffGrantCode } from "@/lib/staff/invite-http";
 import { StaffUpdateError, updateOrganisationStaff } from "@/lib/staff/management";
 import { validateJson } from "@/lib/validators";
 import { updateStaffSchema } from "@/lib/validators/staff";
@@ -50,8 +51,14 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     await requireOrganisationPermission(organisationId, "staff:manage");
+    const { mfaCode, ...change } = validation.data;
+    // A role change or a reactivation gives access; a revocation doesn't (SEC-046).
+    if (change.role !== undefined || change.status === "active") {
+      const code = await requireStaffGrantCode(request, user, mfaCode);
+      if (code) return code;
+    }
 
-    const staff = await updateOrganisationStaff(user, organisationId, staffId, validation.data);
+    const staff = await updateOrganisationStaff(user, organisationId, staffId, change);
 
     return NextResponse.json({ staff });
   } catch (error) {
@@ -66,7 +73,8 @@ export async function PATCH(request: Request, context: RouteContext) {
                 : forbidden(failure.message)
         ),
         authenticationRule,
-        organisationAccessRule
+        organisationAccessRule,
+        ...freshStaffMfaRules
       ]
     });
   }

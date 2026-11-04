@@ -8,15 +8,19 @@ export const staffRoleSchema = z.enum([
   "check_in_staff"
 ]);
 
+// SEC-046: giving access needs a fresh authenticator code (requireFreshStaffMfa).
+export const staffGrantCodeSchema = z.string().trim().max(20).optional();
 export const createStaffInviteSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(320),
-  role: staffRoleSchema
+  role: staffRoleSchema,
+  mfaCode: staffGrantCodeSchema
 }).strict();
 
 export const updateStaffSchema = z.object({
   role: staffRoleSchema.optional(),
-  status: z.enum(["active", "revoked"]).optional()
-}).refine((value) => value.role !== undefined || value.status !== undefined, {
+  status: z.enum(["active", "revoked"]).optional(),
+  mfaCode: staffGrantCodeSchema
+}).strict().refine((value) => value.role !== undefined || value.status !== undefined, {
   message: "At least one staff change is required"
 });
 

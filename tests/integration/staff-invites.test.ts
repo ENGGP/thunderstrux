@@ -14,6 +14,11 @@ import { createTestRateLimitBackend, setRateLimitTestBackend, setRateLimitTestBa
 import { closeAccount, closureAcknowledgement } from "@/lib/auth/account-closure";
 import { GET as listNotifications } from "@/app/api/notifications/route";
 import { updateOrganisationStaff } from "@/lib/staff/management";
+import { PATCH as patchStaff } from "@/app/api/orgs/[orgSlug]/staff/[staffId]/route";
+import { handOverOrganisationOwnership } from "@/lib/staff/handover";
+import { handoverAcknowledgement } from "@/lib/validators/staff";
+import { grantPlatformOperator } from "@/lib/platform/operators";
+import { enrolStaffMfa } from "@/tests/helpers/mfa";
 
 beforeEach(() => { setRateLimitTestEnabled(true); setRateLimitTestBackend(createTestRateLimitBackend()); setRateLimitTestBackendFailure(null); });
 afterEach(() => { setRateLimitTestEnabled(null); setRateLimitTestBackend(null); setRateLimitTestBackendFailure(null); });
@@ -175,4 +180,65 @@ test("actor and token quotas reject writes and replay without adding audit rows"
   setMockSession({ userId: data.recipient.id, email: data.recipient.email, accountRole: "member" });
   for (let i = 0; i < 11; i++) expect((await acceptRoute(jsonRequest("http://localhost/api/staff/invites/accept", { token: invite.token }))).status).toBe(i < 10 ? 200 : 429);
   expect(await prisma.auditLog.count({ where: { action: "staff.invite.accepted" } })).toBe(1);
+});
+test("giving access needs a fresh code under staff MFA, revoking doesn't, and every owner hears of a grant (SEC-046)", async () => {
+  vi.stubEnv("MFA_ENFORCEMENT_MODE", "enforce"); vi.stubEnv("RATE_LIMIT_ENABLED", "true");
+  // A fresh code per step: the clock moves 30 seconds before each.
+  vi.useFakeTimers({ toFake: ["Date"] }); const start = Date.now(); const step = (n: number) => vi.setSystemTime(start + n * 30_000);
+  const data = await fixture(); const mfa = await enrolStaffMfa(data.user);
+  const slug = { orgSlug: data.organisation.slug }; const url = "http://localhost/api/orgs/x/staff/invites";
+  const noCode = await issueRoute(jsonRequest(url, { email: data.recipient.email, role: "admin" }), routeContext(slug));
+  expect(noCode.status).toBe(400); expect((await noCode.json()).error.details[0].path).toEqual(["mfaCode"]);
+  expect((await issueRoute(jsonRequest(url, { email: data.recipient.email, role: "admin", mfaCode: "000000" }), routeContext(slug))).status).toBe(400);
+  expect(await prisma.organisationStaffInvite.count()).toBe(0);
+  step(1); const issued = await issueRoute(jsonRequest(url, { email: data.recipient.email, role: "admin", mfaCode: mfa.code(1) }), routeContext(slug));
+  expect(issued.status).toBe(201); const inviteId = (await issued.json()).invite.id;
+  const resendUrl = `http://localhost/api/orgs/x/staff/invites/${inviteId}/resend`; const inviteContext = routeContext({ ...slug, inviteId });
+  expect((await resendRoute(jsonRequest(resendUrl, {}), inviteContext)).status).toBe(400);
+  step(2); expect((await resendRoute(jsonRequest(resendUrl, { mfaCode: mfa.code(2) }), inviteContext)).status).toBe(200);
+  expect((await prisma.organisationStaffInvite.findUniqueOrThrow({ where: { id: inviteId } })).version).toBe(2);
+
+  const helper = await createMember();
+  const staff = await createOrganisationStaff({ organisationId: data.organisation.id, userId: helper.id, role: "check_in_staff" });
+  const staffUrl = `http://localhost/api/orgs/x/staff/${staff.id}`; const staffContext = routeContext({ ...slug, staffId: staff.id });
+  expect((await patchStaff(jsonRequest(staffUrl, { role: "admin" }, { method: "PATCH" }), staffContext)).status).toBe(400);
+  expect((await prisma.organisationStaff.findUniqueOrThrow({ where: { id: staff.id } })).role).toBe("check_in_staff");
+  step(3); expect((await patchStaff(jsonRequest(staffUrl, { role: "admin", mfaCode: mfa.code(3) }, { method: "PATCH" }), staffContext)).status).toBe(200);
+  const notices = () => prisma.notificationOutbox.findMany({ where: { template: "business_notice", organisationId: data.organisation.id }, select: { recipient: true } });
+  expect(await notices()).toEqual([{ recipient: data.user.email }]);
+  // Revocation works on the sign-in grant alone, for an incident; so does revoking an invitation.
+  expect((await patchStaff(jsonRequest(staffUrl, { status: "revoked" }, { method: "PATCH" }), staffContext)).status).toBe(200);
+  expect((await revokeRoute(jsonRequest(`http://localhost/api/orgs/x/staff/invites/${inviteId}/revoke`, {}), inviteContext)).status).toBe(200);
+  // Bringing the revoked row back gives access again, so it needs a code too.
+  expect((await patchStaff(jsonRequest(staffUrl, { status: "active" }, { method: "PATCH" }), staffContext)).status).toBe(400);
+  expect((await prisma.organisationStaff.findUniqueOrThrow({ where: { id: staff.id } })).status).toBe("revoked");
+});
+test("accepting an invitation tells every active owner; a preserved role doesn't (SEC-046)", async () => {
+  const data = await fixture();
+  const coOwner = await createMember(); await createOrganisationStaff({ organisationId: data.organisation.id, userId: coOwner.id, role: "owner" });
+  const invite = await issue(data, "admin");
+  await acceptOrganisationStaffInvite({ token: invite.token, actor: actor(data.recipient) });
+  const notices = await prisma.notificationOutbox.findMany({ where: { template: "business_notice" }, select: { recipient: true, organisationId: true } });
+  expect(notices.map((row) => row.recipient).sort()).toEqual([data.user.email, coOwner.email].sort());
+  expect(notices.every((row) => row.organisationId === data.organisation.id)).toBe(true);
+  const again = await issue({ ...data, recipient: coOwner }, "event_manager");
+  await acceptOrganisationStaffInvite({ token: again.token, actor: actor(coOwner) });
+  expect(await prisma.notificationOutbox.count({ where: { template: "business_notice" } })).toBe(2);
+});
+test("an operator account never comes back as staff: no reactivation, no handover, no grant over a revoked row (SEC-048)", async () => {
+  const data = await fixture();
+  const staff = await createOrganisationStaff({ organisationId: data.organisation.id, userId: data.recipient.id, role: "event_manager" });
+  await updateOrganisationStaff(actor(data.user), data.organisation.id, staff.id, { status: "revoked" });
+  await expect(grantPlatformOperator({ email: data.recipient.email, role: "support", note: "Integration test", by: "cli:test" })).rejects.toThrow("has or had a role");
+  // An operator row made before that check: reactivating its revoked staff row is refused.
+  await prisma.platformOperator.create({ data: { userId: data.recipient.id, role: "support", grantedBy: "cli:test", note: "Granted before SEC-048" } });
+  await expect(updateOrganisationStaff(actor(data.user), data.organisation.id, staff.id, { status: "active" })).rejects.toThrow("operator accounts");
+  expect((await prisma.organisationStaff.findUniqueOrThrow({ where: { id: staff.id } })).status).toBe("revoked");
+  const other = await createMember();
+  const incoming = await createOrganisationStaff({ organisationId: data.organisation.id, userId: other.id, role: "admin" });
+  await prisma.platformOperator.create({ data: { userId: other.id, role: "support", grantedBy: "cli:test", note: "Granted before SEC-048" } });
+  await expect(handOverOrganisationOwnership(actor(data.user), data.organisation.id, {
+    incomingStaffId: incoming.id, outgoingAccess: "admin", currentPassword: "password123", acknowledgement: handoverAcknowledgement
+  })).rejects.toThrow("Choose another eligible");
+  expect((await prisma.organisationStaff.findUniqueOrThrow({ where: { id: incoming.id } })).role).toBe("admin");
 });

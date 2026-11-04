@@ -8,6 +8,7 @@ import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
 import { mfaGrantDigest } from "@/lib/security/csrf";
 import { appUrl } from "@/lib/app-url";
 import { livePlatformRole } from "@/lib/platform/operators";
+import { notifyOwnersOfStaffGrant } from "./owner-notice";
 
 export class StaffInviteError extends Error {
   constructor(message = "Invitation is unavailable", readonly kind: "invalid" | "authority" | "stale_session" | "conflict" = "invalid") { super(message); }
@@ -147,6 +148,7 @@ export async function acceptOrganisationStaffInvite(input: { token: string; acto
     if (consumed.count !== 1) throw new StaffInviteError();
     await cancelMessages(tx, invite.id);
     await audit(tx, invite.organisationId, user.id, invite.id, "staff.invite.accepted", { staffId: staff.id, role: staff.role, version: invite.version, existingRolePreserved: preserved });
+    if (!preserved) await notifyOwnersOfStaffGrant(tx, { organisationId: invite.organisationId, eventKey: `staff-access/${staff.id}/invite-${invite.id}-${invite.version}`, email: user.email, role: staff.role });
     return { inviteId: invite.id, staff, alreadyAccepted: false };
   }, { timeout: 15000 });
 }

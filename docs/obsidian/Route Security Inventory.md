@@ -48,7 +48,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 | `POST /api/events` | origin → body → `events:manage` on the body's `organisationId` → sign-in |
 | Event reads (`GET events`, `GET events/[eventId]`) | `orgId` query → `events:manage` |
 | Check-in, check-out | origin → dashboard context → `tickets:check_in` → `ticket_check_in_out` → sign-in |
-| Staff order decisions (`refunds`, `cancel`, `review`) | origin → context → permission → sign-in → body → `staff_mfa_verify` when a code is sent → fresh code unless MFA mode `off` → service |
+| Staff order decisions (`refunds`, `cancel`) | origin → context → permission → sign-in → body → `staff_mfa_verify` when a code is sent → fresh code unless MFA mode `off` → service; `review` stops at the login grant |
 | `refund-manual` | origin → context → `orders:refund_mark` → sign-in → strict body → `staff_mfa_verify` when a code is sent → fresh code unless `off` |
 | `resend` | origin → context → `orders:email_resend` → order in this society (404) → `order_resend` → sign-in |
 | Email and notification requeue | origin → context → `orders:email_resend` → order/job exists (404) → `order_resend` → bounded strict body → sign-in |
@@ -68,7 +68,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 ## Rules
 
 - **Authority is live.** Staff permission is read from `OrganisationStaff` on every request through `requireOrganisationPermission` and `liveStaffRole` ([[Authentication and Dashboard Access#Roles and permissions]]), never from the session or a client id. The tenant is the canonical owner (an event's society, a commerce order's society, the selected dashboard context, or a slug), never a body field taken on trust. Another society's ids answer the same 404 as a missing one.
-- **Fresh staff code.** Outside MFA mode `off`, cancelling an event (one code for all its refunds), ticket refunds and free cancellations, membership revoke, cancel and refund, merchandise refund and free cancellation, and the Connect dashboard link and disconnect each need an authenticator code in the body, verified at the route or its service by `requireFreshStaffMfa` (`lib/security/fresh-staff-mfa.ts`), not only the login grant.
+- **Fresh staff code.** Outside MFA mode `off`, cancelling an event (one code for all its refunds), ticket refunds and free cancellations, membership revoke, cancel and refund, merchandise refund and free cancellation, the Connect dashboard link and disconnect, and giving staff access (an invitation, its resend, a role change or a reactivation; never a revocation, which must work fast in an incident; SEC-046) each need an authenticator code in the body, verified at the route or its service by `requireFreshStaffMfa` (`lib/security/fresh-staff-mfa.ts`), not only the login grant.
 - **Errors.** Every route maps failures through `mapRouteError` (directly or through its family helper). Unknown errors answer a generic 500 and log `api.request_failed` with the operation and error class only. Exempt: Auth.js, both Stripe webhooks, `health`, `health/ready`, `security/csrf`.
 - **Bounds.** Prices follow `lib/validators/price.ts` (free, or 50 to 99,999,999 cents, Stripe's largest charge); ticket stock and capacity stop at 1,000,000 (`lib/validators/events.ts`), merchandise stock at 100,000; commerce totals are summed in `BigInt` and capped at 2,147,483,647 (`lib/commerce/orders.ts`).
 
@@ -200,8 +200,8 @@ Methods in backticks; "ctx" is the selected dashboard context ([[Authentication 
 | `GET`/`POST` `/api/orgs/[orgSlug]/merchandise`; `GET`/`PATCH` `/api/orgs/[orgSlug]/merchandise/[productId]`; `POST` `/api/orgs/[orgSlug]/merchandise/[productId]/publish`, `/api/orgs/[orgSlug]/merchandise/[productId]/archive`, `/api/orgs/[orgSlug]/merchandise/[productId]/restore` | `merchandise:manage` +MFA; writes: origin |
 | `POST` `/api/orgs/[orgSlug]/merchandise/pickups`, `/api/orgs/[orgSlug]/merchandise/pickups/[orderId]`, `/api/orgs/[orgSlug]/merchandise/orders/[orderId]/returns` | origin, `merchandise:fulfil` +MFA |
 | `POST` `/api/orgs/[orgSlug]/merchandise/orders/[orderId]/refund`, `/api/orgs/[orgSlug]/merchandise/orders/[orderId]/cancel` | origin, `orders:refund` +MFA, code |
-| `GET` `/api/orgs/[orgSlug]/staff`; `PATCH` `/api/orgs/[orgSlug]/staff/[staffId]` | `staff:manage` +MFA; `PATCH`: origin, owner rows need an owner |
-| `POST` `/api/orgs/[orgSlug]/staff/invites`, `/api/orgs/[orgSlug]/staff/invites/[inviteId]/resend`, `/api/orgs/[orgSlug]/staff/invites/[inviteId]/revoke` | origin, verified, `staff:manage` +MFA, invite limits |
+| `GET` `/api/orgs/[orgSlug]/staff`; `PATCH` `/api/orgs/[orgSlug]/staff/[staffId]` | `staff:manage` +MFA; `PATCH`: origin, strict body, owner rows need an owner, a role change or reactivation also code |
+| `POST` `/api/orgs/[orgSlug]/staff/invites`, `/api/orgs/[orgSlug]/staff/invites/[inviteId]/resend`, `/api/orgs/[orgSlug]/staff/invites/[inviteId]/revoke` | origin, verified, `staff:manage` +MFA, invite limits; create and resend also code |
 | `POST` `/api/orgs/[orgSlug]/staff/handover` | origin, verified, owner +MFA, `account_security_change`, current password |
 | `POST` `/api/staff/invites/accept` | origin, account token limits, verified invitee |
 | `POST` `/api/stripe/connect/onboard`, `/api/stripe/connect/continue`, `/api/stripe/connect/dashboard`, `/api/stripe/connect/disconnect`; `GET` `/api/stripe/connect/status` | `stripe:manage` +MFA; writes: origin, `stripe_connect_mutation`, and a fresh code (onboarding, the dashboard and disconnect can change where money goes) |

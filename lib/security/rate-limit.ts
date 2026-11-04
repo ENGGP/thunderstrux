@@ -13,6 +13,7 @@ type FailureMode = "closed" | "open";
 export type RateLimitPolicy =
   | "login_ip_email"
   | "login_email"
+  | "login_known_device"
   | "login_ip_global"
   | "signup_ip"
   | "signup_email"
@@ -75,8 +76,10 @@ export const policies: Record<RateLimitPolicy, RateLimitPolicyConfig> = {
   organisation_profile: { limit: 30, windowSeconds: 600, failureMode: "closed" },
   login_ip_email: { limit: 10, windowSeconds: 10 * 60, failureMode: "closed" },
   // DEBT-002: one account from many addresses. High enough that a member never meets it;
-  // at worst someone else's guesses lock the account for an hour.
+  // someone else's guesses lock only browsers that never signed in to it (SEC-050).
   login_email: { limit: 30, windowSeconds: 60 * 60, failureMode: "closed" },
+  // SEC-050: a browser that signed in before (lib/auth/known-device.ts), per account and device, in place of login_email.
+  login_known_device: { limit: 10, windowSeconds: 10 * 60, failureMode: "closed" },
   login_ip_global: { limit: 500, windowSeconds: 10 * 60, failureMode: "closed" },
   signup_ip: { limit: 250, windowSeconds: 60 * 60, failureMode: "closed" },
   signup_email: { limit: 3, windowSeconds: 60 * 60, failureMode: "closed" },

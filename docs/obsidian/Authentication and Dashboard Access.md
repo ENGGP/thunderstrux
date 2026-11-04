@@ -21,7 +21,7 @@ sources: [auth.ts, proxy.ts, lib/permissions/index.ts, lib/auth/access.ts, lib/a
 | Route helpers | `lib/auth/access.ts` (see [Auth helpers](#auth-helpers)); error rules `lib/api/route-rules.ts` |
 | Page helpers | `lib/auth/page-access.ts`: `requireManagementPage`, `redirectLegacyOrganisationPage` |
 | Locked recheck in services | `lib/organisations/authority.ts`: `lockOrganisationActor` |
-| Auth.js | `auth.ts` (Credentials provider, JWT and session callbacks), `lib/auth/credentials.ts`: `authorizeCredentials`, `lib/auth/secret.ts`: `resolveAuthSecret` |
+| Auth.js | `auth.ts` (Credentials provider, JWT and session callbacks), `lib/auth/credentials.ts`: `authorizeCredentials`, `lib/auth/secret.ts`: `resolveAuthSecret`, `lib/auth/password-hash.ts` (the password-work gate), `lib/auth/known-device.ts`, `lib/auth/sign-in-records.ts` |
 | Live session | `lib/auth/live-session.ts`: `getLiveSession`; `lib/auth/session-identity.ts`: `getSessionIdentity` |
 | Proxy | `proxy.ts`; cookie scheme `lib/auth/public-origin.ts`: `publicOriginIsHttps`, `appCookieSecure` |
 | Dashboard context | `lib/auth/context.ts`: `readAccountContext`, `contextChoices`; `lib/auth/context-cookie.ts` |
@@ -97,10 +97,13 @@ Extra rules outside the matrix: only an `owner` may invite an owner, change an o
 ## Sessions
 
 - Auth.js with a Credentials provider (`auth.ts`); sign-in page `/login`. `authorizeCredentials` lower-cases the email and compares an unknown or disabled address against a dummy bcrypt hash of the same cost, so sign-in takes as long whether or not an account exists (DEF-035). Passwords are bcrypt hashes.
+- Every password check and hash (sign-in, signup, reset, change, closure, email change, verification, MFA setup) goes through `comparePassword`/`hashPassword` (`lib/auth/password-hash.ts`): at most 8 run at once in a process, since bcryptjs works on the event loop; the next is refused with 503 and `Retry-After: 5` (`passwordBusyResponse`, SEC-019) rather than stalling every other request.
+- A browser that signs in gets `thunderstrux-known-device` (httpOnly, path `/api/auth/callback/credentials`, a year): a random device id signed with the account id, its address and its `authVersion`. Its later sign-ins count on `login_known_device` (per account and device) instead of `login_email`, so anonymous wrong passwords can't lock the owner out of a browser they already use (SEC-050). A password reset or change, email change, closure or support sign-out bumps `authVersion`, which ends every such cookie.
 - The JWT gets `userId`, `authVersion` and a random `staffMfaSessionId` (the login id) only at password sign-in; a cookie refresh can't add or upgrade them. A session issued before these claims existed must sign in again.
 - Every `auth()` read, page, API guard, CSRF token and the proxy compare the token's `authVersion` with the live user (`getSessionIdentity`). Password reset or change, email change and closure increment it, so every other session dies at its next request. The `/api/auth/session` response is `null` for a dead session.
 - `AUTH_SECRET` comes from one resolver, `lib/auth/secret.ts`, shared by `auth.ts` and `proxy.ts` so the proxy reads sessions with the key that signed them. Outside tests and builds it refuses empty, `dev-secret`, `replace-with-a-non-empty-secret` and the Dockerfile's build placeholder, and production also needs at least 32 characters (SEC-016).
 - Cookies: Auth.js uses `__Secure-authjs.session-token` when the public URL (`AUTH_URL`, then `NEXTAUTH_URL`, then the request) is https, even behind a plain-http tunnel; otherwise `authjs.session-token`. The guest and context cookies are `Secure` in production or whenever that URL is https (SEC-017).
+- Once Auth.js accepts a sign-out (CSRF passed, session cookie cleared), the route deletes that login's staff MFA grant (from the token's `staffMfaSessionId`), so a copied session token can't keep using it; other logins keep theirs.
 - Sign-out goes through `signOutTo`, which signs out without Auth.js's absolute redirect and then goes to a same-site path, so staging ports and second trusted addresses stay on themselves.
 - `/login` shows why a session ended for `passwordChanged=true`, `emailChanged=true` and `accountClosed=true`.
 

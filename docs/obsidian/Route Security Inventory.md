@@ -21,7 +21,7 @@ sources: [lib/security/request-guard.ts, lib/security/csrf.ts, lib/security/rate
 | Guest CSRF | `lib/guest/guest-csrf.ts`: `verifyGuestCsrf`, header `x-thunderstrux-guest-csrf` |
 | Rate limits | `lib/security/rate-limit.ts`: `enforceRateLimit`, `getRateLimitClientIp`, `clientKey`, `policies` |
 | Account-link limits | `lib/auth/lifecycle-http.ts`: `lifecycleIpLimit`, `lifecycleEmailLimit`, `lifecycleRedemptionLimit` |
-| Body reading | `lib/api/request.ts`: `readJsonBody`, `parseJsonBody`, `validateJson`; `readBodyUpTo` for sign-in (10 KB) and, through `lib/stripe/webhook-body.ts`, the Stripe webhooks (1 MB) |
+| Body reading | `lib/api/request.ts`: `readJsonBody`, `parseJsonBody`, `validateJson`; `readBodyUpTo` for every Auth.js POST (10 KB) and, through `lib/stripe/webhook-body.ts`, the Stripe webhooks (1 MB) |
 | Error envelope | `lib/api/errors.ts`: `mapRouteError`, `apiError`; shared rules `lib/api/route-rules.ts` |
 | Headers, default caching | `next.config.ts`: `securityHeaders`, `contentSecurityPolicy`, `headers()` |
 | Expired token cleanup | `lib/security/token-cleanup.ts`: `cleanUpExpiredTokens` |
@@ -36,7 +36,8 @@ There is no one universal order. Each family runs its checks in this order; a re
 | --- | --- |
 | Sign-up and link requests (`auth/signup`, `auth/verification/request`, `auth/password/request`) | origin → `signup_ip` → body → `signup_email` (per purpose) → service |
 | Link redemption (`auth/verification/confirm`, `auth/password/confirm`) | origin → body → `account_token_ip` → `account_token_digest` → service |
-| Sign-in (`auth/[...nextauth]`, credentials callback only) | `login_ip_global` → a plain form of at most 10 KB with an address (else 400, SEC-040, SEC-041) → one `email` field (else 400, SEC-007) → `login_ip_email` → `login_email` (per account across addresses, DEBT-002) → Auth.js (its own CSRF) |
+| Auth.js POSTs (`auth/[...nextauth]`) | every POST: `login_ip_global` → at most 10 KB read before Auth.js parses it (else 400, SEC-049); sign-out also deletes the login's MFA grant |
+| Sign-in (credentials callback) | then a plain form with an address (else 400, SEC-040, SEC-041) → one `email` field (else 400, SEC-007) → `login_ip_email` → `login_known_device` for a browser with a valid known-device cookie, else `login_email` (per account across addresses, DEBT-002, SEC-050) → the password-work gate (503 when full, SEC-019) → Auth.js (its own CSRF) |
 | Guest links (`guest/email/request`, `guest/recover`) | origin → `guest_email_ip` → body → `guest_email_address` → service |
 | Society enquiry (`orgs/[orgSlug]/enquiries`) | origin → `society_enquiry` (IP, slug) → body → `society_enquiry` (sender) → service |
 | Guest redemption (`guest/email/confirm`) | origin → body → `guest_token_ip` → `guest_token_digest` → service |
@@ -97,9 +98,10 @@ There is no one universal order. Each family runs its checks in this order; a re
 
 | Policy | Limit / window | Fail | Key parts | Routes |
 | --- | --- | --- | --- | --- |
-| `login_ip_global` | 500 / 10 min | closed | IP | credentials sign-in (not required) |
+| `login_ip_global` | 500 / 10 min | closed | IP | every Auth.js POST (not required) |
 | `login_ip_email` | 10 / 10 min | closed | IP, email | credentials sign-in (not required) |
-| `login_email` | 30 / 1 h | closed | email | credentials sign-in (not required); at worst someone else's guesses lock the account for an hour |
+| `login_email` | 30 / 1 h | closed | email | credentials sign-in without a known-device cookie (not required); someone else's guesses lock only new browsers, for an hour |
+| `login_known_device` | 10 / 10 min | closed | email + device | credentials sign-in from a browser that signed in before (SEC-050) |
 | `signup_ip` | 250 / 1 h | closed | IP (one bucket for all three) | signup, verification request, password request |
 | `signup_email` | 3 / 1 h | closed | purpose (`signup`, `verification`, `password_reset`), email | same three; one bucket per purpose (SEC-026) |
 | `account_token_ip` | 500 / 10 min | closed | IP; invites `staff_invite`, IP | verification confirm, password confirm, email-change confirm, invite accept |

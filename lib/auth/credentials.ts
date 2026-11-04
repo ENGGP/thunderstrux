@@ -1,4 +1,4 @@
-import { compare } from "bcryptjs";
+import { comparePassword } from "@/lib/auth/password-hash";
 import { prisma } from "@/lib/db";
 
 // A cost-12 hash of a random string nobody knows, the same cost as real
@@ -36,11 +36,11 @@ export async function authorizeCredentials(credentials: Partial<Record<string, u
   });
 
   if (!user || user.disabledAt) {
-    await compare(password, dummyPasswordHash);
+    await comparePassword(password, dummyPasswordHash);
     return null;
   }
 
-  const isValidPassword = await compare(password, user.password);
+  const isValidPassword = await comparePassword(password, user.password);
 
   if (!isValidPassword) {
     return null;

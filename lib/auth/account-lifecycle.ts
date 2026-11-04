@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { compare, hash } from "bcryptjs";
+import { comparePassword, hashPassword } from "@/lib/auth/password-hash";
 import type { Prisma, User } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { enqueueNotification } from "@/lib/email/notification-outbox";
@@ -57,7 +57,7 @@ export function issuePasswordReset(tx: Prisma.TransactionClient, user: User, now
 export async function signupAccount(input: { email: string; password: string; accountRole: "member" | "organisation"; firstName?: string; lastName?: string; callbackUrl?: string }) {
   assertIssuanceConfiguration();
   // Perform the expensive hash for existing addresses too; never overwrite them.
-  const password = await hash(input.password, 12);
+  const password = await hashPassword(input.password);
   try {
     await prisma.$transaction(async tx => {
       const user = await tx.user.create({ data: { email: input.email.trim().toLowerCase(), password, accountRole: input.accountRole,
@@ -102,7 +102,7 @@ export async function consumeVerification(raw: string, password: string, now = n
         token.email !== user.email || token.authVersion !== user.authVersion || user.emailVerifiedAt) throw new AccountTokenError();
     // The mailbox proof must come from whoever set the password (SEC-008); otherwise a mailbox
     // owner verifies an account someone else pre-registered. A mismatch leaves the token unused.
-    if (!await compare(password, user.password)) throw new AccountTokenError();
+    if (!await comparePassword(password, user.password)) throw new AccountTokenError();
     const consumed = await tx.authToken.updateMany({ where: { id: token.id, consumedAt: null, invalidatedAt: null }, data: { consumedAt: now } });
     if (consumed.count !== 1) throw new AccountTokenError();
     await tx.user.update({ where: { id: user.id }, data: { emailVerifiedAt: now } });
@@ -121,7 +121,7 @@ export class AccountSecurityError extends Error {
 export async function requireSecurityActor(tx: Prisma.TransactionClient, actor: AccountActor, password: string, now = new Date()) {
   const user = await lockAccount(tx, actor.id);
   if (!user || user.disabledAt || user.authVersion !== actor.authVersion) throw new AccountSecurityError("stale_session", "Sign in again to continue");
-  if (!await compare(password, user.password)) throw new AccountSecurityError("invalid_password", "Current password is incorrect");
+  if (!await comparePassword(password, user.password)) throw new AccountSecurityError("invalid_password", "Current password is incorrect");
   const mfa = await tx.userMfa.findUnique({ where: { userId: user.id }, select: { enabledAt: true } });
   if (mfa?.enabledAt) {
     const digest = mfaGrantDigest(actor.mfaSessionId);
@@ -149,7 +149,7 @@ export async function consumePasswordReset(raw: string, newPassword: string, now
   if (!/^[A-Za-z0-9_-]{43}$/.test(raw)) throw new AccountTokenError();
   // An unknown token costs no hash (SEC-019); the transaction re-checks it under the lock.
   if (!await prisma.authToken.findUnique({ where: { tokenHash: accountTokenDigest(raw) }, select: { id: true } })) throw new AccountTokenError();
-  const password = await hash(newPasswordSchema.parse(newPassword), 12);
+  const password = await hashPassword(newPasswordSchema.parse(newPassword));
   return prisma.$transaction(async tx => {
     const candidate = await tx.authToken.findUnique({ where: { tokenHash: accountTokenDigest(raw) }, select: { userId: true } });
     if (!candidate) throw new AccountTokenError();
@@ -170,7 +170,7 @@ export async function consumePasswordReset(raw: string, newPassword: string, now
   });
 }
 export async function changePassword(actor: AccountActor, currentPassword: string, newPassword: string, now = new Date()) {
-  const password = await hash(newPasswordSchema.parse(newPassword), 12);
+  const password = await hashPassword(newPasswordSchema.parse(newPassword));
   await prisma.$transaction(async tx => {
     const user = await requireSecurityActor(tx, actor, currentPassword, now);
     const updated = await tx.user.update({ where: { id: user.id }, data: { password, authVersion: { increment: 1 } } });

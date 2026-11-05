@@ -719,13 +719,14 @@ type FreshCode = { actor: { id: string; mfaSessionId?: string }; mfaCode?: strin
 // A restricted society can't change where its money goes, so onboarding stops too (T55),
 // and so does a held one's, as the dashboard link does (PAY-083).
 async function refuseRestrictedOrHeld(orgId: string) {
-  const organisation = await prisma.organisation.findUnique({ where: { id: orgId }, select: { restrictedAt: true, payoutsHeldAt: true, payoutsHeldUntil: true } });
+  const organisation = await prisma.organisation.findUnique({ where: { id: orgId }, select: { slug: true, stripeAccountId: true, restrictedAt: true, payoutsHeldAt: true, payoutsHeldUntil: true } });
   if (organisation?.restrictedAt) {
     throw new OrganisationStripeConnectValidationError(societyRestricted, [{ path: ["organisationId"], message: societyRestricted }]);
   }
   if (organisation && payoutsHeld(organisation)) {
     throw new OrganisationStripeConnectValidationError(payoutsHeldBlocks, [{ path: ["organisationId"], message: payoutsHeldBlocks }]);
   }
+  return organisation;
 }
 
 // Stripe's onboarding collects the bank account payouts go to, so starting or
@@ -739,11 +740,7 @@ export async function startOrganisationStripeOnboarding(orgId: string, { actor, 
 
 export async function continueOrganisationStripeOnboarding(orgId: string, { actor, mfaCode }: FreshCode, returnOrigin?: string) {
   await requireFreshStaffMfa(actor, mfaCode, "Enter your authenticator code to continue to Stripe");
-  await refuseRestrictedOrHeld(orgId);
-  const organisation = await prisma.organisation.findUnique({
-    where: { id: orgId },
-    select: { slug: true, stripeAccountId: true }
-  });
+  const organisation = await refuseRestrictedOrHeld(orgId);
 
   if (!organisation) {
     throw new OrganisationStripeConnectNotFoundError();

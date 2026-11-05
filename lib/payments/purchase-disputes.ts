@@ -92,7 +92,7 @@ export async function recordDispute(tx: Prisma.TransactionClient, input: {
   const review: DisputeReview | null = current.status === "prevented" && outcome === "open" ? "prevented_unconfirmed" : null;
   // Lost at some point, even with an appeal since: only a loss queues a reversal (PAY-081).
   const wasLost = previous === "lost" || existing?.reversalStatus != null;
-  return { existing, outcome, previous, wasLost, worst: worstOutcome(rows), lostAmount: lostAmountOf(rows), restored: Boolean(existing?.resolvedAt), review };
+  return { existing, outcome, wasLost, worst: worstOutcome(rows), lostAmount: lostAmountOf(rows), restored: Boolean(existing?.resolvedAt), review };
 }
 
 // What the bank took back: every lost chargeback's amount, for a partial loss (PAY-074).
@@ -398,13 +398,13 @@ export async function markExternalRefundReviewed(input: { organisationId: string
       const valid = await tx.ticket.findMany({ where: { orderId: input.orderId, id: { in: picked }, validity: "active" }, select: { id: true } });
       if (valid.length !== picked.length || picked.length !== (input.ticketIds ?? []).length) throw new PurchaseReviewError("not_allowed", "Pick tickets of this order that are still valid");
       // PAY-082: no more tickets than the money returned pays for, so an over-pick can't strand a
-      // paying buyer or let a later win refund the whole order. Rounded up: a dispute for one
-      // ticket's price without its fee still covers that ticket.
-      const covered = lostForPart
+      // paying buyer or let a later win refund the whole order. To the nearest ticket: a dispute
+      // for one ticket's price without its fee still covers it, a few dollars back covers none.
+      const lostAmount = order.disputeStatus === "lost"
         ? lostAmountOf(await tx.purchaseDispute.findMany({ where: { orderId: input.orderId }, select: { providerStatus: true, caseType: true, amount: true } }))
-        : order.externalRefundedAmount;
-      const alreadyVoided = await tx.ticket.count({ where: { orderId: input.orderId, validity: "void", validityReason } });
-      if (alreadyVoided + picked.length > Math.ceil((covered * order.quantity) / order.totalAmount)) {
+        : 0;
+      const alreadyVoided = await tx.ticket.count({ where: { orderId: input.orderId, validity: "void", validityReason: { in: ["dispute_lost", "refunded_outside"] } } });
+      if (alreadyVoided + picked.length > Math.round(((order.externalRefundedAmount + lostAmount) * order.quantity) / order.totalAmount)) {
         throw new PurchaseReviewError("not_allowed", "Pick no more tickets than the returned amount covers");
       }
       await tx.ticket.updateMany({ where: { id: { in: picked } }, data: { validity: "void", validityReason, validityChangedAt: now } });

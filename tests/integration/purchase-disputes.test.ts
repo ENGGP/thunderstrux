@@ -476,6 +476,22 @@ describe("refunds made outside Thunderstrux", () => {
     expect((await reviewAs(refunded, { action: "mark_reviewed", ticketIds: picks })).status).toBe(409);
     expect((await reviewAs(refunded, { action: "mark_reviewed", ticketIds: [picks[1]] })).status).toBe(200);
     expect((await orderState(refunded.order.id)).tickets).toEqual([{ validity: "active", validityReason: null }, { validity: "void", validityReason: "refunded_outside" }]);
+
+    // A dollar back covers no ticket.
+    const tiny = await paidOrder();
+    stripe.dispute.mockResolvedValue(disputeObject(tiny, "lost", { amount: 100 }));
+    await reconcileDisputeEvent(signedEvent("charge.dispute.closed", disputeObject(tiny, "lost", { amount: 100 })));
+    expect((await reviewAs(tiny, { action: "mark_reviewed", ticketIds: [(await ticketsOf(tiny))[0]] })).status).toBe(409);
+
+    // A refund made in Stripe and a part loss together count as one amount returned.
+    const both = await paidOrder();
+    stripe.refunds.mockResolvedValue({ data: [dashboardRefund(both, 700)] });
+    await reconcileExternalRefundEvent(signedEvent("refund.updated", dashboardRefund(both, 700)));
+    stripe.dispute.mockResolvedValue(disputeObject(both, "lost", { amount: 800 }));
+    await reconcileDisputeEvent(signedEvent("charge.dispute.closed", disputeObject(both, "lost", { amount: 800 })));
+    const pair = await ticketsOf(both);
+    expect((await reviewAs(both, { action: "mark_reviewed", ticketIds: pair })).status).toBe(409);
+    expect((await reviewAs(both, { action: "mark_reviewed", ticketIds: [pair[0]] })).status).toBe(200);
   });
 
   test("a refund made in Stripe that, with refunds made here, covers the whole order makes it Refunded", async () => {
@@ -931,6 +947,21 @@ describe("dispute transitions", () => {
     expect((await orderState(fixture.order.id)).tickets.every((ticket) => ticket.validity === "active")).toBe(true);
     expect(await disputeRow(fixture)).toMatchObject({ reversalStatus: "succeeded", reversalAmount: 1500 });
     expect(await prisma.refundRequest.count({ where: { orderId: fixture.order.id } })).toBe(0);
+    expect(alertsOf(error, "purchase_dispute_needs_review").map((alert) => alert.reason)).toEqual(["lost_for_part", "won_after_loss"]);
+  });
+
+  test("lost for part, then won while the reversal's outcome is unknown: it may have gone, so a person checks (PAY-080)", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fixture = await paidOrder();
+    stripe.charge.mockResolvedValue({ id: fixture.chargeId, transfer: `tr_${fixture.order.id}` });
+    stripe.transfer.mockResolvedValue({ id: `tr_${fixture.order.id}`, amount: 3000, amount_reversed: 0, currency: "aud", destination: fixture.owner.organisation.stripeAccountId });
+    stripe.reversals.mockResolvedValue({ data: [] });
+    stripe.reverse.mockRejectedValue(new Error("socket hang up"));
+    await deliver(fixture, "lost", { amount: 1500 }, "charge.dispute.closed");
+    expect(await processDisputeReversalBatch(25, new Date(Date.now() + 1000))).toMatchObject({ results: [{ status: "uncertain" }] });
+    await deliver(fixture, "won", { amount: 1500 });
+    expect((await disputeRow(fixture)).reversalStatus).toBe("uncertain");
     expect(alertsOf(error, "purchase_dispute_needs_review").map((alert) => alert.reason)).toEqual(["lost_for_part", "won_after_loss"]);
   });
 

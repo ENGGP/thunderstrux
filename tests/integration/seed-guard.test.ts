@@ -12,7 +12,9 @@ describe("seed guard (SEC-015, SEC-051)", () => {
     const noOrigin = { AUTH_URL: "", NEXTAUTH_URL: "", NEXT_PUBLIC_APP_URL: "" };
     for (const env of [
       { AUTH_URL: "https://preview.example.test" }, { NEXT_PUBLIC_APP_URL: "https://preview.example.test" }, { AUTH_URL: "https://preview.example.test", SEED_DEMO_PASSWORD: "too-short" },
-      { ...noOrigin, NODE_ENV: "production" }, { NEXT_PUBLIC_APP_URL: "http://localhost:3000", SEED_DEMO_PASSWORD: "too-short" }
+      { ...noOrigin, NODE_ENV: "production" }, { NEXT_PUBLIC_APP_URL: "http://localhost:3000", SEED_DEMO_PASSWORD: "too-short" },
+      // SEC-073: a loopback origin under production is still a deployed app.
+      { AUTH_URL: "http://localhost:3080", NEXTAUTH_URL: "http://localhost:3080", NEXT_PUBLIC_APP_URL: "http://localhost:3080", NODE_ENV: "production" }
     ]) {
       const result = seed(env);
       expect(result.status).toBe(1);

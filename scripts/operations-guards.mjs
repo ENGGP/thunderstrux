@@ -90,7 +90,8 @@ export function adminPortalRunArgs(project) {
 // #111: the env file decides a deployed app's settings. Compose lets the shell override
 // the env file, so the settings the app reads are taken out of the shell before every
 // Compose call; a value a command means to pass (a restore's DATABASE_URL) is added after.
-const appSettings = /^(AUTH_|NEXTAUTH_|NEXT_PUBLIC_|TRUSTED_APP_ORIGINS$|RATE_LIMIT_|MFA_|ADMIN_PORTAL_|LEGACY_ORGANISATION_|STRIPE_|RESEND_|EMAIL_|DATABASE_URL$|NOTIFICATION_|ALERT_|ASSET_STORAGE_|SEED_)/;
+// SEC-073: so are the support address and ports docker-compose.yml interpolates.
+const appSettings = /^(AUTH_|NEXTAUTH_|NEXT_PUBLIC_|TRUSTED_APP_ORIGINS$|PLATFORM_SUPPORT_EMAIL$|PORT$|APP_PORT$|RATE_LIMIT_|MFA_|ADMIN_PORTAL_|LEGACY_ORGANISATION_|STRIPE_|RESEND_|EMAIL_|DATABASE_URL$|NOTIFICATION_|ALERT_|ASSET_STORAGE_|SEED_)/;
 export function shellEnv(env = process.env) {
   return Object.fromEntries(Object.entries(env).filter(([name]) => !appSettings.test(name)));
 }

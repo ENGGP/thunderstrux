@@ -16,11 +16,16 @@ function requireService(config, name) {
 // SEC-053 (N9): what any deployed app must have, hosted or the preview's ops:deploy, whatever
 // staff MFA mode the owner chose: rate limiting on, a client-IP header the edge overwrites
 // (x-forwarded-for can be forged, so it would let anyone pick their own bucket), and no admin portal.
+// SEC-072: only a header one of our edges overwrites on every request: Cloudflare's, and the one
+// Caddy sets on the Droplet and hosted stacks. Any other (x-real-ip, true-client-ip) may pass
+// through from the client, letting it pick its own bucket.
+// shortcut: two known edges; add the header of a new edge here when hosting is chosen (OPS-004).
+export const edgeClientIpHeaders = ["cf-connecting-ip", "x-thunderstrux-client-ip"];
 export function assertDeployedAppEnvironment(environment = {}) {
   if (environment.RATE_LIMIT_ENABLED !== "true") throw new Error("The deployed app must set RATE_LIMIT_ENABLED=true: sign-in and checkout limits need Redis");
   const header = String(environment.RATE_LIMIT_TRUSTED_PROXY_HEADER ?? "").trim().toLowerCase();
-  if (!header || header === "x-forwarded-for") {
-    throw new Error("The deployed app must set RATE_LIMIT_TRUSTED_PROXY_HEADER to a header its edge overwrites (cf-connecting-ip behind Cloudflare), not x-forwarded-for");
+  if (!edgeClientIpHeaders.includes(header)) {
+    throw new Error(`The deployed app must set RATE_LIMIT_TRUSTED_PROXY_HEADER to a header its edge overwrites: ${edgeClientIpHeaders.join(" or ")}`);
   }
   // T54: the admin portal runs only on loopback, on demand (pnpm ops:admin), never in the public app.
   if (environment.ADMIN_PORTAL_ENABLED !== undefined) throw new Error("The deployed app must not set ADMIN_PORTAL_ENABLED: the admin portal runs only on loopback");

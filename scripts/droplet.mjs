@@ -226,6 +226,11 @@ async function rollback(args) {
   // The schema stays as the newer release left it; the declaration says the older code was tested against it.
   await assertRollbackCompatibility(resolve(compatibilityFile), { candidateImageId: running.web.id, previousImageId: previous.web.id, migrationDigest: running.migrationDigest });
   const compose = (composeArgs) => composeCommand(target, to, project, extraFiles, composeArgs);
+  // SEC-072: the release coming back meets today's deploy checks, though it may predate them:
+  // images GitHub built on main from its revision, and the hosted config (edge header included).
+  log("check-previous", { to });
+  if (!target.local) for (const check of provenanceChecks(previous)) await spawnText("gh", check);
+  if (!target.local) validateHostedConfig(JSON.parse((await target.run(compose(["config", "--format", "json"]))).stdout));
   log("stop-workers", { from: current, to });
   await target.run(compose(["stop", "-t", "60", ...workerServices]));
   log("start-web");

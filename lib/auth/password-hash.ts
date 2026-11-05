@@ -35,6 +35,9 @@ async function gated<T>(work: () => Promise<T>) {
   }
 }
 
+// A thread that died took its job with it; that job is redone on the event loop.
+class PasswordWorkerStopped extends Error {}
+
 type Job = { op: "hash"; password: string } | { op: "compare"; password: string; digest: string };
 type Pooled = { worker: Worker; pending: Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }> };
 
@@ -70,7 +73,8 @@ function spawn(): Pooled | null {
     // A thread that dies fails what it held; the next job starts a fresh one.
     const fail = (error: unknown) => {
       if (pool.includes(pooled)) pool.splice(pool.indexOf(pooled), 1);
-      for (const job of pooled.pending.values()) job.reject(error instanceof Error ? error : new Error("Password worker stopped"));
+      logWarn("password_hash.worker_stopped", { error });
+      for (const job of pooled.pending.values()) job.reject(new PasswordWorkerStopped());
       pooled.pending.clear();
     };
     worker.on("error", fail);
@@ -94,12 +98,13 @@ function offThread<T>(job: Job, inline: () => Promise<T>): Promise<T> {
   }
   target ??= pool.reduce((least, item) => (item.pending.size < least.pending.size ? item : least));
   const id = nextId++;
+  const pooled = target;
   return new Promise<T>((resolve, reject) => {
-    target.pending.set(id, { resolve: resolve as (value: unknown) => void, reject });
+    pooled.pending.set(id, { resolve: resolve as (value: unknown) => void, reject });
     // Held while a job runs, so a script awaiting a hash doesn't exit first.
-    target.worker.ref();
-    target.worker.postMessage({ id, ...job });
-  });
+    pooled.worker.ref();
+    pooled.worker.postMessage({ id, ...job });
+  }).catch((error: unknown) => (error instanceof PasswordWorkerStopped ? inline() : Promise.reject(error)));
 }
 
 export const comparePassword = (password: string, digest: string) =>

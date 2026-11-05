@@ -55,12 +55,15 @@ export async function POST(request: NextRequest) {
   // Per account across addresses, so guesses spread over many IPs still stop (DEBT-002);
   // a browser that signed in to it before counts on its own bucket alone (SEC-050), so
   // someone behind the same address can't spend its per-address budget either (SEC-063).
+  const ipEmail = () => enforceRateLimit({ policy: "login_ip_email", request, keyParts: [ip, email] });
+  const rawDevice = request.cookies.get(knownDeviceCookie)?.value;
+  // With no device cookie at all, the per-address limit answers before the account is read.
+  if (!rawDevice) { const limited = await ipEmail(); if (limited) return limited; }
   const account = await signInAccount(email);
-  const device = account ? knownDeviceId(request.cookies.get(knownDeviceCookie)?.value, account) : null;
+  const device = account ? knownDeviceId(rawDevice, account) : null;
   const accountLimitResponse = device
     ? await enforceRateLimit({ policy: "login_known_device", request, keyParts: [email, device] })
-    : await enforceRateLimit({ policy: "login_ip_email", request, keyParts: [ip, email] }) ??
-      await enforceRateLimit({ policy: "login_email", request, keyParts: [email] });
+    : (rawDevice ? await ipEmail() : null) ?? await enforceRateLimit({ policy: "login_email", request, keyParts: [email] });
   if (accountLimitResponse) return accountLimitResponse;
 
   // Password checks run on the event loop: past the gate, refuse rather than queue (SEC-019).

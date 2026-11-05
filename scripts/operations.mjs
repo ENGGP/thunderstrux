@@ -257,6 +257,18 @@ async function waitReady(url, attempts = 60) {
   throw lastError ?? new Error("Readiness timed out");
 }
 
+// SEC-053, SEC-072: the environment Compose will really give the app, as a deploy requires it.
+async function assertDeployableEnvironment(ctx, env) {
+  const configured = JSON.parse(await compose(ctx, ["config", "--format", "json"], { capture: true, env }));
+  assertDeployedAppEnvironment(configured.services?.app?.environment);
+}
+
+// SEC-072: for restoring the release that was serving before this deploy: never refuses it.
+async function reportUndeployableEnvironment(ctx, env) {
+  await assertDeployableEnvironment(ctx, env).catch((check) =>
+    console.error(`Restoring the previous release, whose environment fails today's deploy check: ${check.message}. Fix its env file before the next deploy.`));
+}
+
 async function acquireLock(ctx) {
   await mkdir(ctx.stateDir, { recursive: true, mode: 0o700 });
   await restrictStateDirectory(ctx.stateDir);
@@ -281,8 +293,7 @@ async function deploy(ctx) {
   const opsImage = `thunderstrux-ops:${release}`;
   const deploymentEnv = { ...shellEnv(), APP_IMAGE: image, OPS_IMAGE: opsImage };
   // SEC-053: refuse before anything stops, on the environment Compose will really give the app.
-  const configured = JSON.parse(await compose(ctx, ["config", "--format", "json"], { capture: true, env: deploymentEnv }));
-  assertDeployedAppEnvironment(configured.services?.app?.environment);
+  await assertDeployableEnvironment(ctx, deploymentEnv);
   const readinessAttempts = Number(option("--readiness-attempts", "60"));
   if (!Number.isInteger(readinessAttempts) || readinessAttempts < 1 || readinessAttempts > 120) {
     throw new Error("--readiness-attempts must be an integer from 1 to 120");
@@ -351,6 +362,9 @@ async function deploy(ctx) {
       if (!hasActiveEnv) throw new Error("No protected previous environment snapshot is available");
       if (!previousManifest?.imageRef) throw new Error("Previous release has no immutable image reference");
       const rollbackContext = contextWithEnvFile(ctx, activeEnvFile);
+      // SEC-072: the snapshot coming back may predate SEC-053. It was serving a moment ago, so it
+      // comes back either way (refusing would only leave the site down), and a failing check is reported.
+      await reportUndeployableEnvironment(rollbackContext, { ...shellEnv(), APP_IMAGE: previousManifest.imageRef });
       await compose(rollbackContext, ["up", "-d", "--no-build", "--force-recreate", "app"], {
         env: { ...shellEnv(), APP_IMAGE: previousManifest.imageRef }
       });
@@ -401,9 +415,10 @@ async function deploy(ctx) {
     } else {
       if (previousImageId) {
         const recoveryContext = hasActiveEnv ? contextWithEnvFile(ctx, activeEnvFile) : ctx;
-        await compose(recoveryContext, ["up", "-d", "--no-build", "--force-recreate", "app"], {
-          env: { ...shellEnv(), APP_IMAGE: previousManifest?.imageRef ?? previousImageId }
-        }).catch(() => {});
+        const recoveryEnv = { ...shellEnv(), APP_IMAGE: previousManifest?.imageRef ?? previousImageId };
+        // SEC-072: no migration ran, so this is the app that was live a moment ago: as for a rollback.
+        await reportUndeployableEnvironment(recoveryContext, recoveryEnv);
+        await compose(recoveryContext, ["up", "-d", "--no-build", "--force-recreate", "app"], { env: recoveryEnv }).catch(() => {});
       }
       // The stopped workers are the previous release's containers, unchanged.
       if (runningWorkers.length) await compose(ctx, ["--profile", "workers", "start", ...runningWorkers]).catch(() => {});

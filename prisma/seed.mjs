@@ -3,8 +3,8 @@ import { hash } from "bcryptjs";
 
 // SEC-015, SEC-051: the README publishes the seeded accounts' password, so it is only
 // for a loopback dev app. A supplied SEED_DEMO_PASSWORD is always used, for every
-// account, and needs 16+ characters. A public origin, or a production run that names
-// no origin at all (a migration container), must supply one.
+// account, and needs 16+ characters. A public origin, or any production run (a migration
+// container, or a production build behind a loopback origin), must supply one.
 const loopbackHosts = new Set(["localhost", "127.0.0.1", "[::1]"]);
 const origins = ["AUTH_URL", "NEXTAUTH_URL", "NEXT_PUBLIC_APP_URL"].map((name) => process.env[name]).filter(Boolean);
 const publicOrigin = origins.some((url) => !loopbackHosts.has(new URL(url).hostname));
@@ -13,8 +13,10 @@ if (demoPassword && demoPassword.length < 16) {
   console.error("Refusing to seed: SEED_DEMO_PASSWORD must be at least 16 characters.");
   process.exit(1);
 }
-if (!demoPassword && (publicOrigin || (origins.length === 0 && process.env.NODE_ENV === "production"))) {
-  console.error("Refusing to seed: this app is configured for a public origin, or for production with no origin. Set SEED_DEMO_PASSWORD (at least 16 characters) to seed demo accounts with it.");
+// SEC-073: a production build behind a loopback origin (the preview's own app container, say)
+// is still deployed, so the README password is for a development run only.
+if (!demoPassword && (publicOrigin || process.env.NODE_ENV === "production")) {
+  console.error("Refusing to seed: this app is configured for a public origin, or for production. Set SEED_DEMO_PASSWORD (at least 16 characters) to seed demo accounts with it.");
   process.exit(1);
 }
 

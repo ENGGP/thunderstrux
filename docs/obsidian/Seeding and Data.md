@@ -24,7 +24,7 @@ sources: [prisma/seed.mjs, prisma/demo-data.mjs, package.json]
 ## Rules
 
 - **Synthetic dev data only.** Run it against an explicitly chosen development or disposable database. It is not a migration, a restore, or a way to reopen or reassign anything.
-- **Public origins (SEC-015).** If `AUTH_URL`, `NEXTAUTH_URL` or `NEXT_PUBLIC_APP_URL` names a host other than `localhost`, `127.0.0.1` or `[::1]`, the seed exits before writing unless `SEED_DEMO_PASSWORD` has at least 16 characters; so it does with no origin at all under `NODE_ENV=production`, as in a migration container (SEC-051). A supplied `SEED_DEMO_PASSWORD` is always used, for every account, and is refused under 16 characters. Otherwise, on loopback, every account uses `password123` (published in the README).
+- **Public origins (SEC-015).** If `AUTH_URL`, `NEXTAUTH_URL` or `NEXT_PUBLIC_APP_URL` names a host other than `localhost`, `127.0.0.1` or `[::1]`, the seed exits before writing unless `SEED_DEMO_PASSWORD` has at least 16 characters; so it does under `NODE_ENV=production` whatever the origin, loopback included, as in a migration container or the preview's own app (SEC-051, SEC-073). A supplied `SEED_DEMO_PASSWORD` is always used, for every account, and is refused under 16 characters. Otherwise, on loopback, every account uses `password123` (published in the README).
 - **Idempotent, and it overwrites.** Rerunning updates rather than duplicates:
 
 | Row | Matched by | Rerun overwrites |

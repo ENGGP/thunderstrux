@@ -67,6 +67,14 @@ test("a real host deploys a pair only after GitHub proves main built both images
   assert.ok(source.indexOf("provenanceChecks(manifest)") < source.indexOf('log("upload"'), "provenance is checked before anything is uploaded");
 });
 
+test("a rollback holds the release coming back to the same provenance and hosted-config checks before anything stops (SEC-072)", async () => {
+  const source = await text("scripts/droplet.mjs");
+  const rollback = source.slice(source.indexOf("async function rollback"), source.indexOf("async function status"));
+  const stops = rollback.indexOf('log("stop-workers"');
+  assert.ok(rollback.indexOf("provenanceChecks(previous)") > 0 && rollback.indexOf("provenanceChecks(previous)") < stops);
+  assert.ok(rollback.indexOf("validateHostedConfig(") > 0 && rollback.indexOf("validateHostedConfig(") < stops);
+});
+
 test("server commands quote their arguments", () => {
   assert.equal(quote("it's"), "'it'\\''s'");
   assert.equal(quote("a b; rm -rf /"), "'a b; rm -rf /'");

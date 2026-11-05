@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -22,6 +22,15 @@ test("a deploy refuses an env file with an empty EMAIL_FROM, before touching any
   const deploy = spawnSync(process.execPath, ["scripts/operations.mjs", "deploy", "--project", "ops-email-from", "--env-file", envFile, "--url", "http://127.0.0.1:1"], { encoding: "utf8" });
   assert.notEqual(deploy.status, 0);
   assert.match(deploy.stderr, /Set EMAIL_FROM in the env file/);
+});
+
+test("restoring the release that was serving checks its environment and reports a failure, without refusing it (SEC-072)", async () => {
+  const source = await readFile("scripts/operations.mjs", "utf8");
+  const check = source.indexOf("await reportUndeployableEnvironment(rollbackContext");
+  assert.ok(check > 0 && check < source.indexOf('await compose(rollbackContext, ["up"'));
+  const recovery = source.indexOf("await reportUndeployableEnvironment(recoveryContext");
+  assert.ok(recovery > 0 && recovery < source.indexOf('await compose(recoveryContext, ["up"'));
+  assert.match(source, /async function reportUndeployableEnvironment[^]*?assertDeployableEnvironment\(ctx, env\)\.catch/);
 });
 
 test("operations identifiers are narrowly scoped", () => {
@@ -80,6 +89,8 @@ test("rollback declaration must be reviewed and match the actual release", async
 });
 
 test("Compose never takes an app setting from the shell, so the env file decides it (#111)", () => {
-  const kept = shellEnv({ PATH: "/bin", DOCKER_HOST: "unix:///run/docker.sock", APP_IMAGE: "thunderstrux-app:r1", RATE_LIMIT_ENABLED: "false", MFA_ENFORCEMENT_MODE: "off", ADMIN_PORTAL_ENABLED: "true", DATABASE_URL: "postgresql://x", STRIPE_SECRET_KEY: "sk_live_x", AUTH_URL: "https://x", NEXT_PUBLIC_APP_URL: "https://x" });
-  assert.deepEqual(kept, { PATH: "/bin", DOCKER_HOST: "unix:///run/docker.sock", APP_IMAGE: "thunderstrux-app:r1" });
+  const kept = shellEnv({ PATH: "/bin", DOCKER_HOST: "unix:///run/docker.sock", APP_IMAGE: "thunderstrux-app:r1", RATE_LIMIT_ENABLED: "false", MFA_ENFORCEMENT_MODE: "off", ADMIN_PORTAL_ENABLED: "true", DATABASE_URL: "postgresql://x", STRIPE_SECRET_KEY: "sk_live_x", AUTH_URL: "https://x", NEXT_PUBLIC_APP_URL: "https://x",
+    // SEC-073: docker-compose.yml interpolates these into the app too.
+    PLATFORM_SUPPORT_EMAIL: "attacker@example.com", PORT: "8080", APP_PORT: "0.0.0.0:80", REPORT: "kept" });
+  assert.deepEqual(kept, { PATH: "/bin", DOCKER_HOST: "unix:///run/docker.sock", APP_IMAGE: "thunderstrux-app:r1", REPORT: "kept" });
 });

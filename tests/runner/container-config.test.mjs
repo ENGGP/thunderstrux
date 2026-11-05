@@ -144,7 +144,9 @@ test("every deployed app rate-limits behind an overwritten client-IP header, wit
   assert.doesNotThrow(() => assertDeployedAppEnvironment(base));
   assert.throws(() => assertDeployedAppEnvironment({ ...base, RATE_LIMIT_ENABLED: "false" }), /RATE_LIMIT_ENABLED/);
   assert.throws(() => assertDeployedAppEnvironment({ ...base, RATE_LIMIT_ENABLED: undefined }), /RATE_LIMIT_ENABLED/);
-  for (const header of [undefined, "", "X-Forwarded-For"]) {
+  // SEC-072: an allowlist of headers our edges overwrite, so a pass-through one like x-real-ip is refused too.
+  assert.doesNotThrow(() => assertDeployedAppEnvironment({ ...base, RATE_LIMIT_TRUSTED_PROXY_HEADER: "X-Thunderstrux-Client-IP" }));
+  for (const header of [undefined, "", "X-Forwarded-For", "x-real-ip", "true-client-ip", "x-client-ip"]) {
     assert.throws(() => assertDeployedAppEnvironment({ ...base, RATE_LIMIT_TRUSTED_PROXY_HEADER: header }), /RATE_LIMIT_TRUSTED_PROXY_HEADER/);
   }
   assert.throws(() => assertDeployedAppEnvironment({ ...base, ADMIN_PORTAL_ENABLED: "false" }), /ADMIN_PORTAL_ENABLED/);

@@ -24,7 +24,7 @@ Every release is two images built from one revision by `docker/Dockerfile`:
 
 - Neither release image has pnpm, npm or Corepack. Both run as `node` through `docker/entrypoint.sh`.
 - No origin is built in: the server reads `NEXT_PUBLIC_APP_URL` at run time (`lib/app-url.ts`), so one image serves any domain.
-- The OS layer refreshes `ca-certificates libpcre2-8-0 openssl perl-base` from Debian's security repository on every build, so a rebuild picks up base-image CVE fixes the digest pin would otherwise keep.
+- The OS layer refreshes `ca-certificates libpcre2-8-0 openssl perl-base apt libapt-pkg6.0` from Debian's security repository on every build, so a rebuild picks up base-image CVE fixes the digest pin would otherwise keep.
 - **Budgets** (`imageBudgets`, uncompressed sum of `docker history` layers): web 600 MiB, ops 1 GiB. Raise one only with a measured reason and an owner recorded here.
 - **Manifest:** `node scripts/release-pair.mjs --web <image> --ops <image> [--web-ref <ref@sha256> --ops-ref <ref@sha256>] [--out file]` records the full revision, each image's id and size, `requiredMigration` (from `config/schema-contract.json`) and the migration chain digest. It refuses a pair over budget, one image twice, a missing revision or chain, and published refs in the same repository.
 

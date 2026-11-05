@@ -4,12 +4,13 @@ import { prisma } from "@/lib/db";
 import { createMember } from "@/tests/helpers/test-data";
 
 // DEF-035: signing in takes the same bcrypt work whether or not the address has
-// an account, so its timing doesn't tell anyone which addresses do.
+// an account, so its timing doesn't tell anyone which addresses do. Counted at
+// comparePassword, since the bcrypt work itself runs in worker threads (SEC-019).
 const bcrypt = vi.hoisted(() => ({ compare: null as unknown as ReturnType<typeof vi.fn> }));
-vi.mock("bcryptjs", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("bcryptjs")>();
-  bcrypt.compare = vi.fn(actual.compare);
-  return { ...actual, default: { ...actual, compare: bcrypt.compare }, compare: bcrypt.compare };
+vi.mock("@/lib/auth/password-hash", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth/password-hash")>();
+  bcrypt.compare = vi.fn(actual.comparePassword);
+  return { ...actual, comparePassword: bcrypt.compare };
 });
 
 describe("password sign-in", () => {

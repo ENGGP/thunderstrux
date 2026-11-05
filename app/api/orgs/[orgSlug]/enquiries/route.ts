@@ -17,7 +17,9 @@ export async function POST(request: Request, context: RouteContext) {
     await enforceRateLimit({ policy: "society_enquiry", request, keyParts: [ip, orgSlug], required: true });
   if (ipLimit) return ipLimit;
   const body = await validateJson(request, enquirySchema); if (!body.success) return validationError(body.details);
-  const senderLimit = await enforceRateLimit({ policy: "society_enquiry", request, keyParts: [body.data.email], required: true });
+  // SEC-064: the sender's address is unverified, so its budget is per society: sending in
+  // someone's name can use up their enquiries to one society, never to every society.
+  const senderLimit = await enforceRateLimit({ policy: "society_enquiry", request, keyParts: [orgSlug, body.data.email], required: true });
   if (senderLimit) return senderLimit;
   try {
     const sent = await sendSocietyEnquiry(orgSlug, body.data);

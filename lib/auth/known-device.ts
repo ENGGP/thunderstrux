@@ -22,6 +22,12 @@ export function knownDeviceSetCookie(account: Account) {
   return `${knownDeviceCookie}=${nonce}.${sign(account, nonce)}; Path=${path}; Max-Age=${maxAgeSeconds}; HttpOnly; SameSite=Lax${appCookieSecure() ? "; Secure" : ""}`;
 }
 
+// SEC-063: an accepted sign-out forgets the browser, so the next person at a shared
+// computer counts on the shared login_email budget, not the last user's own bucket.
+export function knownDeviceClearCookie() {
+  return `${knownDeviceCookie}=; Path=${path}; Max-Age=0; HttpOnly; SameSite=Lax${appCookieSecure() ? "; Secure" : ""}`;
+}
+
 // The device's id when the cookie was issued for this account at its current address and authVersion, else null.
 export function knownDeviceId(raw: string | undefined, account: Account) {
   const [nonce, signature, extra] = (raw ?? "").split(".");

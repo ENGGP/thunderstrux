@@ -35,7 +35,7 @@ export async function platformWrite<T>(
 ) {
   const reason = cleanReason(input.reason);
   if (reason.length < 8 || reason.length > 500) throw new PlatformRefusal("Give a reason of 8 to 500 characters.");
-  const { change, result } = await prisma.$transaction(async (tx) => {
+  const attempt = () => prisma.$transaction(async (tx) => {
     const operator = await lockPlatformActor(tx, actor, permission, input.code, now);
     const done = await work(tx, now);
     await tx.platformAuditLog.create({ data: {
@@ -44,12 +44,33 @@ export async function platformWrite<T>(
     } });
     return done;
   }, { timeout: timeoutMs });
+  // DEF-101: each change locks its operator first, so two admins completing each other's recovery
+  // requests can lock the same two accounts in opposite orders. Postgres aborts one, nothing of it
+  // is kept (its code unspent too), and it runs once more before asking the admin to retry.
+  let outcome: Awaited<ReturnType<typeof attempt>>;
+  try {
+    outcome = await attempt();
+  } catch (error) {
+    if (!deadlocked(error)) throw error;
+    try {
+      outcome = await attempt();
+    } catch (again) {
+      if (deadlocked(again)) throw new PlatformRefusal("Another admin changed this at the same time. Try again.");
+      throw again;
+    }
+  }
+  const { change, result } = outcome;
   // Ids only; adminPathFor links the receiver to the record.
   emitOperationalAlert("platform_admin_action", {
     action: change.action, operatorUserId: actor.user.id, role: actor.role, targetType: change.targetType, targetId: change.targetId,
     ...(change.targetType === "User" ? { userId: change.targetId } : {}), ...(change.organisationId ? { organisationId: change.organisationId } : {})
   });
   return result;
+}
+
+export function deadlocked(error: unknown) {
+  const code = (error as { code?: unknown } | null)?.code;
+  return code === "P2034" || /deadlock detected|40P01/i.test(String((error as Error | null)?.message ?? ""));
 }
 
 export type Recipient = { email: string; userId?: string | null; relation: string };

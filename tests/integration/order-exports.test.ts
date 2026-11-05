@@ -31,6 +31,10 @@ describe("order exports", () => {
     expect(toCsv(["A"], [[" =1+1"], ["＝SUM(A1)"], ["Ann;=cmd()"], ["Bo\t+1"], ["plain; text"]])).toBe(
       "﻿A\r\n'\u0020=1+1\r\n'＝SUM(A1)\r\n\"'Ann;=cmd()\"\r\n\"'Bo\t+1\"\r\n\"plain; text\"\r\n"
     );
+    // SEC-067: a formula on a later line of the cell, or behind zero-width characters, is defused too.
+    expect(toCsv(["A"], [["Ann\n=cmd()"], ["Bo\r\n+1"], ["​=1+1"], ["⁠‍@SUM(A1)"], ["line one\nline two"]]).slice(1)).toBe(
+      "A\r\n\"'Ann\n=cmd()\"\r\n\"'Bo\r\n+1\"\r\n'​=1+1\r\n'⁠‍@SUM(A1)\r\n\"line one\nline two\"\r\n"
+    );
   });
 
   test("the ticket orders download holds every order the filters match, only this society's, and is audited", async () => {

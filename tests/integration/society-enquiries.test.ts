@@ -85,6 +85,9 @@ describe("society enquiries", () => {
     const { organisation } = await createOrganisationAccount();
     for (let attempt = 0; attempt < 5; attempt += 1) expect((await send(organisation.slug, enquiry)).status).toBe(202);
     expect((await send(organisation.slug, enquiry)).status).toBe(429);
+    // SEC-064: the sender's address is unverified, so its budget is per society.
+    const another = await createOrganisationAccount();
+    expect((await send(another.organisation.slug, enquiry)).status).toBe(202);
     setRateLimitTestBackendFailure(new Error("redis down"));
     expect((await send(organisation.slug, { ...enquiry, email: "other@example.com" })).status).toBe(503);
   });

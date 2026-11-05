@@ -6,7 +6,7 @@ import { badRequest, passwordBusyResponse } from "@/lib/api/errors";
 import { readBodyUpTo } from "@/lib/api/request";
 import { authSecret } from "@/lib/auth/secret";
 import { publicOriginIsHttps } from "@/lib/auth/public-origin";
-import { knownDeviceCookie, knownDeviceId, knownDeviceSetCookie } from "@/lib/auth/known-device";
+import { knownDeviceClearCookie, knownDeviceCookie, knownDeviceId, knownDeviceSetCookie } from "@/lib/auth/known-device";
 import { passwordWorkBusy } from "@/lib/auth/password-hash";
 import { endLoginMfaGrant, signInAccount } from "@/lib/auth/sign-in-records";
 
@@ -52,16 +52,18 @@ export async function POST(request: NextRequest) {
   const submittedEmail = formData.get("email");
   const email = typeof submittedEmail === "string" ? submittedEmail.trim().toLowerCase() : "";
   if (!email) return badRequest("Enter your email address");
-  const emailLimitResponse = await enforceRateLimit({ policy: "login_ip_email", request, keyParts: [ip, email] });
-  if (emailLimitResponse) return emailLimitResponse;
-
   // Per account across addresses, so guesses spread over many IPs still stop (DEBT-002);
-  // a browser that signed in to it before counts on its own bucket (SEC-050).
+  // a browser that signed in to it before counts on its own bucket alone (SEC-050), so
+  // someone behind the same address can't spend its per-address budget either (SEC-063).
+  const ipEmail = () => enforceRateLimit({ policy: "login_ip_email", request, keyParts: [ip, email] });
+  const rawDevice = request.cookies.get(knownDeviceCookie)?.value;
+  // With no device cookie at all, the per-address limit answers before the account is read.
+  if (!rawDevice) { const limited = await ipEmail(); if (limited) return limited; }
   const account = await signInAccount(email);
-  const device = account ? knownDeviceId(request.cookies.get(knownDeviceCookie)?.value, account) : null;
+  const device = account ? knownDeviceId(rawDevice, account) : null;
   const accountLimitResponse = device
     ? await enforceRateLimit({ policy: "login_known_device", request, keyParts: [email, device] })
-    : await enforceRateLimit({ policy: "login_email", request, keyParts: [email] });
+    : (rawDevice ? await ipEmail() : null) ?? await enforceRateLimit({ policy: "login_email", request, keyParts: [email] });
   if (accountLimitResponse) return accountLimitResponse;
 
   // Password checks run on the event loop: past the gate, refuse rather than queue (SEC-019).
@@ -79,8 +81,9 @@ export async function POST(request: NextRequest) {
 async function signOut(request: NextRequest) {
   const token = await getToken({ req: request, secret: authSecret, secureCookie: publicOriginIsHttps(request.url) }).catch(() => null);
   const response = await nextAuthPost(request);
-  if (response.headers.getSetCookie().some((cookie) => clearedSessionCookie.test(cookie))) {
-    await endLoginMfaGrant(typeof token?.staffMfaSessionId === "string" ? token.staffMfaSessionId : undefined);
-  }
-  return response;
+  if (!response.headers.getSetCookie().some((cookie) => clearedSessionCookie.test(cookie))) return response;
+  await endLoginMfaGrant(typeof token?.staffMfaSessionId === "string" ? token.staffMfaSessionId : undefined);
+  const headers = new Headers(response.headers);
+  headers.append("Set-Cookie", knownDeviceClearCookie());
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }

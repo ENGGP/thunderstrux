@@ -5,10 +5,10 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Keep the digest-pinned base, but refresh required Debian packages from its
-# security repository, including vulnerable PCRE and Perl inherited from the base.
+# security repository, including vulnerable PCRE, Perl and APT (CVE-2026-109518) inherited from the base.
 # hadolint ignore=DL3008
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates libpcre2-8-0 openssl perl-base \
+  && apt-get install -y --no-install-recommends ca-certificates libpcre2-8-0 openssl perl-base apt libapt-pkg6.0 \
   && rm -rf /var/lib/apt/lists/*
 
 # Build stages add pnpm through Corepack, at the version package.json's packageManager
@@ -87,6 +87,10 @@ ENV HOSTNAME=0.0.0.0
 
 COPY --chown=node:node --from=builder /app/.next-build/standalone ./
 COPY --chown=node:node --from=builder /app/.next-build/static ./.next-build/static
+# SEC-019: password hashing loads bcryptjs by name inside worker threads, and the standalone
+# trace keeps it only under .pnpm, so give it the top-level link an ordinary install has.
+# The build fails if it isn't there, rather than the app hashing on its event loop.
+RUN cd node_modules && ln -s "$(ls -d .pnpm/bcryptjs@*/node_modules/bcryptjs)" bcryptjs && test -f bcryptjs/index.js
 
 USER node
 

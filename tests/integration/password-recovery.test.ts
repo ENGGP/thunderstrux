@@ -20,6 +20,7 @@ import { POST as changeRoute } from "@/app/api/me/account/password/route";
 import { GET as settingsRoute } from "@/app/api/me/account/route";
 import { GET as csrfRoute } from "@/app/api/security/csrf/route";
 import { fetchJson } from "@/lib/client/api";
+import { knownDeviceId } from "@/lib/auth/known-device";
 import { createTestRateLimitBackend, setRateLimitTestBackend, setRateLimitTestEnabled, setRateLimitTestBackendFailure } from "@/lib/security/rate-limit";
 
 beforeEach(() => { setRateLimitTestEnabled(true); setRateLimitTestBackend(createTestRateLimitBackend()); setRateLimitTestBackendFailure(null); });
@@ -51,7 +52,7 @@ test("reset is single use under contention, revokes sessions/grants/tokens, pres
   await requestPasswordReset(user.email, "https://evil.example"); const raw = await rawToken(user.id);
   const results = await Promise.allSettled([consumePasswordReset(raw, "replacement123"), consumePasswordReset(raw, "replacement123")]);
   expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
-  expect((results.find(result => result.status === "fulfilled") as PromiseFulfilledResult<unknown>).value).toEqual({ reset: true, callbackUrl: "/dashboard" });
+  expect((results.find(result => result.status === "fulfilled") as PromiseFulfilledResult<unknown>).value).toEqual({ reset: true, callbackUrl: "/dashboard", account: { id: user.id, email: user.email, authVersion: 1 } });
   const updated = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
   expect(updated.authVersion).toBe(1); expect(updated.emailVerifiedAt).toEqual(user.emailVerifiedAt);
   expect(await compare("replacement123", updated.password)).toBe(true); expect(await compare("password123", updated.password)).toBe(false);
@@ -65,6 +66,18 @@ test("reset is single use under contention, revokes sessions/grants/tokens, pres
   expect(await getSessionIdentity(user.id, undefined)).toBeNull(); expect(await getSessionIdentity(user.id, 0)).toBeNull();
   expect(await getSessionIdentity(user.id, 1)).toMatchObject({ id: user.id });
 });
+test("the browser that completes a reset is remembered as a known device, and the answer carries no account fields (SEC-063)", async () => {
+  const user = await createMember(); await requestPasswordReset(user.email);
+  const response = await confirmRoute(jsonRequest("http://localhost:3000/api/auth/password/confirm", { token: await rawToken(user.id), newPassword: "replacement123" }));
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ reset: true, callbackUrl: "/dashboard" });
+  const cookie = response.headers.getSetCookie().find((value) => value.startsWith("thunderstrux-known-device="))!;
+  expect(cookie).toContain("Path=/api/auth/callback/credentials");
+  const value = cookie.split(";", 1)[0].slice("thunderstrux-known-device=".length);
+  const updated = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+  expect(knownDeviceId(value, updated)).not.toBeNull();
+});
+
 test("latest reset wins and verification links cannot reset passwords", async () => {
   const user = await createMember(); await requestPasswordReset(user.email); const old = await rawToken(user.id);
   const [claim] = await notifications.claimNotificationJobs(new Date(Date.now() + 1000));

@@ -6,6 +6,8 @@ import sharp from "sharp";
 sharp.concurrency(1);
 export const maxImagesDecoding = 2;
 let decoding = 0;
+// SEC-066: one slot per society, so one society's uploads can't hold both and 503 another's.
+const ownersDecoding = new Set<string>();
 
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 export const maxStoredEdge = 2048;
@@ -54,16 +56,19 @@ function imageType(bytes: Buffer) {
   throw new AssetError(400, "Upload a valid JPEG, PNG or WebP image without trailing content");
 }
 
-export async function sanitiseImage(bytes: Buffer, declaredType: string) {
+export async function sanitiseImage(bytes: Buffer, declaredType: string, owner?: string) {
   if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) throw new AssetError(413, "Images must be no larger than 5 MiB");
   const type = imageType(bytes);
   if (type !== declaredType) throw new AssetError(400, "Image content does not match its file type");
   if (decoding >= maxImagesDecoding) throw new AssetError(503, "Other images are being processed. Try again in a few seconds.");
+  if (owner && ownersDecoding.has(owner)) throw new AssetError(503, "Another of your images is being processed. Try again in a few seconds.");
   decoding += 1;
+  if (owner) ownersDecoding.add(owner);
   try {
     return await decode(bytes);
   } finally {
     decoding -= 1;
+    if (owner) ownersDecoding.delete(owner);
   }
 }
 
@@ -77,6 +82,10 @@ async function decode(bytes: Buffer) {
     // ordinary image, and nobody needs them for a logo or a cover (SEC-055).
     if (metadata.depth !== "uchar" || (metadata.format === "png" && metadata.isProgressive))
       throw new AssetError(400, "Use an 8-bit, non-interlaced image");
+    // SEC-066: a progressive or CMYK JPEG holds whole-image buffers while it decodes, about
+    // 100 MiB at 4096 square, so those may be no larger than what is stored.
+    if (metadata.format === "jpeg" && (metadata.isProgressive || metadata.space === "cmyk" || metadata.channels === 4) && Math.max(metadata.width, metadata.height) > maxStoredEdge)
+      throw new AssetError(400, `Save the image as a standard JPEG, or at most ${maxStoredEdge} pixels on its longest side`);
     // Stored at most 2048px on the longest side: every page shows the stored image (next/image is off), and
     // a phone at 3x needs no more for a full-width hero (PERF-004 tracks sized copies for lists).
     const { data, info } = await image

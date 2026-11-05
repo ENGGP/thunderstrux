@@ -306,6 +306,36 @@ describe("delayed recovery", () => {
     expect((await trail("platform.mfa_reset_completed"))[0]).toMatchObject({ targetType: "Recovery", targetId: requestId });
   });
 
+  test("an authenticator reset's completion also tells a society the person joined during the 72 hours (SEC-069)", async () => {
+    const { actor, next, advance } = await operator();
+    const owner = await createOrganisationAccount();
+    await enrolStaffMfa(owner.user, "target-session");
+    const step = next("Lost their phone; support email 3 Nov");
+    const { requestId } = await requestRecovery(actor, { ...step.input, kind: "mfa_reset", userId: owner.user.id, evidence: "Wrote from the account's own address" }, step.now);
+    await deliver();
+    // Mid-window, the person becomes an admin of another society, whose owner the request never named.
+    const joined = await createOrganisationAccount();
+    await createOrganisationStaff({ organisationId: joined.organisation.id, userId: owner.user.id, role: "admin" });
+    advance(recoveryDelayMs);
+    const ready = next();
+    await completeRecovery(actor, requestId, ready.input, ready.now);
+    expect((await notices("mfa_reset_completed")).map((row) => row.recipient).sort()).toEqual([owner.user.email, joined.user.email].sort());
+  });
+
+  test("a change that Postgres aborts as a deadlock runs once more, then asks the admin to retry (DEF-101)", async () => {
+    const { actor, next } = await operator();
+    const owner = await createOrganisationAccount({ stripeReady: true });
+    const deadlock = () => Promise.reject(Object.assign(new Error("deadlock detected"), { code: "P2034" }));
+    const spy = vi.spyOn(prisma, "$transaction").mockImplementationOnce(deadlock as never);
+    const once = next("Dispute or fraud under review");
+    await changeSociety(actor, "hold_payouts", owner.organisation.id, once.input, once.now);
+    expect((await prisma.organisation.findUniqueOrThrow({ where: { id: owner.organisation.id } })).payoutsHeldAt).not.toBeNull();
+    spy.mockImplementationOnce(deadlock as never).mockImplementationOnce(deadlock as never);
+    const twice = next();
+    await expect(changeSociety(actor, "release_payouts", owner.organisation.id, twice.input, twice.now)).rejects.toThrow("Another admin changed this at the same time");
+    spy.mockRestore();
+  });
+
   test("a request completed after its target changed, or after a cancel, is refused", async () => {
     const { actor, next, advance } = await operator();
     const owner = await createOrganisationAccount();
@@ -458,6 +488,10 @@ describe("the admin API", () => {
     vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://app.example");
     expect((await adminAction(jsonRequest("http://localhost:3000/api/admin/actions", body, { headers: { origin: "https://app.example" } }))).status).toBe(403);
     vi.stubEnv("NEXT_PUBLIC_APP_URL", "http://localhost:3000");
+    // Nor an origin the env file lists for the public app (SEC-068).
+    vi.stubEnv("TRUSTED_APP_ORIGINS", "https://listed.example");
+    expect((await adminAction(jsonRequest("http://localhost:3000/api/admin/actions", body, { headers: { origin: "https://listed.example" } }))).status).toBe(403);
+    vi.stubEnv("TRUSTED_APP_ORIGINS", "");
 
     const user = await createMember();
     await grantPlatformOperator({ email: user.email, role: "support", note: "Integration test operator", by: "cli:test" });

@@ -87,6 +87,10 @@ ENV HOSTNAME=0.0.0.0
 
 COPY --chown=node:node --from=builder /app/.next-build/standalone ./
 COPY --chown=node:node --from=builder /app/.next-build/static ./.next-build/static
+# SEC-019: password hashing loads bcryptjs by name inside worker threads, and the standalone
+# trace keeps it only under .pnpm, so give it the top-level link an ordinary install has.
+# The build fails if it isn't there, rather than the app hashing on its event loop.
+RUN cd node_modules && ln -s "$(ls -d .pnpm/bcryptjs@*/node_modules/bcryptjs)" bcryptjs && test -f bcryptjs/index.js
 
 USER node
 

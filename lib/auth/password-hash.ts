@@ -1,7 +1,5 @@
 import { compare, hash } from "bcryptjs";
-import { createRequire } from "node:module";
 import { availableParallelism } from "node:os";
-import { join } from "node:path";
 import { Worker } from "node:worker_threads";
 import { logWarn } from "@/lib/ops/logger";
 
@@ -41,16 +39,20 @@ class PasswordWorkerStopped extends Error {}
 type Job = { op: "hash"; password: string } | { op: "compare"; password: string; digest: string };
 type Pooled = { worker: Worker; pending: Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }> };
 
-// Plain CommonJS, so it needs no build step: bcryptjs is a server-external package
-// (next.config.ts), so it is a real file in node_modules here and in the standalone image.
+// Plain source, so it needs no build step. bcryptjs is a server-external package
+// (next.config.ts) linked at node_modules/bcryptjs in the web image (docker/Dockerfile);
+// it is imported by name from the app folder, since the standalone trace keeps only its
+// ES-module entry. If it can't load, the worker says so and the job runs here instead.
 const workerSource = `
-const { parentPort, workerData } = require("node:worker_threads");
-const bcrypt = require(workerData.bcrypt);
+const { parentPort } = require("node:worker_threads");
+const loaded = import("bcryptjs").then((module) => module.default ?? module);
+const message = (error) => String((error && error.message) || error);
 parentPort.on("message", ({ id, op, password, digest }) => {
-  (op === "hash" ? bcrypt.hash(password, 12) : bcrypt.compare(password, digest)).then(
-    (result) => parentPort.postMessage({ id, result }),
-    (error) => parentPort.postMessage({ id, error: String((error && error.message) || error) })
-  );
+  loaded.then(
+    (bcrypt) => (op === "hash" ? bcrypt.hash(password, 12) : bcrypt.compare(password, digest)).then(
+      (result) => parentPort.postMessage({ id, result }),
+      (error) => parentPort.postMessage({ id, error: message(error) })),
+    (error) => parentPort.postMessage({ id, missing: message(error) }));
 });`;
 const poolSize = Math.max(1, Math.min(4, availableParallelism() - 1));
 const pool: Pooled[] = [];
@@ -59,16 +61,21 @@ let unavailable = false;
 
 function spawn(): Pooled | null {
   try {
-    const bcrypt = createRequire(join(process.cwd(), "package.json")).resolve("bcryptjs");
-    const worker = new Worker(workerSource, { eval: true, workerData: { bcrypt } });
+    const worker = new Worker(workerSource, { eval: true });
     const pooled: Pooled = { worker, pending: new Map() };
     worker.unref();
-    worker.on("message", ({ id, result, error }: { id: number; result?: unknown; error?: string }) => {
+    worker.on("message", ({ id, result, error, missing }: { id: number; result?: unknown; error?: string; missing?: string }) => {
       const job = pooled.pending.get(id);
       if (!job) return;
       pooled.pending.delete(id);
       if (pooled.pending.size === 0) worker.unref();
-      if (error === undefined) job.resolve(result); else job.reject(new Error(error));
+      if (missing !== undefined) {
+        // bcryptjs isn't loadable from a thread here: every job from now on runs on the event loop.
+        if (!unavailable) logWarn("password_hash.worker_unavailable", { error: missing });
+        unavailable = true;
+        job.reject(new PasswordWorkerStopped());
+      } else if (error === undefined) job.resolve(result);
+      else job.reject(new Error(error));
     });
     // A thread that dies fails what it held; the next job starts a fresh one.
     const fail = (error: unknown) => {

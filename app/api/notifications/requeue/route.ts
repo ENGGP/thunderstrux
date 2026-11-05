@@ -22,7 +22,9 @@ export async function POST(request: Request) {
   try {
     const organisation = await requireCurrentOrganisationAccount();
     await requireOrganisationPermission(organisation.id, "orders:email_resend");
-    const limit = await enforceRateLimit({ policy: "order_resend", request, keyParts: [organisation.id, "batch"] });
+    // SEC-065: a requeue sends email, so it shares the society's resend budget too.
+    const limit = await enforceRateLimit({ policy: "order_resend", request, keyParts: [organisation.id, "batch"] }) ??
+      await enforceRateLimit({ policy: "order_resend_society", request, keyParts: [organisation.id] });
     if (limit) return limit;
     // Bounded like every JSON body (SEC-028).
     const body = await validateJson(request, schema);

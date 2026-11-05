@@ -16,7 +16,9 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
     await requireOrganisationPermission(organisation.id, "orders:email_resend");
     const { jobId } = await context.params;
     if (!await businessNotificationExists(jobId, organisation.id)) return notFound("Notification not found");
-    const limit = await enforceRateLimit({ policy: "order_resend", request, keyParts: [organisation.id, jobId] });
+    // SEC-065: a requeue sends email, so it shares the society's resend budget too.
+    const limit = await enforceRateLimit({ policy: "order_resend", request, keyParts: [organisation.id, jobId] }) ??
+      await enforceRateLimit({ policy: "order_resend_society", request, keyParts: [organisation.id] });
     if (limit) return limit;
     // Bounded like every JSON body (SEC-028).
     const body = await validateJson(request, z.object({ reason: z.string().trim().min(8).max(500) }).strict());

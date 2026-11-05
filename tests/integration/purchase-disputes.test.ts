@@ -1023,6 +1023,9 @@ describe("dispute transitions", () => {
     await send("dp_b", "needs_response", "charge.dispute.created");
     await send("dp_a", "lost", "charge.dispute.closed");
     expect((await orderState(fixture.order.id)).tickets.every((ticket) => ticket.validity === "refund_review")).toBe(true);
+    // The other one won: the tickets the part loss left standing come back for staff to pick.
+    await send("dp_b", "won", "charge.dispute.closed");
+    expect((await orderState(fixture.order.id)).tickets.every((ticket) => ticket.validity === "active")).toBe(true);
   });
 
   test("under staff MFA, voiding the tickets a part loss covered needs a fresh code; reviewing with none picked doesn't (PAY-084)", async () => {

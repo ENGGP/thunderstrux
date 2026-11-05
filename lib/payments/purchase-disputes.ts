@@ -202,6 +202,11 @@ export async function reconcileDisputeEvent(event: Stripe.Event) {
       }
       if (record.restored) review ??= "lost_after_restore";
     }
+    // PAY-086: the last open chargeback went the society's way after another was lost for part,
+    // so the tickets that loss left standing come back for staff to pick, as it would have done.
+    if (outcome === "won" && worst === "lost" && !record.otherOpen) {
+      await tx.ticket.updateMany({ where: { orderId, validity: "refund_review", validityReason: "disputed" }, data: { validity: "active", validityReason: null, validityChangedAt: now } });
+    }
     if (outcome !== "open") {
       await appendOrderLifecycleEvent(tx, { orderId, type: "dispute_closed", source: "stripe_webhook", stripeEventId: event.id, reason: current.status });
     }

@@ -20,7 +20,7 @@ sources: [lib/events/event-lifecycle.ts, lib/events/ticket-codes.ts, lib/events/
 | Cancel an event with sales (EVT-004) | `lib/events/event-cancellation.ts`: `cancelOrganisationEvent` |
 | Dashboard reads | `lib/events/event-lifecycle.ts`: `listDashboardEvents` (views `upcoming`, `drafts`, `past`, `all`), `getDashboardEvent`, `getOrganisationEventForEditing` |
 | Publish readiness and per-type buyability | `lib/events/event-readiness.ts`: `eventReadiness`, `salesOpen` |
-| Locks and sellable stock | `lib/events/inventory.ts`: `lockEventInventory`, `lockOrderInventory`, `readEventInventory` (one event), `readEventsInventory` (public lists), `sellableQuantity`, `returnTicketsToSale` |
+| Locks and sellable stock | `lib/events/inventory.ts`: `lockEventInventory`, `lockOrderInventory` (staff: society first, DEF-098), `readEventInventory` (one event), `readEventsInventory` (public lists), `sellableQuantity`, `returnTicketsToSale` |
 | Public reads | `lib/events/public-events.ts`: `getPublishedEvents`, `getPublishedEventDetail`, `getEventForViewer`, `getBookedEventDetail`, `getEventPreviewDetail`, `priceForViewer` |
 | Codes: lookup, price, uses, staff create and change | `lib/events/ticket-codes.ts`: `readTicketCode`, `priceWithCode`, `codeAppliesTo`, `ticketCodeUses`, `codeForBuyer`, `listEventTicketCodes`, `createEventTicketCode`, `updateEventTicketCode`; `POST /api/events/[eventId]/codes`, `PATCH /api/events/[eventId]/codes/[codeId]`; `components/events/ticket-codes-editor.tsx` |
 | Time and place change notices | `lib/events/event-changes.ts`: `recordEventChange`, `fanOutEventChanges` |

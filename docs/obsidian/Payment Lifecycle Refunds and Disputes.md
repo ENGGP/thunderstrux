@@ -36,7 +36,7 @@ All take the order from the dashboard's selected society and lock it scoped to t
 | --- | --- | --- | --- |
 | `POST /api/orders/[orderId]/refunds` | `orders:refund` + fresh MFA code unless MFA is `off` | `reason` (8 to 500), `confirmation` (the order's short reference), `mfaCode` | 200 when Stripe confirmed, 202 pending or uncertain; 400 `confirmation_mismatch`; 409 `not_refundable`, `in_progress`, `already_refunded`, `disputed`, `verification_failed`, `provider_refused` |
 | `POST /api/orders/[orderId]/cancel` | `orders:refund` + fresh MFA code | `reason`, `mfaCode` | `{ status: "cancelled" }` or `already_cancelled`; 409 `not_cancellable` |
-| `POST /api/orders/[orderId]/review` | `orders:refund` | `{ action: "restore_tickets", reason }` or `{ action: "mark_reviewed", ticketIds? }` | 409 `not_allowed` (also more tickets than the returned amount covers) |
+| `POST /api/orders/[orderId]/review` | `orders:refund` | `{ action: "restore_tickets", reason }` or `{ action: "mark_reviewed", ticketIds?, mfaCode? }`; picked tickets need a fresh code unless MFA is `off` (PAY-084) | 409 `not_allowed` (also more tickets than the returned amount covers); 400 on `mfaCode` |
 | `POST /api/orders/[orderId]/compensation-refund/confirm` | `orders:refund` | `refundId` (`re_...`) | 404; 409 when Stripe's refund doesn't verify or the job isn't confirmable |
 | `PATCH /api/orders/[orderId]/refund-manual` | `orders:refund_mark` + fresh MFA code unless MFA is `off` | `reason` (8-500), `mfaCode` | 409 refusals below |
 

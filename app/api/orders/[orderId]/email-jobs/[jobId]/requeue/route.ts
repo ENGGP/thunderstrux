@@ -20,9 +20,9 @@ export async function POST(request: Request, context: RouteContext) {
     await requireOrganisationPermission(organisation.id, "orders:email_resend");
     await getOrganisationOrderResendTarget(organisation.id, orderId);
     if (!(await ticketEmailJobExists(jobId, orderId))) return notFound("Email job not found");
-    const limit = await enforceRateLimit({
-      policy: "order_resend", request, keyParts: [organisation.id, orderId]
-    });
+    // SEC-065: a requeue sends email too, so it shares the society's resend budget (SEC-057).
+    const limit = await enforceRateLimit({ policy: "order_resend", request, keyParts: [organisation.id, orderId] }) ??
+      await enforceRateLimit({ policy: "order_resend_society", request, keyParts: [organisation.id] });
     if (limit) return limit;
     // Bounded like every JSON body, and a missing or short reason is a 400 (SEC-028).
     const body = await validateJson(request, z.object({ reason: z.string().trim().min(8).max(500) }).strict());

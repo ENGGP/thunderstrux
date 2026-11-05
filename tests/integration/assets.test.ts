@@ -65,6 +65,21 @@ test("16-bit and interlaced PNGs are refused, and a third image decoding at once
   await expect(sanitiseImage(plain, "image/png")).resolves.toMatchObject({ width: 16, height: 16 });
 });
 
+test("large progressive and CMYK JPEGs are refused, and one society holds one decoding slot at a time (SEC-066)", async () => {
+  const wide = (width: number) => sharp({ create: { width, height: 1000, channels: 3, background: "#3366cc" } });
+  const message = "Save the image as a standard JPEG, or at most 2048 pixels on its longest side";
+  await expect(sanitiseImage(await wide(3000).jpeg({ progressive: true }).toBuffer(), "image/jpeg")).rejects.toMatchObject({ status: 400, message });
+  await expect(sanitiseImage(await wide(3000).toColourspace("cmyk").jpeg().toBuffer(), "image/jpeg")).rejects.toMatchObject({ status: 400, message });
+  await expect(sanitiseImage(await wide(2000).jpeg({ progressive: true }).toBuffer(), "image/jpeg")).resolves.toMatchObject({ width: 2000 });
+  await expect(sanitiseImage(await wide(3000).jpeg().toBuffer(), "image/jpeg")).resolves.toMatchObject({ width: 2048 });
+  const plain = await png();
+  const first = sanitiseImage(plain, "image/png", "society-a");
+  await expect(sanitiseImage(plain, "image/png", "society-a")).rejects.toMatchObject({ status: 503 });
+  await expect(sanitiseImage(plain, "image/png", "society-b")).resolves.toMatchObject({ width: 8 });
+  await first;
+  await expect(sanitiseImage(plain, "image/png", "society-a")).resolves.toMatchObject({ width: 8 });
+});
+
 test("multipart reader bounds streamed bytes and accepts one file only", async () => {
   const form = new FormData(); form.set("file", new File([new Uint8Array(await png())], "test.png", { type: "image/png" }));
   expect((await readImageForm(new Request("http://localhost", { method: "POST", body: form }))).type).toBe("image/png");

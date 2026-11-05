@@ -29,10 +29,11 @@ function parseOriginHeader(value: string): string | null {
 
 function configuredTrustedOrigins(): Set<string> {
   const trusted = new Set<string>();
-  const candidates = [
-    // The admin process trusts its own sign-in origin, never the public site's
-    // (whose URL it keeps only for links in notices), so a public page can't post to it.
-    isAdminPortalEnabled() ? process.env.AUTH_URL ?? process.env.NEXTAUTH_URL : appUrl(),
+  // The admin process trusts its own sign-in origin alone, never the public site's
+  // (whose URL it keeps only for links in notices) nor TRUSTED_APP_ORIGINS (SEC-068),
+  // so no other page can post to it whatever the env file lists.
+  const candidates = isAdminPortalEnabled() ? [process.env.AUTH_URL ?? process.env.NEXTAUTH_URL] : [
+    appUrl(),
     ...(process.env.TRUSTED_APP_ORIGINS ?? "")
       .split(",")
       .map((value) => value.trim())

@@ -42,6 +42,9 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1", "localhost"],
   // next dev's MCP endpoint reports open browser sessions' pages; nothing here uses it.
   experimental: { mcpServer: false },
+  // SEC-019: password hashing loads bcryptjs inside worker threads, so it must stay a
+  // real package in node_modules (and the standalone image), not bundled away.
+  serverExternalPackages: ["bcryptjs"],
   distDir: process.env.NODE_ENV === "production" ? ".next-build" : ".next",
   // The app never uses next/image. Off, /_next/image answers 404, so it neither keeps
   // copies of images after they are withdrawn nor transcodes on anonymous requests.

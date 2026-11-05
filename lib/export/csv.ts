@@ -4,9 +4,10 @@
 // lets Excel read accented names as UTF-8.
 // SEC-056: leading spaces and full-width signs still start a formula in some spreadsheets,
 // and a reader that splits on semicolons or tabs can start one inside a cell, so those are
-// defused and quoted too.
-const formulaStart = /^\s*[=+\-@\uFF1D\uFF0B\uFF0D\uFF20]|^[\t\r]/;
-const formulaInside = /[;\t]\s*[=+\-@\uFF1D\uFF0B\uFF0D\uFF20]/;
+// defused and quoted too. SEC-067: so is a formula on a later line of the cell (a reader that
+// ignores RFC 4180 quoting starts a row there), and one behind zero-width characters.
+const formulaStart = /^[\s\u200B-\u200D\u2060]*[=+\-@\uFF1D\uFF0B\uFF0D\uFF20]|^[\t\r]/;
+const formulaInside = /[;\t\r\n][\s\u200B-\u200D\u2060]*[=+\-@\uFF1D\uFF0B\uFF0D\uFF20]/;
 
 function cell(value: string | number | null | undefined) {
   if (value === null || value === undefined) return "";

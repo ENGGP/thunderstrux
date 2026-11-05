@@ -166,7 +166,8 @@ export async function consumePasswordReset(raw: string, newPassword: string, now
     await invalidateAccountTokens(tx, user.id, undefined, now);
     await tx.notificationOutbox.updateMany({ where: { authTokenId: token.id, status: { in: ["pending", "processing"] } }, data: { status: "cancelled", processingToken: null, lastError: "consumed" } });
     await passwordSecurityNotice(tx, updated, "password_reset", now);
-    return { reset: true, callbackUrl: safeReturnPath(token.callbackPath) };
+    // The route turns `account` into a known-device cookie and never returns it (SEC-063).
+    return { reset: true, callbackUrl: safeReturnPath(token.callbackPath), account: { id: updated.id, email: updated.email, authVersion: updated.authVersion } };
   });
 }
 export async function changePassword(actor: AccountActor, currentPassword: string, newPassword: string, now = new Date()) {

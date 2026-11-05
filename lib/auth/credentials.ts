@@ -1,5 +1,21 @@
-import { comparePassword } from "@/lib/auth/password-hash";
+import { CredentialsSignin } from "next-auth";
+import { comparePassword, PasswordBusyError } from "@/lib/auth/password-hash";
 import { prisma } from "@/lib/db";
+
+// SEC-062: the password gate can fill between the sign-in route's check and this one.
+// Auth.js turns any other thrown error into its generic Configuration error, so a full
+// gate signs in as "busy", which the form words as try again shortly.
+export class PasswordBusySignin extends CredentialsSignin {
+  code = "busy";
+}
+async function checkPassword(password: string, digest: string) {
+  try {
+    return await comparePassword(password, digest);
+  } catch (error) {
+    if (error instanceof PasswordBusyError) throw new PasswordBusySignin();
+    throw error;
+  }
+}
 
 // A cost-12 hash of a random string nobody knows, the same cost as real
 // passwords (lib/auth/account-lifecycle.ts). An unknown or disabled address is
@@ -36,11 +52,11 @@ export async function authorizeCredentials(credentials: Partial<Record<string, u
   });
 
   if (!user || user.disabledAt) {
-    await comparePassword(password, dummyPasswordHash);
+    await checkPassword(password, dummyPasswordHash);
     return null;
   }
 
-  const isValidPassword = await comparePassword(password, user.password);
+  const isValidPassword = await checkPassword(password, user.password);
 
   if (!isValidPassword) {
     return null;

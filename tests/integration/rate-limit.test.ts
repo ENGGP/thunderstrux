@@ -25,6 +25,7 @@ import {
 } from "@/lib/security/rate-limit";
 import { POST as checkout } from "@/app/api/payments/checkout/event/route";
 import { POST as resendTickets } from "@/app/api/orders/[orderId]/resend/route";
+import { POST as requeueEmail } from "@/app/api/orders/[orderId]/email-jobs/[jobId]/requeue/route";
 import { POST as createOrganisation } from "@/app/api/orgs/route";
 import { POST as joinOrg } from "@/app/api/orgs/[orgSlug]/join/route";
 import { POST as leaveOrg } from "@/app/api/orgs/[orgSlug]/leave/route";
@@ -588,6 +589,27 @@ describe("rate-limited routes", () => {
     expect((await signIn("password123", cookie)).status).toBe(429);
   });
 
+  test("a known browser counts on its own bucket alone, and an accepted sign-out forgets it (SEC-063)", async () => {
+    const user = await createMember();
+    const { rateLimit, POST } = await authRoute(async (request) => new URL(request.url).pathname.endsWith("/signout")
+      ? new Response(null, { status: 302, headers: { "set-cookie": "authjs.session-token=; Path=/; Max-Age=0" } })
+      : new Response(null, { status: 302, headers: { location: "http://localhost/dashboard", "set-cookie": "authjs.session-token=signed; Path=/; HttpOnly" } }));
+    const signIn = (cookie?: string) => POST(new NextRequest("http://localhost/api/auth/callback/credentials", {
+      method: "POST", headers: { ...form, ...(cookie ? { cookie } : {}) }, body: new URLSearchParams({ email: user.email, password: "password123" })
+    }));
+    const device = (await signIn()).headers.getSetCookie().find((cookie) => cookie.startsWith("thunderstrux-known-device="))!.split(";", 1)[0];
+    // Someone behind the same address spends its per-address budget for this account.
+    const here = new Request("http://localhost/api/auth/callback/credentials", { method: "POST" });
+    for (let attempt = 0; attempt < policies.login_ip_email.limit; attempt += 1) {
+      await rateLimit.enforceRateLimit({ policy: "login_ip_email", request: here, keyParts: [rateLimit.getRateLimitClientIp(here), user.email] });
+    }
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect((await signIn()).status).toBe(429);
+    expect((await signIn(device)).status).toBe(302);
+    const out = await POST(new NextRequest("http://localhost/api/auth/signout", { method: "POST", headers: form, body: "csrfToken=x" }));
+    expect(out.headers.getSetCookie()).toContainEqual(expect.stringMatching(/^thunderstrux-known-device=; Path=\/api\/auth\/callback\/credentials; Max-Age=0; HttpOnly/));
+  });
+
   test("signing out ends that login's staff MFA grant, and only that one (#49)", async () => {
     const user = await createMember();
     // Auth.js clears the session cookie only when the sign-out passed its CSRF check.
@@ -627,10 +649,38 @@ describe("rate-limited routes", () => {
     await expect(comparePassword("secret-value", digest)).resolves.toBe(true);
   });
 
+  test("a sign-in that finds the password gate full inside Auth.js says busy, not a configuration error (SEC-062)", async () => {
+    const { comparePassword, maxPasswordWork } = await import("@/lib/auth/password-hash");
+    const { authorizeCredentials, PasswordBusySignin } = await import("@/lib/auth/credentials");
+    const { hash } = await import("bcryptjs");
+    const digest = await hash("secret-value", 12);
+    const running = Array.from({ length: maxPasswordWork }, () => comparePassword("secret-value", digest));
+    for (const email of ["member@example.com", "nobody@example.com"]) {
+      await expect(authorizeCredentials({ email, password: "password123" })).rejects.toMatchObject({ code: "busy" });
+    }
+    await expect(authorizeCredentials({ email: "nobody@example.com", password: "password123" })).rejects.toBeInstanceOf(PasswordBusySignin);
+    await Promise.all(running);
+  });
+
+  test("password work runs on worker threads, so the event loop stays free, with the same bcrypt hashes (SEC-019)", async () => {
+    const { comparePassword, hashPassword } = await import("@/lib/auth/password-hash");
+    const { compare, hash } = await import("bcryptjs");
+    const { performance } = await import("node:perf_hooks");
+    const digest = await hash("secret-value", 12);
+    await comparePassword("warm-up", digest);
+    const start = performance.eventLoopUtilization();
+    const [right, wrong, fresh] = await Promise.all([comparePassword("secret-value", digest), comparePassword("wrong-value", digest), hashPassword("new-secret-value")]);
+    const used = performance.eventLoopUtilization(start).utilization;
+    expect([right, wrong]).toEqual([true, false]);
+    expect(await compare("new-secret-value", fresh)).toBe(true);
+    expect(used).toBeLessThan(0.5);
+  });
+
   test("an unknown reset token costs no password hash (SEC-019)", async () => {
     vi.resetModules();
     const hashMock = vi.fn(async () => "hashed-password");
-    vi.doMock("bcryptjs", async (importOriginal) => ({ ...(await importOriginal<typeof import("bcryptjs")>()), hash: hashMock }));
+    // Hashing runs in worker threads (SEC-019), so it is counted where every caller asks for it.
+    vi.doMock("@/lib/auth/password-hash", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/auth/password-hash")>()), hashPassword: hashMock }));
     const { consumePasswordReset } = await import("@/lib/auth/account-lifecycle");
     await expect(consumePasswordReset("a".repeat(43), "replacement123")).rejects.toThrow();
     expect(hashMock).not.toHaveBeenCalled();
@@ -639,9 +689,7 @@ describe("rate-limited routes", () => {
   test("signup email throttling stops before password hashing", async () => {
     vi.resetModules();
     const hashMock = vi.fn(async () => "hashed-password");
-    vi.doMock("bcryptjs", () => ({
-      hash: hashMock
-    }));
+    vi.doMock("@/lib/auth/password-hash", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/auth/password-hash")>()), hashPassword: hashMock }));
     const rateLimit = await import("@/lib/security/rate-limit");
     const backend = rateLimit.createTestRateLimitBackend();
     rateLimit.setRateLimitTestBackend(backend);
@@ -780,6 +828,24 @@ describe("rate-limited routes", () => {
     );
     expect(societyThrottled.status).toBe(429);
     expect(await prisma.emailOutbox.count({ where: { orderId: another.id, mode: "manual" } })).toBe(0);
+  });
+
+  test("requeueing a failed ticket email shares the society's resend budget (SEC-065)", async () => {
+    const { user, organisation } = await createOrganisationAccount({ stripeReady: true });
+    const member = await createMember();
+    const event = await createEvent({ organisationId: organisation.id, status: "published" });
+    const order = await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, userId: member.id, status: "paid", paidAt: new Date() });
+    const job = await prisma.emailOutbox.create({ data: { orderId: order.id, mode: "automatic", status: "failed", attempts: 5 } });
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const elsewhere = new Request("http://localhost/api/orders/x/resend", { method: "POST" });
+    for (let spent = 0; spent < policies.order_resend_society.limit; spent += 1) {
+      await enforceRateLimit({ policy: "order_resend_society", request: elsewhere, keyParts: [organisation.id] });
+    }
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const response = await requeueEmail(jsonRequest(`http://localhost/api/orders/${order.id}/email-jobs/${job.id}/requeue`, { reason: "Provider issue resolved" }),
+      routeContext({ orderId: order.id, jobId: job.id }));
+    expect(response.status).toBe(429);
+    expect((await prisma.emailOutbox.findUniqueOrThrow({ where: { id: job.id } })).status).toBe("failed");
   });
 
   test("organisation create throttling prevents organisation writes", async () => {

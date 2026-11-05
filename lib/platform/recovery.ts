@@ -137,7 +137,7 @@ export async function completeRecovery(actor: PlatformActor, requestId: string, 
     const people = await told(tx, request.id);
     // The 72 hours protect only people who heard about it (#42).
     if (!everyoneTold(people)) throw new PlatformRefusal(untold);
-    const recipients = people.map((row) => ({ email: row.recipient, userId: row.userId, relation: "told" }));
+    const recipients: Recipient[] = people.map((row) => ({ email: row.recipient, userId: row.userId, relation: "told" }));
     const base = { targetType: "Recovery" as const, targetId: request.id };
     const complete = () => tx.platformRecoveryRequest.update({ where: { id: request.id }, data: { status: "completed", completedAt: now } });
     if (request.kind === "mfa_reset") {
@@ -148,7 +148,9 @@ export async function completeRecovery(actor: PlatformActor, requestId: string, 
       await tx.userMfa.delete({ where: { userId: user.id } });
       const updated = await tx.user.update({ where: { id: user.id }, data: { authVersion: { increment: 1 } } });
       await tx.accountSecurityEvent.create({ data: { userId: user.id, type: "support_mfa_reset_completed", authVersion: updated.authVersion, createdAt: now } });
-      await notifyPeople(tx, { eventKey: `platform-recovery/${request.id}/completed`, template: "mfa_reset_completed", recipients, linkPath: "/login",
+      // SEC-069: owners and admins of a society the person joined during the 72 hours weren't
+      // on the request's list, so the completion is also sent to whoever it would name now.
+      await notifyPeople(tx, { eventKey: `platform-recovery/${request.id}/completed`, template: "mfa_reset_completed", recipients: [...recipients, ...(await mfaResetRecipients(tx, user))], linkPath: "/login",
         message: `Thunderstrux support reset the authenticator on ${user.email} and signed it out everywhere. Sign in and set up a new authenticator.` });
       return { change: { action: "platform.mfa_reset_completed", ...base, metadata: { userId: user.id } }, result: {} };
     }
@@ -173,10 +175,13 @@ export async function completeRecovery(actor: PlatformActor, requestId: string, 
 
 export async function cancelRecovery(actor: PlatformActor, requestId: string, input: ChangeInput, now = new Date()) {
   return platformWrite(actor, "platform:recovery", input, async (tx) => {
-    const head = await tx.platformRecoveryRequest.findUnique({ where: { id: requestId }, select: { targetUserId: true, organisationId: true } });
+    const head = await tx.platformRecoveryRequest.findUnique({ where: { id: requestId }, select: { targetUserId: true, organisationId: true, requestedByUserId: true } });
     if (!head) throw new PlatformRefusal("That request doesn't exist.");
-    // Cancelling never needs the target to be eligible: it takes the same locks and stops the request.
-    const target = await lockAccount(tx, head.targetUserId);
+    // Cancelling never needs the target to be eligible: it takes the same locks as completing
+    // (target and requester, sorted; DEF-101) and stops the request.
+    const accounts = new Map<string, Awaited<ReturnType<typeof lockAccount>>>();
+    for (const id of [head.targetUserId, head.requestedByUserId].sort()) accounts.set(id, await lockAccount(tx, id));
+    const target = accounts.get(head.targetUserId);
     if (head.organisationId) await lockSociety(tx, head.organisationId);
     await tx.$queryRaw`SELECT "id" FROM "PlatformRecoveryRequest" WHERE "id" = ${requestId} FOR UPDATE`;
     const request = await tx.platformRecoveryRequest.findUniqueOrThrow({ where: { id: requestId } });

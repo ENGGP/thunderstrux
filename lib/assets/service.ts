@@ -23,7 +23,7 @@ async function lockAsset(tx: Prisma.TransactionClient, organisationId: string, i
   return asset;
 }
 export async function uploadAsset(actor: AccountActor, organisationId: string, kind: AssetKind, input: { bytes: Buffer; type: string }, storage: AssetStorage = assetStorage()) {
-  const image = await sanitiseImage(input.bytes, input.type);
+  const image = await sanitiseImage(input.bytes, input.type, organisationId);
   const permission = assetPermission(kind);
   const asset = await prisma.$transaction(async tx => {
     await lockOrganisationActor(tx, actor, organisationId, permission);

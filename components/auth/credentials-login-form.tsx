@@ -32,7 +32,8 @@ export function CredentialsLoginForm({
       });
 
       if (result?.error) {
-        setError("Invalid email or password.");
+        // SEC-062: too many sign-ins at once on the server, not a wrong password.
+        setError(result.code === "busy" ? "Too many sign-ins right now. Try again in a few seconds." : "Invalid email or password.");
         setIsSubmitting(false);
         return;
       }

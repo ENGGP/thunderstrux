@@ -373,6 +373,7 @@ function ReviewNotice({ order, canAct, timeZone }: { order: Awaited<ReturnType<t
           action={canAct && !order.externalRefundReviewedAt ? (
             <OrderReviewActions
               action="mark_reviewed"
+              codeNeeded={mfaEnforcementMode() !== "off"}
               covering="dispute"
               orderId={order.id}
               preselect={Math.floor(dispute.amount / order.unitPrice)}
@@ -417,6 +418,7 @@ function ReviewNotice({ order, canAct, timeZone }: { order: Awaited<ReturnType<t
         canAct ? (
           <OrderReviewActions
             action="mark_reviewed"
+            codeNeeded={mfaEnforcementMode() !== "off"}
             orderId={order.id}
             // The tickets the amount covers whole are picked first; staff change it, or pick none for a goodwill refund.
             preselect={Math.floor(order.externalRefundedAmount / order.unitPrice)}

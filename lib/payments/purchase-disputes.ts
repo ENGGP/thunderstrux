@@ -88,11 +88,13 @@ export async function recordDispute(tx: Prisma.TransactionClient, input: {
     update: fields
   });
   if (!changed) return null;
-  const rows = await tx.purchaseDispute.findMany({ where: scope, select: { providerStatus: true, caseType: true, amount: true } });
+  const rows = await tx.purchaseDispute.findMany({ where: scope, select: { stripeDisputeId: true, providerStatus: true, caseType: true, amount: true } });
   const review: DisputeReview | null = current.status === "prevented" && outcome === "open" ? "prevented_unconfirmed" : null;
   // Lost at some point, even with an appeal since: only a loss queues a reversal (PAY-081).
   const wasLost = previous === "lost" || existing?.reversalStatus != null;
-  return { existing, outcome, wasLost, worst: worstOutcome(rows), lostAmount: lostAmountOf(rows), restored: Boolean(existing?.resolvedAt), review };
+  // PAY-086: another chargeback on the same payment still undecided.
+  const otherOpen = rows.some((row) => row.stripeDisputeId !== current.id && !isInquiry(row.providerStatus) && outcomeOf(row.providerStatus, row.caseType) === "open");
+  return { existing, outcome, wasLost, worst: worstOutcome(rows), lostAmount: lostAmountOf(rows), otherOpen, restored: Boolean(existing?.resolvedAt), review };
 }
 
 // What the bank took back: every lost chargeback's amount, for a partial loss (PAY-074).
@@ -193,8 +195,9 @@ export async function reconcileDisputeEvent(event: Stripe.Event) {
         await returnTicketsToSale(tx, orderId, voided.count);
       } else {
         // PAY-074: the bank took back part of the payment. The tickets stand until staff pick
-        // the ones it covered; the payout holds the rest of the sale.
-        await tx.ticket.updateMany({ where: { orderId, validity: "refund_review", validityReason: "disputed" }, data: { validity: "active", validityReason: null, validityChangedAt: now } });
+        // the ones it covered; the payout holds the rest of the sale. Not while another
+        // chargeback on it is still open (PAY-086): that one keeps them under review.
+        if (!record.otherOpen) await tx.ticket.updateMany({ where: { orderId, validity: "refund_review", validityReason: "disputed" }, data: { validity: "active", validityReason: null, validityChangedAt: now } });
         if (!requiresCompensationReview) review = "lost_for_part";
       }
       if (record.restored) review ??= "lost_after_restore";
@@ -380,7 +383,7 @@ export async function markExternalRefundReviewed(input: { organisationId: string
   const picked = [...new Set(input.ticketIds ?? [])];
   await prisma.$transaction(async (tx) => {
     // Tickets going back on sale lock the event and ticket type before the order.
-    if (picked.length) await lockOrderInventory(tx, input.orderId);
+    if (picked.length) await lockOrderInventory(tx, input.orderId, input.organisationId);
     if (!(await lockOrder(tx, input.orderId, input.organisationId))) throw new PurchaseReviewError("not_found", "Order was not found");
     const order = await tx.order.findFirst({
       where: { id: input.orderId, event: { organisationId: input.organisationId } },

@@ -36,7 +36,7 @@ export default async function StaffSettingsPage() {
         orgSlug={organisation.slug}
         timeZone={timeZone}
       />
-      {organisation.staffRole === "owner" && <StaffHandover orgSlug={organisation.slug} orgName={organisation.name}
+      {organisation.staffRole === "owner" && <StaffHandover orgSlug={organisation.slug} orgName={organisation.name} codeNeeded={mfaEnforcementMode() !== "off"}
         targets={handoverTargets.map(item => ({ id: item.id, email: item.user.email }))} />}
     </DashboardShell>
   );

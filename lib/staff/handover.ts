@@ -4,6 +4,7 @@ import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
 import { staffHandoverSchema } from "@/lib/validators/staff";
 import { revokeOrganisationStaffInvites } from "@/lib/staff/invite-cancellation";
 import { livePlatformRole } from "@/lib/platform/operators";
+import { notifyOwnersOfStaffGrant } from "@/lib/staff/owner-notice";
 
 export class StaffHandoverError extends Error {
   constructor(readonly kind: "authority" | "conflict", message: string) { super(message); }
@@ -31,7 +32,7 @@ export async function handOverOrganisationOwnership(actor: AccountActor, organis
     if (outgoing?.role !== "owner" || outgoing.status !== "active")
       throw new StaffHandoverError("authority", "Only an active owner can hand over ownership");
     const incoming = await tx.organisationStaff.findFirst({ where: { id: request.incomingStaffId, organisationId }, include: {
-      user: { select: { id: true, disabledAt: true, emailVerifiedAt: true, mfa: { select: { enabledAt: true } } } }
+      user: { select: { id: true, email: true, disabledAt: true, emailVerifiedAt: true, mfa: { select: { enabledAt: true } } } }
     } });
     if (!incoming || incoming.userId !== targetSnapshot.userId || incoming.status !== "active" || incoming.user.disabledAt || !incoming.user.emailVerifiedAt ||
         await livePlatformRole(tx, incoming.user))
@@ -52,6 +53,8 @@ export async function handOverOrganisationOwnership(actor: AccountActor, organis
     if (await tx.organisationStaff.count({ where: { organisationId, role: "owner", status: "active" } }) < 1)
       throw new StaffHandoverError("conflict", "At least one active owner is required");
     await tx.organisation.update({ where: { id: organisationId }, data: { accountUserId: null } });
+    // SEC-061: every owner, the new one included, hears that someone became an owner.
+    await notifyOwnersOfStaffGrant(tx, { organisationId, eventKey: `staff/handover/${incoming.id}/${now.getTime()}`, email: incoming.user.email, role: "owner" });
     await tx.auditLog.create({ data: { organisationId, actorUserId: actor.id, action: "staff.ownership.handed_over", targetType: "OrganisationStaff", targetId: incoming.id,
       metadata: { incomingUserId: incoming.userId, incomingStaffId: incoming.id, incomingPreviousRole: incoming.role, incomingRole: "owner", incomingStatus: "active",
         outgoingUserId: actor.id, outgoingStaffId: outgoing.id, outgoingPreviousRole: outgoing.role, outgoingPreviousStatus: outgoing.status,

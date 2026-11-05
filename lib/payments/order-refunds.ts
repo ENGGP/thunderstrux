@@ -552,7 +552,7 @@ export async function cancelOrderTickets(input: { organisationId: string; orderI
   const now = new Date();
   await prisma.$transaction(async (tx) => {
     // The places go back on sale: event and ticket type before the order, as a refund's outcome takes them.
-    await lockOrderInventory(tx, input.orderId);
+    await lockOrderInventory(tx, input.orderId, input.organisationId);
     if (!(await lockOrder(tx, input.orderId, input.organisationId))) throw new OrderRefundError("not_found", "Order was not found");
     const order = await tx.order.findFirst({
       where: { id: input.orderId, event: { organisationId: input.organisationId } },

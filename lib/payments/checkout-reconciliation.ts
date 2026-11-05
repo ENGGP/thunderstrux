@@ -369,6 +369,10 @@ export async function reconcileCompletedCheckoutSession(
         stripeSessionId: session.id,
         metadataOrderId: orderId
       });
+      // PAY-079: money Stripe took for an order this database doesn't have (after a restore, say) needs a person.
+      if (session.payment_status === "paid") {
+        emitOperationalAlert("ticket_webhook_identity_mismatch", { reason: "order_not_found", stripeEventId, stripeSessionId: session.id, metadataOrderId: orderId });
+      }
       result = {
         status: "ignored",
         reason: "order_not_found"

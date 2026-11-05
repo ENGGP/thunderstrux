@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo, logWarn } from "@/lib/ops/logger";
 import { unreversedRefundAmount } from "@/lib/payments/dispute-reversals";
-import { heldMoney, type HeldMoney } from "@/lib/payouts/release";
+import { heldMoney, maxHoldMs, type HeldMoney } from "@/lib/payouts/release";
 import { getStripe } from "@/lib/stripe";
 
 // PAY-005: connected accounts are on manual payouts, so money stays in the
@@ -79,6 +79,24 @@ async function refreshUnreversedRefunds(stripe: Stripe, organisationId: string) 
   }
 }
 
+// PAY-088: Stripe keeps money at most 90 days, so past maxHoldMs a sale is paid out even
+// while its dispute is open (a prevented one nobody could confirm, say). A week before,
+// a person is told and can hold the society's payouts until the dispute is settled.
+const holdEndingNoticeMs = 7 * 86_400_000;
+async function alertDisputeHoldEnding(organisation: { id: string; stripeAccountId: string }, now: Date) {
+  const ending = { disputeStatus: "open" as const, sellerStripeAccountId: organisation.stripeAccountId, paymentKind: "stripe" as const,
+    paidAt: { gt: new Date(now.getTime() - maxHoldMs), lte: new Date(now.getTime() - maxHoldMs + holdEndingNoticeMs) } };
+  const [tickets, commerce] = await Promise.all([
+    prisma.order.findMany({ where: { ...ending, event: { organisationId: organisation.id } }, select: { id: true, paidAt: true } }),
+    prisma.commerceOrder.findMany({ where: { ...ending, organisationId: organisation.id }, select: { id: true, paidAt: true } })
+  ]);
+  const notice = (key: "orderId" | "commerceOrderId", order: { id: string; paidAt: Date | null }) => emitOperationalAlert("dispute_hold_ending", {
+    organisationId: organisation.id, [key]: order.id, releasesAt: new Date((order.paidAt as Date).getTime() + maxHoldMs).toISOString(), dedupeKey: `dispute_hold_ending:${order.id}`
+  });
+  for (const order of tickets) notice("orderId", order);
+  for (const order of commerce) notice("commerceOrderId", order);
+}
+
 // One society: all it has at Stripe less what the rules still hold, and never
 // more than is available now. Held money may still be in Stripe's pending balance,
 // and a negative pending balance is money already owed back (PAY-044). At most one
@@ -97,6 +115,7 @@ async function payOut(stripe: Stripe, organisation: { id: string; stripeAccountI
   const available = balance.available.find((entry) => entry.currency === "aud")?.amount ?? 0;
   const pending = balance.pending.find((entry) => entry.currency === "aud")?.amount ?? 0;
   await refreshUnreversedRefunds(stripe, organisation.id);
+  await alertDisputeHoldEnding(organisation, now);
   const held = await heldMoney(organisation.id, organisation.stripeAccountId, now);
   const amount = Math.min(available, available + pending - held.total);
   const lastPaid = await prisma.societyPayout.findFirst({

@@ -50,7 +50,8 @@ async function resolveOrder(session: Stripe.Checkout.Session, stripeEventId?: st
   const order = bySession ?? byId;
   if (!order) {
     const ticket = await prisma.order.findUnique({ where: { stripeSessionId: session.id }, select: { id: true } });
-    return { error: ignored(ticket ? "ticket_session_with_family" : "order_not_found", details, Boolean(ticket)) };
+    // PAY-079: a paid Session for an order this database doesn't have needs a person too.
+    return { error: ignored(ticket ? "ticket_session_with_family" : "order_not_found", details, Boolean(ticket) || session.payment_status === "paid") };
   }
   if (order.kind !== (family as CommerceKind) || order.organisationId !== session.metadata?.organisationId) return { error: ignored("family_or_society_mismatch", details) };
   if (order.stripeSessionId && order.stripeSessionId !== session.id) return { error: ignored("session_mismatch", details) };

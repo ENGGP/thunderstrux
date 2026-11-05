@@ -1203,10 +1203,14 @@ describe("webhook reconciliation", () => {
     ]);
   });
 
-  test("a paid session for no known order is ignored", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
+  test("a paid session for no known order is ignored and alerts a person; an unpaid one doesn't (PAY-079)", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const alerts = () => error.mock.calls.map(([line]) => String(line)).filter((line) => line.includes('"event":"ticket_webhook_identity_mismatch"')).map((line) => JSON.parse(line));
     expect(await reconcileCompletedCheckoutSession(checkoutSession({ id: "cs_unknown_session", amountTotal: 1200 }))).toEqual({ status: "ignored", reason: "order_not_found" });
     await expect(prisma.ticket.count()).resolves.toBe(0);
+    expect(alerts()).toEqual([expect.objectContaining({ reason: "order_not_found", stripeSessionId: "cs_unknown_session" })]);
+    await reconcileCompletedCheckoutSession(checkoutSession({ id: "cs_unknown_unpaid", amountTotal: 1200, paymentStatus: "unpaid" }));
+    expect(alerts()).toHaveLength(1);
   });
 
   test("a late expiry never undoes a paid, failed or expired order, nor one recorded with another session", async () => {

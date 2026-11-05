@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError, forbidden, mapRouteError, notFound, routeErrorRule, validationError } from "@/lib/api/errors";
-import { authenticationRule, staleSessionRule } from "@/lib/api/route-rules";
+import { authenticationRule, freshStaffMfaRules, staleSessionRule } from "@/lib/api/route-rules";
 import { OrganisationAccessError, requireAuthenticatedUser, requireCurrentOrganisationAccount, requireOrganisationPermission } from "@/lib/auth/access";
 import { PurchaseReviewError, markExternalRefundReviewed, restoreDisputedTickets } from "@/lib/payments/purchase-disputes";
+import { requireFreshStaffMfa } from "@/lib/security/fresh-staff-mfa";
+import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { validateJson } from "@/lib/validators";
 import { maxTicketsPerOrder } from "@/lib/validators/payments";
@@ -13,7 +15,7 @@ type RouteContext = { params: Promise<{ orderId: string }> };
 const schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("restore_tickets"), reason: z.string().trim().min(8, "Give a reason of at least 8 characters").max(500) }).strict(),
   // The tickets the refund made in Stripe covered (DEBT-002); none keeps them all valid.
-  z.object({ action: z.literal("mark_reviewed"), ticketIds: z.array(z.string().trim().min(1).max(100)).max(maxTicketsPerOrder).optional() }).strict()
+  z.object({ action: z.literal("mark_reviewed"), ticketIds: z.array(z.string().trim().min(1).max(100)).max(maxTicketsPerOrder).optional(), mfaCode: z.string().trim().max(20).optional() }).strict()
 ]);
 
 // Staff decisions after Stripe reports a dispute or an outside refund (T18b):
@@ -30,7 +32,17 @@ export async function POST(request: Request, context: RouteContext) {
     const { orderId } = await context.params;
     const input = { organisationId: organisation.id, orderId, actor: { id: actor.id } };
     if (body.data.action === "restore_tickets") await restoreDisputedTickets({ ...input, reason: body.data.reason });
-    else await markExternalRefundReviewed({ ...input, ticketIds: body.data.ticketIds });
+    else {
+      // PAY-084: picked tickets are voided, so unless staff MFA is off this needs a fresh code, as refund-manual does.
+      if (body.data.ticketIds?.length) {
+        if (body.data.mfaCode) {
+          const codeLimit = await enforceRateLimit({ policy: "staff_mfa_verify", request, keyParts: [actor.id] });
+          if (codeLimit) return codeLimit;
+        }
+        await requireFreshStaffMfa(actor, body.data.mfaCode, "Enter your authenticator code to void the tickets picked");
+      }
+      await markExternalRefundReviewed({ ...input, ticketIds: body.data.ticketIds });
+    }
     return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return mapRouteError(error, {
@@ -39,6 +51,7 @@ export async function POST(request: Request, context: RouteContext) {
       rules: [
         authenticationRule,
         staleSessionRule,
+        ...freshStaffMfaRules,
         routeErrorRule(OrganisationAccessError, (failure) => forbidden(failure.message)),
         routeErrorRule(PurchaseReviewError, (failure) =>
           failure.kind === "not_found"

@@ -12,6 +12,7 @@ import {
 import { hasOrganisationPermission } from "@/lib/permissions";
 import { purchasedTicketTypeLabel } from "@/lib/purchases/projection";
 import { prisma } from "@/lib/db";
+import { lockOrder } from "@/lib/payments/order-lifecycle";
 
 export class OrganisationEventTicketsAccessError extends Error {
   constructor(message = "Event not found or access denied") {
@@ -63,7 +64,8 @@ const personName = (user: { firstName: string | null; lastName: string | null; e
 // Search by name, email, order or ticket reference. Every word of a name must
 // match some name or email field; a reference matches anywhere in the id.
 // Roles that can't see emails match only a whole address, so typing ever
-// longer prefixes can't spell out a buyer's email (SEC-038).
+// longer prefixes can't spell out a buyer's email (SEC-038). The live account or
+// guest details count only for an order with no captured buyer, as in Orders (DEF-099).
 function searchWhere(query: string, partialEmails: boolean): Prisma.TicketWhereInput {
   const text = (value: string) => ({ contains: value, mode: "insensitive" as const });
   const email = (value: string) => (partialEmails ? text(value) : { equals: value, mode: "insensitive" as const });
@@ -77,8 +79,8 @@ function searchWhere(query: string, partialEmails: boolean): Prisma.TicketWhereI
           order: {
             OR: [
               { buyerEmailSnapshot: email(word) }, { buyerFirstNameSnapshot: text(word) }, { buyerLastNameSnapshot: text(word) },
-              { buyerDisplayNameSnapshot: text(word) }, { guestIdentity: { email: email(word) } },
-              { user: { OR: [{ email: email(word) }, { firstName: text(word) }, { lastName: text(word) }, { displayName: text(word) }] } }
+              { buyerDisplayNameSnapshot: text(word) }, { buyerIdentityCapturedAt: null, guestIdentity: { email: email(word) } },
+              { buyerIdentityCapturedAt: null, user: { OR: [{ email: email(word) }, { firstName: text(word) }, { lastName: text(word) }, { displayName: text(word) }] } }
             ]
           }
         }))
@@ -188,8 +190,12 @@ async function setCheckIn(organisationId: string, eventId: string, ticketId: str
   // Not a cancelled event: its tickets stay active until each refund lands, but nobody is at that door.
   const scope = { id: ticketId, eventId, event: { organisationId, cancelledAt: null, ...(authority.staffRole === "check_in_staff" ? { status: "published" as const } : {}) } };
   return prisma.$transaction(async (tx) => {
-    const existing = await tx.ticket.findFirst({ where: scope, select: { checkedInAt: true, validity: true, validityReason: true } });
-    if (!existing) throw new OrganisationTicketAccessError();
+    const found = await tx.ticket.findFirst({ where: scope, select: { orderId: true } });
+    if (!found) throw new OrganisationTicketAccessError();
+    // DEF-100: a buyer's free cancellation counts check-ins under this lock, so a
+    // check-in waits for it (and is then refused) rather than being voided by it.
+    await lockOrder(tx, found.orderId, organisationId);
+    const existing = await tx.ticket.findFirstOrThrow({ where: scope, select: { checkedInAt: true, validity: true, validityReason: true } });
     if (existing.validity !== "active") throw new TicketNotValidError(existing.validity, existing.validityReason);
     const checkedInAt = checkIn ? new Date() : null;
     const updated = await tx.ticket.updateMany({

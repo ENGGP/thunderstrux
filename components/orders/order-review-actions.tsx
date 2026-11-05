@@ -4,18 +4,20 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { TextArea } from "@/components/ui/input";
+import { TextArea, TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 
 // Staff decisions after a dispute or a refund made in Stripe (T18b). Neither moves
-// money. Reviewing a refund made in Stripe picks the tickets it covered (DEBT-002).
+// money. Reviewing a refund made in Stripe picks the tickets it covered (DEBT-002);
+// voiding them needs a fresh authenticator code, as marking an order refunded does (PAY-084).
 export function OrderReviewActions({
   orderId,
   action,
   tickets = [],
   preselect = 0,
-  covering = "refund"
+  covering = "refund",
+  codeNeeded = false
 }: {
   orderId: string;
   action: "restore_tickets" | "mark_reviewed";
@@ -24,6 +26,7 @@ export function OrderReviewActions({
   preselect?: number;
   // What returned the money: a refund made in Stripe, or a dispute lost for part (PAY-074).
   covering?: "refund" | "dispute";
+  codeNeeded?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -31,6 +34,8 @@ export function OrderReviewActions({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [picked, setPicked] = useState<string[]>(() => tickets.slice(0, preselect).map((ticket) => ticket.id));
+  const [mfaCode, setMfaCode] = useState("");
+  const voids = action === "mark_reviewed" && picked.length > 0;
 
   async function send() {
     setBusy(true);
@@ -39,8 +44,9 @@ export function OrderReviewActions({
       await fetchJson(`/api/orders/${orderId}/review`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(action === "restore_tickets" ? { action, reason } : { action, ...(picked.length ? { ticketIds: picked } : {}) })
+        body: JSON.stringify(action === "restore_tickets" ? { action, reason } : { action, ...(picked.length ? { ticketIds: picked } : {}), ...(voids && codeNeeded ? { mfaCode: mfaCode.trim() } : {}) })
       });
+      setMfaCode("");
       setOpen(false);
       router.refresh();
     } catch (failure) {
@@ -70,9 +76,12 @@ export function OrderReviewActions({
           </fieldset>
         ) : null}
         {tickets.length ? <p className="text-sm text-ink-soft">{picked.length ? "The tickets picked stop working and go back on sale." : "None picked: every ticket stays valid."}</p> : null}
+        {voids && codeNeeded ? (
+          <TextInput autoComplete="one-time-code" hint="6 digits from your authenticator app" inputMode="numeric" label="Authenticator code" onChange={(event) => setMfaCode(event.target.value)} value={mfaCode} />
+        ) : null}
         {error ? <Notice role="alert" tone="danger">{error}</Notice> : null}
         <div>
-          <Button disabled={busy} onClick={send} size="sm" type="button" variant="secondary">
+          <Button disabled={busy || (voids && codeNeeded && !mfaCode.trim())} onClick={send} size="sm" type="button" variant="secondary">
             Mark as reviewed
           </Button>
         </div>

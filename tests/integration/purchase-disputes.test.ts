@@ -1,6 +1,7 @@
 import { ticketReference } from "@/lib/format";
+import { readFileSync } from "node:fs";
 import Stripe from "stripe";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import { POST as reviewRoute } from "@/app/api/orders/[orderId]/review/route";
 import { POST as webhookRoute } from "@/app/api/payments/webhook/route";
 import { prisma } from "@/lib/db";
@@ -8,9 +9,11 @@ import { enqueueOrganisationOrderTicketEmail, markOrganisationOrderManuallyRefun
 import { processDisputeReversalBatch } from "@/lib/payments/dispute-reversals";
 import { orderReference, processOrderRefundBatch, requestOrderRefund } from "@/lib/payments/order-refunds";
 import { reconcileDisputeEvent, reconcileExternalRefundEvent } from "@/lib/payments/purchase-disputes";
+import { createTestRateLimitBackend, setRateLimitTestBackend } from "@/lib/security/rate-limit";
 import { buyerPurchaseBadge, ticketOrderProjection } from "@/lib/purchases/projection";
 import { getOwnTicketPurchase } from "@/lib/purchases/ticket-purchases";
 import { setMockSession } from "@/tests/helpers/auth";
+import { enrolStaffMfa } from "@/tests/helpers/mfa";
 import { jsonRequest, routeContext } from "@/tests/helpers/http";
 import { createEvent, createOrder, createOrganisationAccount, unique } from "@/tests/helpers/test-data";
 
@@ -1006,6 +1009,53 @@ describe("dispute transitions", () => {
     expect((await orderState(fixture.order.id)).tickets).toEqual([{ validity: "void", validityReason: "dispute_lost" }, { validity: "active", validityReason: null }]);
   });
 
+  test("lost for part while another chargeback on the payment is open: the tickets stay under review (PAY-086)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const fixture = await paidOrder();
+    const now: Record<string, string> = {};
+    stripe.dispute.mockImplementation(async (id: string) => disputeObject(fixture, now[id], { id, amount: 1000 }));
+    const send = async (name: string, status: string, type: string) => {
+      const id = `${name}_${fixture.order.id}`;
+      now[id] = status;
+      await reconcileDisputeEvent(signedEvent(type, disputeObject(fixture, status, { id, amount: 1000 })));
+    };
+    await send("dp_a", "needs_response", "charge.dispute.created");
+    await send("dp_b", "needs_response", "charge.dispute.created");
+    await send("dp_a", "lost", "charge.dispute.closed");
+    expect((await orderState(fixture.order.id)).tickets.every((ticket) => ticket.validity === "refund_review")).toBe(true);
+  });
+
+  test("under staff MFA, voiding the tickets a part loss covered needs a fresh code; reviewing with none picked doesn't (PAY-084)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubEnv("MFA_ENFORCEMENT_MODE", "enforce");
+    vi.stubEnv("RATE_LIMIT_ENABLED", "true");
+    setRateLimitTestBackend(createTestRateLimitBackend());
+    onTestFinished(() => setRateLimitTestBackend(null));
+    vi.useFakeTimers({ toFake: ["Date"] }); const start = Date.now();
+    try {
+      const fixture = await paidOrder();
+      await deliver(fixture, "needs_response", { amount: 1500 }, "charge.dispute.created");
+      await deliver(fixture, "lost", { amount: 1500 });
+      const mfa = await enrolStaffMfa(fixture.owner.user);
+      const review = (body: Record<string, unknown>) =>
+        reviewRoute(jsonRequest(`http://localhost:3000/api/orders/${fixture.order.id}/review`, body), routeContext({ orderId: fixture.order.id }));
+      const [first] = await prisma.ticket.findMany({ where: { orderId: fixture.order.id }, orderBy: { issueSequence: "asc" }, select: { id: true } });
+      const noCode = await review({ action: "mark_reviewed", ticketIds: [first.id] });
+      expect(noCode.status).toBe(400);
+      expect((await noCode.json()).error.details[0].path).toEqual(["mfaCode"]);
+      expect((await orderState(fixture.order.id)).tickets.every((ticket) => ticket.validity === "active")).toBe(true);
+      vi.setSystemTime(start + 30_000);
+      expect((await review({ action: "mark_reviewed", ticketIds: [first.id], mfaCode: mfa.code(1) })).status).toBe(200);
+      expect((await orderState(fixture.order.id)).tickets).toEqual([{ validity: "void", validityReason: "dispute_lost" }, { validity: "active", validityReason: null }]);
+
+      const other = await paidOrder();
+      await deliver(other, "needs_response", { amount: 1500 }, "charge.dispute.created");
+      await deliver(other, "lost", { amount: 1500 });
+      await enrolStaffMfa(other.owner.user);
+      expect((await reviewRoute(jsonRequest(`http://localhost:3000/api/orders/${other.order.id}/review`, { action: "mark_reviewed" }), routeContext({ orderId: other.order.id }))).status).toBe(200);
+    } finally { vi.useRealTimers(); }
+  });
+
   test("restoring after a won chargeback leaves a bank's open inquiry live, so its loss still counts (PAY-077)", async () => {
     const fixture = await paidOrder();
     const statuses: Record<string, string> = {};
@@ -1039,6 +1089,26 @@ describe("dispute transitions", () => {
     expect((await orderState(unknown.order.id)).disputeStatus).toBe("open");
     expect((await disputeRow(resolution)).caseType).toBe("resolution");
     expect(alertsOf(error, "purchase_dispute_needs_review").map((alert) => alert.reason)).toEqual(["prevented_unconfirmed", "prevented_unconfirmed"]);
+  });
+
+  test("the migration reopens orders whose prevented dispute predates case types, and only those (PAY-087)", async () => {
+    const recompute = async () => {
+      const sql = readFileSync("prisma/migrations/20261128010000_prevented_dispute_status/migration.sql", "utf8").replace(/^--.*$/gm, "");
+      for (const statement of sql.split(";").map((part) => part.trim()).filter(Boolean)) await prisma.$executeRawUnsafe(statement);
+    };
+    const prevented = async (caseType: string | null) => {
+      const fixture = await paidOrder();
+      await prisma.order.update({ where: { id: fixture.order.id }, data: { disputeStatus: "won" } });
+      await prisma.purchaseDispute.create({ data: { orderId: fixture.order.id, organisationId: fixture.owner.organisation.id, stripeDisputeId: unique("dp"),
+        stripeChargeId: unique("ch"), amount: 3000, currency: "aud", providerStatus: "prevented", caseType } });
+      return fixture.order.id;
+    };
+    const unknown = await prevented(null);
+    const blocked = await prevented("block");
+    await recompute();
+    await recompute();
+    expect((await orderState(unknown)).disputeStatus).toBe("open");
+    expect((await orderState(blocked)).disputeStatus).toBe("won");
   });
 
   test("Stripe moving the disputed money is re-read like any dispute event (#97)", async () => {

@@ -12,6 +12,7 @@ import { requireOrganisationPermission } from "@/lib/auth/access";
 import { closeAccount, closureAcknowledgement, readAccountClosureEligibility } from "@/lib/auth/account-closure";
 import { mfaGrantDigest } from "@/lib/security/csrf";
 import { createTestRateLimitBackend, setRateLimitTestBackend, setRateLimitTestEnabled, setRateLimitTestBackendFailure } from "@/lib/security/rate-limit";
+import { enrolStaffMfa } from "@/tests/helpers/mfa";
 
 beforeEach(() => { setRateLimitTestEnabled(true); setRateLimitTestBackend(createTestRateLimitBackend()); setRateLimitTestBackendFailure(null); });
 afterEach(() => { setRateLimitTestEnabled(null); setRateLimitTestBackend(null); setRateLimitTestBackendFailure(null); });
@@ -140,6 +141,24 @@ test("HTTP handover retains strict validation, origin/CSRF, owner checks, requir
   expect((await POST(jsonRequest("http://localhost/api/orgs/x/staff/handover", body), context)).status).toBe(403);
 });
 
+test("under staff MFA a handover needs a fresh code, and every owner hears of the new owner (SEC-061)", async () => {
+  vi.stubEnv("MFA_ENFORCEMENT_MODE", "enforce"); vi.stubEnv("RATE_LIMIT_ENABLED", "true");
+  vi.useFakeTimers({ toFake: ["Date"] }); const start = Date.now();
+  try {
+    const data = await fixture(); const coOwner = await createMember();
+    await createOrganisationStaff({ organisationId: data.organisation.id, userId: coOwner.id, role: "owner" });
+    await enrolStaffMfa(data.incoming, "incoming-session"); const mfa = await enrolStaffMfa(data.user);
+    const context = routeContext({ orgSlug: data.organisation.slug }); const url = "http://localhost/api/orgs/x/staff/handover";
+    const noCode = await POST(jsonRequest(url, input(data.staff.id)), context);
+    expect(noCode.status).toBe(400); expect((await noCode.json()).error.details[0].path).toEqual(["mfaCode"]);
+    expect((await POST(jsonRequest(url, { ...input(data.staff.id), mfaCode: "000000" }), context)).status).toBe(400);
+    expect((await prisma.organisationStaff.findUniqueOrThrow({ where: { id: data.staff.id } })).role).not.toBe("owner");
+    vi.setSystemTime(start + 30_000);
+    expect((await POST(jsonRequest(url, { ...input(data.staff.id), mfaCode: mfa.code(1) }), context)).status).toBe(200);
+    const notices = await prisma.notificationOutbox.findMany({ where: { template: "business_notice" }, select: { recipient: true } });
+    expect(notices.map((row) => row.recipient).sort()).toEqual([data.incoming.email, coOwner.email].sort());
+  } finally { vi.useRealTimers(); }
+});
 
 test("handover retires a separate legacy account pointer and serializes reciprocal owners without deadlock", async () => {
   const data = await fixture(); const legacy = await createMember();

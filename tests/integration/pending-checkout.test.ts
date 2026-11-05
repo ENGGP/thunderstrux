@@ -4,7 +4,10 @@ import { POST as cancelTicket } from "@/app/api/purchases/tickets/[orderId]/canc
 import { createCommerceOrder } from "@/lib/commerce/orders";
 import { prisma } from "@/lib/db";
 import { cancelledByBuyer, pendingCheckoutState } from "@/lib/purchases/pending-checkout";
-import { setMockSession } from "@/tests/helpers/auth";
+import { guestCookieName } from "@/lib/guest/guest-access";
+import { guestCsrfToken } from "@/lib/guest/guest-csrf";
+import { clearMockSession, setMockSession } from "@/tests/helpers/auth";
+import { guestSession } from "@/tests/helpers/guest";
 import { jsonRequest, parseJsonResponse, routeContext } from "@/tests/helpers/http";
 import { createEvent, createMember, createOrder, createOrganisationAccount } from "@/tests/helpers/test-data";
 
@@ -101,18 +104,9 @@ describe("unpaid orders", () => {
   });
 
   test("a membership order is cancelled the same way and its hold released", async () => {
-    const society = await createOrganisationAccount({ stripeReady: true });
     const buyer = await createMember();
-    const now = Date.now();
-    const plan = await prisma.membershipProduct.create({ data: { organisationId: society.organisation.id, name: "Semester 2", priceAmount: 2500, startsAt: new Date(now - 86_400_000), endsAt: new Date(now + 100 * 86_400_000), entitlements: ["member_prices"], status: "published", publishedAt: new Date() } });
-    const created = await prisma.$transaction((tx) => createCommerceOrder(tx, {
-      organisationId: society.organisation.id, kind: "membership", buyer: { userId: buyer.id }, buyerEmail: buyer.email, paymentKind: "stripe", feeAmount: 183, source: "checkout",
-      lines: [{ quantity: 1, unitAmount: 2500, name: plan.name, termStartsAt: plan.startsAt, termEndsAt: plan.endsAt, membershipProductId: plan.id }], expiresAt: new Date(now + 20 * minute)
-    }));
-    const order = await prisma.commerceOrder.update({ where: { id: created.id }, data: { stripeSessionId: "cs_test_membership_cancel" } });
+    const order = await unpaidCommerceOrder("membership", { userId: buyer.id }, buyer.email);
     setMockSession({ userId: buyer.id, email: buyer.email, accountRole: "member" });
-    stripe.retrieve.mockResolvedValue({ id: order.stripeSessionId, status: "open", payment_status: "unpaid", url: "https://checkout.stripe.com/c/pay/m", expires_at: Math.floor((now + 20 * minute) / 1000) });
-    stripe.expire.mockResolvedValue({ id: order.stripeSessionId, status: "expired", payment_status: "unpaid" });
     expect(await pendingCheckoutState({ kind: "commerce", id: order.id })).toMatchObject({ state: "waiting" });
 
     const response = await cancelCommerce(jsonRequest(`http://localhost:3000/api/commerce/orders/${order.id}/cancel`, {}), routeContext({ orderId: order.id }));
@@ -120,4 +114,42 @@ describe("unpaid orders", () => {
     expect(await prisma.commerceOrder.findUniqueOrThrow({ where: { id: order.id } })).toMatchObject({ status: "expired", failureReason: "buyer_cancelled" });
     expect(await cancelledByBuyer({ kind: "commerce", id: order.id })).toBe(true);
   });
+
+  test("a guest session cancels only a merchandise order its own identity bought, whatever its checkout attempts name (SEC-059)", async () => {
+    const owner = await guestSession();
+    const other = await guestSession();
+    const order = await unpaidCommerceOrder("merchandise", { guestIdentityId: owner.guest.guestIdentityId }, owner.email);
+    // The other guest's checkout session names this order.
+    await prisma.checkoutAttempt.create({ data: {
+      family: "merchandise", actorKind: "guest", actorId: other.guest.grantId, operationType: "merchandise_checkout", requestHash: "synthetic",
+      clientIdempotencyKey: `key-${order.id}`, providerOperationKey: `op-${order.id}`, commerceOrderId: order.id
+    } });
+    clearMockSession();
+    const cancelAs = (guest: typeof owner) => cancelCommerce(jsonRequest(`http://localhost:3000/api/commerce/orders/${order.id}/cancel`, {}, {
+      headers: { cookie: `${guestCookieName}=${guest.sessionId}`, "x-thunderstrux-guest-csrf": guestCsrfToken(guest.sessionId) }
+    }), routeContext({ orderId: order.id }));
+    expect((await cancelAs(other)).status).toBe(404);
+    expect(stripe.retrieve).not.toHaveBeenCalled();
+    expect((await prisma.commerceOrder.findUniqueOrThrow({ where: { id: order.id } })).status).toBe("pending");
+    // The same attempt, made by the buyer's own session, cancels it.
+    await prisma.checkoutAttempt.updateMany({ where: { commerceOrderId: order.id }, data: { actorId: owner.guest.grantId } });
+    expect(await parseJsonResponse(await cancelAs(owner))).toEqual({ status: "cancelled" });
+  });
 });
+
+// An unpaid membership (a member's) or merchandise order held for 20 minutes, and a Stripe that shows its open payment page.
+async function unpaidCommerceOrder(kind: "membership" | "merchandise", buyer: { userId: string } | { guestIdentityId: string }, buyerEmail: string) {
+  const society = await createOrganisationAccount({ stripeReady: true });
+  const now = Date.now();
+  const plan = kind === "membership"
+    ? await prisma.membershipProduct.create({ data: { organisationId: society.organisation.id, name: "Semester 2", priceAmount: 2500, startsAt: new Date(now - 86_400_000), endsAt: new Date(now + 100 * 86_400_000), entitlements: ["member_prices"], status: "published", publishedAt: new Date() } })
+    : null;
+  const line = plan ? { quantity: 1, unitAmount: 2500, name: plan.name, termStartsAt: plan.startsAt, termEndsAt: plan.endsAt, membershipProductId: plan.id } : { quantity: 1, unitAmount: 2500, name: "Society tote" };
+  const created = await prisma.$transaction((tx) => createCommerceOrder(tx, {
+    organisationId: society.organisation.id, kind, buyer, buyerEmail, paymentKind: "stripe", feeAmount: 183, source: "checkout", lines: [line], expiresAt: new Date(now + 20 * minute)
+  }));
+  const order = await prisma.commerceOrder.update({ where: { id: created.id }, data: { stripeSessionId: `cs_test_${kind}_${created.id}` } });
+  stripe.retrieve.mockResolvedValue({ id: order.stripeSessionId, status: "open", payment_status: "unpaid", url: "https://checkout.stripe.com/c/pay/m", expires_at: Math.floor((now + 20 * minute) / 1000) });
+  stripe.expire.mockResolvedValue({ id: order.stripeSessionId, status: "expired", payment_status: "unpaid" });
+  return order;
+}

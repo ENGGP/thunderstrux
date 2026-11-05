@@ -124,7 +124,10 @@ export async function canOpenGuestOrder(session: GuestSession, orderId: string) 
 // The same rule for a merchandise order (T27b): the one its purchase link
 // names, or one bought during this checkout session.
 export async function canOpenGuestCommerceOrder(session: GuestSession, commerceOrderId: string) {
-  if (session.purpose === "purchase") return session.commerceOrderId === commerceOrderId;
+  if (session.purpose === "purchase" && session.commerceOrderId !== commerceOrderId) return false;
+  // SEC-059: and only an order this guest identity bought, as #66 made tickets.
+  if (!(await prisma.commerceOrder.findFirst({ where: { id: commerceOrderId, guestIdentityId: session.guestIdentityId }, select: { id: true } }))) return false;
+  if (session.purpose === "purchase") return true;
   return Boolean(await prisma.checkoutAttempt.findFirst({ where: { actorKind: "guest", actorId: session.grantId, commerceOrderId }, select: { id: true } }));
 }
 

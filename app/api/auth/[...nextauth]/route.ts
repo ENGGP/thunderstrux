@@ -29,15 +29,19 @@ const clearedSessionCookie = /^(__Secure-)?authjs\.session-token(\.\d+)?=;/;
 export async function POST(request: NextRequest) {
   const pathname = new URL(request.url).pathname;
   const ip = getRateLimitClientIp(request);
-  // Every Auth.js POST, not only the credentials callback (SEC-049).
-  const globalLimitResponse = await enforceRateLimit({ policy: "login_ip_global", request, keyParts: [ip] });
-  if (globalLimitResponse) return globalLimitResponse;
+  const signingOut = pathname.endsWith("/api/auth/signout");
+  // Every Auth.js POST but sign-out (SEC-049). A budget shared by everyone behind
+  // one address, or a limiter outage, must never keep a session alive (SEC-058).
+  if (!signingOut) {
+    const globalLimitResponse = await enforceRateLimit({ policy: "login_ip_global", request, keyParts: [ip] });
+    if (globalLimitResponse) return globalLimitResponse;
+  }
 
   // Read at most 10 KB before Auth.js parses anything, whatever the route (SEC-049).
   const body = await readBodyUpTo(request.clone(), maxAuthBodyBytes);
   if (body === null) return badRequest("Request body is too large");
 
-  if (pathname.endsWith("/api/auth/signout")) return signOut(request);
+  if (signingOut) return signOut(request);
   if (!pathname.endsWith("/api/auth/callback/credentials")) return nextAuthPost(request);
 
   if (!formContentType.test(request.headers.get("content-type") ?? "")) return badRequest("Sign in through the sign-in form");

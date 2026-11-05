@@ -17,7 +17,8 @@ void runWorker("checkout-recovery", async () => {
   try {
     return { ...(await processCheckoutAttemptRecoveryBatch({ limit: batchLimit() })) };
   } catch (error) {
-    emitOperationalAlert("checkout_attempt_recovery_failed", { error });
+    // SEC-060: the alert leaves the host, so it carries the error's name only; the worker logs the rest.
+    emitOperationalAlert("checkout_attempt_recovery_failed", { errorName: error instanceof Error ? error.name : "UnknownError" });
     throw error;
   }
 });

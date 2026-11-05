@@ -832,4 +832,14 @@ describe("commerce dispute transitions", () => {
     expect((await prisma.purchaseDispute.findUniqueOrThrow({ where: { stripeDisputeId: `dp_${late.order.id}` } })).reversalStatus).toBe("cancelled");
     expect(alertsOf(error, "purchase_dispute_needs_review").map((alert) => alert.reason)).toEqual(["lost_for_part", "won_after_loss"]);
   });
+
+  test("lost, appealed, then won: the ended membership is a person's call (PAY-081)", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fixture = await paid("membership");
+    await send(fixture, "lost", fixture.order.totalAmount);
+    await send(fixture, "appeal_under_review", fixture.order.totalAmount);
+    await send(fixture, "won", fixture.order.totalAmount);
+    expect((await prisma.purchaseDispute.findUniqueOrThrow({ where: { stripeDisputeId: `dp_${fixture.order.id}` } })).reversalStatus).toBe("cancelled");
+    expect(alertsOf(error, "purchase_dispute_needs_review")).toEqual([expect.objectContaining({ commerceOrderId: fixture.order.id, reason: "won_after_loss" })]);
+  });
 });

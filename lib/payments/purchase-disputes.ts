@@ -89,11 +89,15 @@ export async function recordDispute(tx: Prisma.TransactionClient, input: {
   });
   if (!changed) return null;
   const rows = await tx.purchaseDispute.findMany({ where: scope, select: { providerStatus: true, caseType: true, amount: true } });
-  // What the bank took back: every lost chargeback's amount, for a partial loss (PAY-074).
-  const lostAmount = rows.filter((row) => !isInquiry(row.providerStatus) && outcomeOf(row.providerStatus, row.caseType) === "lost").reduce((sum, row) => sum + row.amount, 0);
   const review: DisputeReview | null = current.status === "prevented" && outcome === "open" ? "prevented_unconfirmed" : null;
-  return { existing, outcome, previous, worst: worstOutcome(rows), lostAmount, restored: Boolean(existing?.resolvedAt), review };
+  // Lost at some point, even with an appeal since: only a loss queues a reversal (PAY-081).
+  const wasLost = previous === "lost" || existing?.reversalStatus != null;
+  return { existing, outcome, wasLost, worst: worstOutcome(rows), lostAmount: lostAmountOf(rows), restored: Boolean(existing?.resolvedAt), review };
 }
+
+// What the bank took back: every lost chargeback's amount, for a partial loss (PAY-074).
+export const lostAmountOf = (rows: Array<{ providerStatus: string; caseType: string | null; amount: number }>) =>
+  rows.filter((row) => !isInquiry(row.providerStatus) && outcomeOf(row.providerStatus, row.caseType) === "lost").reduce((sum, row) => sum + row.amount, 0);
 
 // PAY-072: a dispute Stripe turned won after its loss no longer owes the society's
 // share back: a reversal never sent is cancelled. One claimed or `uncertain` may
@@ -204,7 +208,7 @@ export async function reconcileDisputeEvent(event: Stripe.Event) {
     } });
     if (worst === "won") {
       let refundReason = null as string | null;
-      if (record.previous === "lost") {
+      if (record.wasLost) {
         await cancelQueuedReversals(tx, { orderId });
         // PAY-073: the bank re-billed the buyer for a loss that voided their tickets. Places may be
         // resold and the event over, so the buyer is refunded, never restored. A used order, or one
@@ -212,6 +216,10 @@ export async function reconcileDisputeEvent(event: Stripe.Event) {
         if (await tx.ticket.count({ where: { orderId, validity: "void", validityReason: "dispute_lost" } })) {
           if (await tx.ticket.count({ where: { orderId, OR: [{ checkedInAt: { not: null } }, { validity: { not: "void" } }] } })) review = "won_after_loss";
           else refundReason = "The bank returned this payment, then reversed its decision: the buyer is refunded";
+        } else if (await tx.purchaseDispute.count({ where: { orderId, reversalStatus: { in: ["pending", "uncertain", "succeeded"] } } })) {
+          // PAY-080: every ticket stands and the buyer paid again, but the society's share went
+          // (or may have) to cover the loss: a person returns it.
+          review = "won_after_loss";
         }
       }
       await reopenRepaidReview(tx, { orderId, commerceOrderId: null }, event.id);
@@ -376,7 +384,7 @@ export async function markExternalRefundReviewed(input: { organisationId: string
     if (!(await lockOrder(tx, input.orderId, input.organisationId))) throw new PurchaseReviewError("not_found", "Order was not found");
     const order = await tx.order.findFirst({
       where: { id: input.orderId, event: { organisationId: input.organisationId } },
-      select: { externalRefundedAmount: true, externalRefundReviewedAt: true, refundStatus: true, disputeStatus: true }
+      select: { externalRefundedAmount: true, externalRefundReviewedAt: true, refundStatus: true, disputeStatus: true, quantity: true, totalAmount: true }
     });
     if (!order) throw new PurchaseReviewError("not_found", "Order was not found");
     if (order.externalRefundReviewedAt) return;
@@ -385,10 +393,21 @@ export async function markExternalRefundReviewed(input: { organisationId: string
       throw new PurchaseReviewError("not_allowed", "There is no partial refund to review on this order");
     }
     const now = new Date();
+    const validityReason = lostForPart ? "dispute_lost" : "refunded_outside";
     if (picked.length) {
       const valid = await tx.ticket.findMany({ where: { orderId: input.orderId, id: { in: picked }, validity: "active" }, select: { id: true } });
       if (valid.length !== picked.length || picked.length !== (input.ticketIds ?? []).length) throw new PurchaseReviewError("not_allowed", "Pick tickets of this order that are still valid");
-      await tx.ticket.updateMany({ where: { id: { in: picked } }, data: { validity: "void", validityReason: lostForPart ? "dispute_lost" : "refunded_outside", validityChangedAt: now } });
+      // PAY-082: no more tickets than the money returned pays for, so an over-pick can't strand a
+      // paying buyer or let a later win refund the whole order. To the nearest ticket: a dispute
+      // for one ticket's price without its fee still covers it, a few dollars back covers none.
+      const lostAmount = order.disputeStatus === "lost"
+        ? lostAmountOf(await tx.purchaseDispute.findMany({ where: { orderId: input.orderId }, select: { providerStatus: true, caseType: true, amount: true } }))
+        : 0;
+      const alreadyVoided = await tx.ticket.count({ where: { orderId: input.orderId, validity: "void", validityReason: { in: ["dispute_lost", "refunded_outside"] } } });
+      if (alreadyVoided + picked.length > Math.round(((order.externalRefundedAmount + lostAmount) * order.quantity) / order.totalAmount)) {
+        throw new PurchaseReviewError("not_allowed", "Pick no more tickets than the returned amount covers");
+      }
+      await tx.ticket.updateMany({ where: { id: { in: picked } }, data: { validity: "void", validityReason, validityChangedAt: now } });
       await returnTicketsToSale(tx, input.orderId, picked.length);
     }
     await tx.order.update({ where: { id: input.orderId }, data: { externalRefundReviewedAt: now } });

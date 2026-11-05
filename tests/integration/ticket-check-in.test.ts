@@ -865,6 +865,15 @@ describe("ticket visibility and check-in API", () => {
     expect((await search(event.id, "nobody here")).tickets).toEqual([]);
   });
 
+  test("an order with a captured buyer is found by what was captured, not the account's later email (DEF-099)", async () => {
+    const { event, buyer, order, ticket } = await doorFixture();
+    await prisma.order.update({ where: { id: order.id }, data: { buyerEmailSnapshot: buyer.email, buyerFirstNameSnapshot: "Sam", buyerLastNameSnapshot: "Lee", buyerIdentityCapturedAt: new Date(), buyerIdentityProvenance: "purchase" } });
+    const later = `renamed.${Date.now()}@example.com`;
+    await prisma.user.update({ where: { id: buyer.id }, data: { email: later } });
+    expect((await search(event.id, buyer.email)).tickets.map((found: { id: string }) => found.id)).toEqual([ticket.id]);
+    expect((await search(event.id, later)).tickets).toEqual([]);
+  });
+
   // DEBT-002: the door checks one event, so a ticket of the society's other events isn't found there.
   test("check-in is scoped to the event the door is checking", async () => {
     const { owner, event, buyer, ticket } = await doorFixture();

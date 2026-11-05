@@ -49,14 +49,14 @@ There is no one universal order. Each family runs its checks in this order; a re
 | `POST /api/events` | origin → body → `events:manage` on the body's `organisationId` → sign-in |
 | Event reads (`GET events`, `GET events/[eventId]`) | `orgId` query → `events:manage` |
 | Check-in, check-out | origin → dashboard context → `tickets:check_in` → `ticket_check_in_out` → sign-in |
-| Staff order decisions (`refunds`, `cancel`) | origin → context → permission → sign-in → body → `staff_mfa_verify` when a code is sent → fresh code unless MFA mode `off` → service; `review` stops at the login grant |
+| Staff order decisions (`refunds`, `cancel`) | origin → context → permission → sign-in → body → `staff_mfa_verify` when a code is sent → fresh code unless MFA mode `off` → service; `review` stops at the login grant, except `mark_reviewed` with tickets picked, which voids them and needs the code too (PAY-084) |
 | `refund-manual` | origin → context → `orders:refund_mark` → sign-in → strict body → `staff_mfa_verify` when a code is sent → fresh code unless `off` |
 | `resend` | origin → context → `orders:email_resend` → order in this society (404) → `order_resend` → `order_resend_society` → sign-in; a resend already waiting adds no second email (SEC-057) |
 | Email and notification requeue | origin → context → `orders:email_resend` → order/job exists (404) → `order_resend` → bounded strict body → sign-in |
 | `compensation-refund/confirm` | origin → body → context → `orders:refund` → sign-in → `staff_mfa_verify` when a code is sent → fresh code unless MFA is `off` (SEC-036) |
 | Society slug routes (`organisationActor`: profile, assets, calendar, memberships, merchandise) | origin (writes) → sign-in → slug → permission (+MFA) → rate limit where one applies → body |
 | Staff end routes (membership revoke/cancel/refund, merchandise refund/cancel) | as slug routes, then `staff_mfa_verify` when a code is sent → fresh code unless `off` |
-| Staff management | list: slug → `staff:manage`. `PATCH`: origin → body → sign-in → slug → `staff:manage`. Invites: origin → body → verified → slug → `staff:manage` (owner role needs an owner) → invite limits. Handover: origin → body → verified → slug → owner → `account_security_change` |
+| Staff management | list: slug → `staff:manage`. `PATCH`: origin → body → sign-in → slug → `staff:manage`. Invites: origin → body → verified → slug → `staff:manage` (owner role needs an owner) → invite limits. Handover: origin → body → verified → slug → owner → `account_security_change` → fresh code unless MFA is `off` (SEC-061) |
 | Invite acceptance | origin → body → `account_token_ip` → `account_token_digest` (keys prefixed `staff_invite`) → verified |
 | Society bootstrap `POST /api/orgs` | origin → organisation account → verified → `organisation_create` → body |
 | Join / leave | origin → member account → (join only) verified → `organisation_join_leave` |
@@ -186,7 +186,7 @@ Methods in backticks; "ctx" is the selected dashboard context ([[Authentication 
 | `GET` `/api/events/[eventId]/tickets`; `POST` `/api/tickets/[ticketId]/check-in`, `/api/tickets/[ticketId]/check-out` (with `?eventId=`, DEBT-002) | ctx, `tickets:check_in` +MFA; writes: origin, `ticket_check_in_out` |
 | `GET` `/api/orders`, `/api/orders/[orderId]` | ctx, `orders:read` +MFA |
 | `GET` `/api/orders/export`, `/api/events/[eventId]/tickets/export` | ctx, `orders:read` +MFA (attendees also `tickets:check_in`), `data_export`; audited |
-| `POST` `/api/orders/[orderId]/refunds`, `/api/orders/[orderId]/cancel`, `/api/orders/[orderId]/review` | origin, ctx, `orders:refund` +MFA; refunds and cancel also code |
+| `POST` `/api/orders/[orderId]/refunds`, `/api/orders/[orderId]/cancel`, `/api/orders/[orderId]/review` | origin, ctx, `orders:refund` +MFA; refunds, cancel and a review that voids tickets also code |
 | `PATCH` `/api/orders/[orderId]/refund-manual` | origin, ctx, `orders:refund_mark` +MFA, fresh code |
 | `POST` `/api/orders/[orderId]/resend`, `/api/orders/[orderId]/email-jobs/[jobId]/requeue` | origin, ctx, `orders:email_resend` +MFA, `order_resend` |
 | `POST` `/api/orders/[orderId]/compensation-refund/confirm` | origin, ctx, `orders:refund` +MFA, a fresh code unless MFA is `off`, Stripe refund evidence with the transfer reversed and the fee refunded |

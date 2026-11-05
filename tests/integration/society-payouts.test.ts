@@ -319,6 +319,18 @@ describe("payouts worker", () => {
     expect(await prisma.societyPayout.findMany({ where: { organisationId: fixture.organisationId }, orderBy: { createdAt: "asc" }, select: { amount: true } })).toEqual([{ amount: 5000 }, { amount: 7000 }]);
   });
 
+  test("a sale whose dispute is still open is flagged a week before Stripe's hold limit pays it out (PAY-088)", async () => {
+    const fixture = await society();
+    const ending = await ticketSale(fixture, -10 * day, { paidAgo: 75 * day, disputeStatus: "open" });
+    await ticketSale(fixture, -10 * day, { paidAgo: 60 * day, disputeStatus: "open" });
+    await ticketSale(fixture, -10 * day, { paidAgo: 75 * day });
+    stripe.balance.mockResolvedValue(balance(0));
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await processPayoutBatch(100, now);
+    const alerts = error.mock.calls.map(([line]) => String(line)).filter((line) => line.includes('"event":"dispute_hold_ending"')).map((line) => JSON.parse(line));
+    expect(alerts).toEqual([expect.objectContaining({ orderId: ending.id, organisationId: fixture.organisationId, dedupeKey: `dispute_hold_ending:${ending.id}` })]);
+  });
+
   test("a society still on Stripe's schedule is moved to manual payouts; less than $1.00 free waits", async () => {
     const fixture = await society();
     await ticketSale(fixture, 10 * day);

@@ -135,6 +135,8 @@ test('committee handover with enforced MFA retires legacy ownership and removes 
     await expect(page.locator('main').getByRole('status')).toContainText(data.manager.email);
     await page.getByLabel('Current password for handover').fill('password123');
     await page.getByLabel('Type HAND OVER OWNERSHIP to confirm').fill('HAND OVER OWNERSHIP');
+    // SEC-061: a fresh code, a step after the one set-up used so it isn't a replay.
+    await page.locator('form').filter({ has: page.getByRole('heading', { name: 'Committee handover' }) }).getByLabel('Authenticator code').fill(totpCode(secret!, Math.floor(Date.now() / 30000) + 1));
     const result = page.waitForResponse(response => response.url().endsWith('/staff/handover') && response.request().method() === 'POST');
     await page.getByRole('button', { name: 'Hand over ownership', exact: true }).click(); expect((await result).status()).toBe(200);
     await expect(page).toHaveURL(/\/dashboard(\/create)?$/);

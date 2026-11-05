@@ -8,12 +8,13 @@ import { Notice } from "@/components/ui/notice";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 import { handoverAcknowledgement } from "@/lib/validators/staff";
 
-export function StaffHandover({ orgSlug, orgName, targets }: { orgSlug: string; orgName: string; targets: { id: string; email: string }[] }) {
+export function StaffHandover({ orgSlug, orgName, targets, codeNeeded }: { orgSlug: string; orgName: string; targets: { id: string; email: string }[]; codeNeeded: boolean }) {
   const router = useRouter();
   const [incomingStaffId, setIncoming] = useState("");
   const [outgoingAccess, setOutgoing] = useState("admin");
   const [currentPassword, setPassword] = useState("");
   const [acknowledgement, setAcknowledgement] = useState("");
+  const [mfaCode, setMfaCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const target = targets.find(item => item.id === incomingStaffId);
@@ -21,9 +22,9 @@ export function StaffHandover({ orgSlug, orgName, targets }: { orgSlug: string; 
     event.preventDefault(); setBusy(true); setError(null);
     try {
       await fetchJson(`/api/orgs/${orgSlug}/staff/handover`, { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ incomingStaffId, outgoingAccess, currentPassword, acknowledgement }) });
-      setPassword(""); router.push("/dashboard"); router.refresh();
-    } catch (failure) { setPassword(""); setError(getClientErrorMessage(failure, "Could not hand over ownership.")); setBusy(false); }
+        body: JSON.stringify({ incomingStaffId, outgoingAccess, currentPassword, acknowledgement, ...(codeNeeded ? { mfaCode: mfaCode.trim() } : {}) }) });
+      setPassword(""); setMfaCode(""); router.push("/dashboard"); router.refresh();
+    } catch (failure) { setPassword(""); setMfaCode(""); setError(getClientErrorMessage(failure, "Could not hand over ownership.")); setBusy(false); }
   }
   return (
     <form onSubmit={submit} className="grid gap-4 rounded-card border border-warning-border bg-surface p-5 sm:p-6">
@@ -57,10 +58,17 @@ export function StaffHandover({ orgSlug, orgName, targets }: { orgSlug: string; 
       <div className="grid gap-4 md:grid-cols-2">
         <TextInput label="Current password for handover" type="password" autoComplete="current-password" required value={currentPassword} onChange={event => setPassword(event.target.value)} disabled={busy} />
         <TextInput label={`Type ${handoverAcknowledgement} to confirm`} required value={acknowledgement} onChange={event => setAcknowledgement(event.target.value)} disabled={busy} />
+        {codeNeeded && (
+          <TextInput label="Authenticator code" hint="6 digits from your authenticator app" autoComplete="one-time-code" inputMode="numeric" required value={mfaCode} onChange={event => setMfaCode(event.target.value)} disabled={busy} />
+        )}
       </div>
-      <p className="text-sm text-ink-soft">If you have an authenticator, verify this sign-in under Account settings, Password and security, before submitting.</p>
+      <p className="text-sm text-ink-soft">
+        {codeNeeded
+          ? "Handing over needs a code from your authenticator. If you haven't set one up, do that under Account settings, Password and security, first."
+          : "If you have an authenticator, verify this sign-in under Account settings, Password and security, before submitting."}
+      </p>
       <div>
-        <Button busy={busy} busyLabel="Handing over…" type="submit" variant="danger" disabled={!target || !currentPassword || acknowledgement !== handoverAcknowledgement}>Hand over ownership</Button>
+        <Button busy={busy} busyLabel="Handing over…" type="submit" variant="danger" disabled={!target || !currentPassword || acknowledgement !== handoverAcknowledgement || (codeNeeded && !mfaCode.trim())}>Hand over ownership</Button>
       </div>
       {/* Under the button, where the person submitting is looking. */}
       {error && <Notice reveal role="alert" tone="danger">{error}</Notice>}

@@ -175,7 +175,7 @@ Extra rules outside the matrix: only an `owner` may invite an owner, change an o
 
 ## Owner handover
 
-- An active owner hands ownership to another active, verified, non-disabled staff member of the same society, with the current password and the exact text `HAND OVER OWNERSHIP`; the outgoing owner becomes `admin` or `revoked`. An enrolled actor must verify this login even in mode `off`; `enforce` needs both people enrolled.
+- An active owner hands ownership to another active, verified, non-disabled staff member of the same society, with the current password and the exact text `HAND OVER OWNERSHIP`; the outgoing owner becomes `admin` or `revoked`. An enrolled actor must verify this login even in mode `off`; `enforce` needs both people enrolled. Unless the mode is `off`, it also needs a fresh authenticator code (`requireStaffGrantCode`, SEC-061), as an invitation does, and every active owner, the new one included, is emailed (`notifyOwnersOfStaffGrant`).
 - Sorted User locks (actor, target, any legacy pointer), then the Organisation lock, recheck everything. The incoming owner is promoted before the outgoing access drops, so one active owner always remains. The legacy `accountUserId` is cleared and audited (`staff.ownership.handed_over`), never transferred. Nothing else moves: credentials, MFA, joins, history and Stripe setup stay where they are.
 - Admins can't hand over. A foreign, self, missing or ineligible target and a concurrent change all answer one generic 409.
 

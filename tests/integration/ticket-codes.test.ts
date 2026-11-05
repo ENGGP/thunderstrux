@@ -4,6 +4,7 @@ import { PATCH as updateCodeRoute } from "@/app/api/events/[eventId]/codes/[code
 import { POST as checkoutRoute } from "@/app/api/payments/checkout/event/route";
 import { prisma } from "@/lib/db";
 import { getPublishedEventDetail, listingAvailability, priceForViewer, priceWithTicketCode } from "@/lib/events/public-events";
+import { lockEventInventory } from "@/lib/events/inventory";
 import { codeForBuyer, normaliseTicketCode, readTicketCode } from "@/lib/events/ticket-codes";
 import { createEventCheckout } from "@/lib/payments/checkout-creation";
 import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-reconciliation";
@@ -79,6 +80,23 @@ describe("ticket codes", () => {
       { actorUserId: fixture.owner.user.id, metadata: { code: "SPONSOR", does: "25% off every ticket", maxUses: null, endsAt: null } },
       { actorUserId: fixture.owner.user.id, metadata: { code: "CREW", does: "free Crew", maxUses: 2, endsAt: null } }
     ]);
+  });
+
+  test("naming another society's event is refused without waiting on, or taking, that event's lock (DEF-098)", async () => {
+    const fixture = await codedEvent();
+    const elsewhere = await codedEvent();
+    let locked!: () => void; const hasLock = new Promise<void>((resolve) => { locked = resolve; });
+    let done!: () => void; const finish = new Promise<void>((resolve) => { done = resolve; });
+    // The other society's checkout holds its event lock.
+    const holder = prisma.$transaction(async (tx) => { await lockEventInventory(tx, elsewhere.event.id); locked(); await finish; }, { timeout: 15000 });
+    await hasLock;
+    try {
+      const refused = await Promise.race([
+        addCode({ ...fixture, event: elsewhere.event }, { code: "THEIRS", percentOff: 10 }).then((result) => result.status),
+        new Promise((resolve) => setTimeout(() => resolve("waited"), 2000))
+      ]);
+      expect(refused).toBe(404);
+    } finally { done(); await holder; }
   });
 
   test("a hidden type stays out of public reads and checkout until its access code unlocks it, and a 100% code is a free comp with no Stripe call", async () => {

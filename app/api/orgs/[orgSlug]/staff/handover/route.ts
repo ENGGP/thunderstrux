@@ -8,7 +8,8 @@ import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { validateJson } from "@/lib/validators";
 import { staffHandoverSchema } from "@/lib/validators/staff";
 import { badRequest, conflict, forbidden, mapRouteError, notFound, routeErrorRule, validationError } from "@/lib/api/errors";
-import { authenticationRule, organisationAccessRule, staleSessionRule } from "@/lib/api/route-rules";
+import { authenticationRule, freshStaffMfaRules, organisationAccessRule, staleSessionRule } from "@/lib/api/route-rules";
+import { requireStaffGrantCode } from "@/lib/staff/invite-http";
 
 export async function POST(request: Request, context: { params: Promise<{ orgSlug: string }> }) {
   const denied = enforceTrustedMutationRequest(request); if (denied) return denied;
@@ -20,10 +21,12 @@ export async function POST(request: Request, context: { params: Promise<{ orgSlu
     const authority = await requireOrganisationPermission(organisationId, "staff:manage");
     if (authority.staffRole !== "owner") return forbidden("Only an active owner can hand over ownership");
     const limited = await enforceRateLimit({ policy: "account_security_change", request, keyParts: [actor.id], required: true }); if (limited) return limited;
+    // SEC-061: making someone an owner gives the most access there is, so it needs a fresh code like an invite (SEC-046).
+    const code = await requireStaffGrantCode(request, actor, input.data.mfaCode); if (code) return code;
     return NextResponse.json(await handOverOrganisationOwnership(actor, organisationId, input.data), { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return mapRouteError(error, { operation: "staff.handover", request, rules: [
-      authenticationRule, staleSessionRule, organisationAccessRule,
+      authenticationRule, staleSessionRule, organisationAccessRule, ...freshStaffMfaRules,
       routeErrorRule(AccountSecurityError, failure => failure.kind === "invalid_password" ? badRequest(failure.message) : forbidden(failure.message)),
       routeErrorRule(StaffHandoverError, failure => failure.kind === "conflict" ? conflict(failure.message) : forbidden(failure.message))
     ] });

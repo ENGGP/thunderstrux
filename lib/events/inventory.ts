@@ -25,9 +25,10 @@ export async function lockEventInventory(
 }
 
 // A ticket order's event and ticket type, locked before the order itself (the
-// lock order above), for paths that may put its places back on sale.
-export async function lockOrderInventory(tx: Prisma.TransactionClient, orderId: string) {
-  const order = await tx.order.findUnique({ where: { id: orderId }, select: { eventId: true, ticketTypeId: true } });
+// lock order above), for paths that may put its places back on sale. Staff paths pass
+// their society, so an order id from a request never locks another society's event (DEF-098).
+export async function lockOrderInventory(tx: Prisma.TransactionClient, orderId: string, organisationId?: string) {
+  const order = await tx.order.findFirst({ where: { id: orderId, ...(organisationId ? { event: { organisationId } } : {}) }, select: { eventId: true, ticketTypeId: true } });
   if (order) await lockEventInventory(tx, order.eventId, [order.ticketTypeId]);
 }
 

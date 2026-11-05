@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import { POST as cancelRoute } from "@/app/api/orders/[orderId]/cancel/route";
 import { prisma } from "@/lib/db";
 import { enqueueOrganisationOrderTicketEmail } from "@/lib/orders/order-detail";
-import { cancelFreePurchase } from "@/lib/payments/free-cancellation";
+import { cancelFreeOrder, cancelFreePurchase } from "@/lib/payments/free-cancellation";
+import { lockOrder } from "@/lib/payments/order-lifecycle";
+import { checkInOrganisationTicket, TicketNotValidError } from "@/lib/tickets/check-in";
 import { ticketOrderProjection } from "@/lib/purchases/projection";
 import { createTestRateLimitBackend, setRateLimitTestBackend } from "@/lib/security/rate-limit";
 import { setMockSession } from "@/tests/helpers/auth";
@@ -58,11 +60,34 @@ describe("cancelling a free registration", () => {
 
   test("a buyer can't give back a registration already used at the door; staff still can (#67)", async () => {
     const fixture = await freeOrder();
-    const { cancelFreeOrder } = await import("@/lib/payments/free-cancellation");
     await expect(prisma.$transaction((tx) => cancelFreeOrder(tx, { organisationId: fixture.owner.organisation.id, orderId: fixture.order.id, by: { kind: "buyer", actorUserId: fixture.owner.user.id }, reason: "I can't make it.", now: new Date() })))
       .rejects.toThrow("already used at the door");
     expect((await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).cancelledAt).toBeNull();
     expect(await cancelFreePurchase(input(fixture))).toMatchObject({ status: "cancelled" });
+  });
+
+  test("a check-in while the buyer cancels waits for the cancellation and is refused, never voided after the fact (DEF-100)", async () => {
+    const fixture = await freeOrder();
+    await prisma.ticket.updateMany({ where: { orderId: fixture.order.id }, data: { checkedInAt: null } });
+    const [, second] = await prisma.ticket.findMany({ where: { orderId: fixture.order.id }, orderBy: { issueSequence: "asc" } });
+    let locked!: () => void; const hasLock = new Promise<void>((resolve) => { locked = resolve; });
+    let go!: () => void; const proceed = new Promise<void>((resolve) => { go = resolve; });
+    // The buyer's cancellation holds the order lock while it counts check-ins.
+    const cancellation = prisma.$transaction(async (tx) => {
+      await lockOrder(tx, fixture.order.id, fixture.owner.organisation.id); locked(); await proceed;
+      return cancelFreeOrder(tx, { organisationId: fixture.owner.organisation.id, orderId: fixture.order.id, by: { kind: "buyer", actorUserId: null }, reason: "I can't make it.", now: new Date() });
+    }, { timeout: 15000 });
+    await hasLock;
+    setMockSession({ userId: fixture.owner.user.id, email: fixture.owner.user.email, accountRole: "organisation" });
+    let settled = false;
+    const checkIn = checkInOrganisationTicket(fixture.owner.organisation.id, fixture.event.id, second.id, fixture.owner.user.id)
+      .then(() => "checked-in", (error: unknown) => error).finally(() => { settled = true; });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(settled).toBe(false);
+    go();
+    await expect(cancellation).resolves.toMatchObject({ status: "cancelled" });
+    expect(await checkIn).toBeInstanceOf(TicketNotValidError);
+    expect((await prisma.ticket.findUniqueOrThrow({ where: { id: second.id } })).checkedInAt).toBeNull();
   });
 
   test("two cancellations at once record one", async () => {

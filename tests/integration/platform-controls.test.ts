@@ -250,6 +250,28 @@ describe("restricting a society and holding its payouts", () => {
     expect((await prisma.organisation.findUniqueOrThrow({ where: { id: owner.organisation.id } })).payoutsHeldAt).toBeNull();
     expect(await prisma.auditLog.count({ where: { organisationId: owner.organisation.id, action: { in: ["platform.payouts_held", "platform.payouts_released"] } } })).toBe(2);
   });
+
+  test("a second hold only lengthens a hold already running, such as ownership recovery's (PAY-085)", async () => {
+    const { actor, next } = await operator();
+    const owner = await createOrganisationAccount({ stripeReady: true });
+    const heldUntil = async () => (await prisma.organisation.findUniqueOrThrow({ where: { id: owner.organisation.id } })).payoutsHeldUntil;
+    const week = next("Ownership recovered");
+    const weekEnd = new Date(week.now.getTime() + 7 * 86_400_000);
+    await changeSociety(actor, "hold_payouts", owner.organisation.id, { ...week.input, heldUntil: weekEnd }, week.now);
+    const shorter = next("Checking a refund");
+    await changeSociety(actor, "hold_payouts", owner.organisation.id, { ...shorter.input, heldUntil: new Date(shorter.now.getTime() + 86_400_000) }, shorter.now);
+    expect(await heldUntil()).toEqual(weekEnd);
+    const longer = next("Fraud review");
+    const longerEnd = new Date(longer.now.getTime() + 10 * 86_400_000);
+    await changeSociety(actor, "hold_payouts", owner.organisation.id, { ...longer.input, heldUntil: longerEnd }, longer.now);
+    expect(await heldUntil()).toEqual(longerEnd);
+    const open = next("Until we hear back");
+    await changeSociety(actor, "hold_payouts", owner.organisation.id, open.input, open.now);
+    expect(await heldUntil()).toBeNull();
+    const dated = next("A dated hold can't end an open one");
+    await changeSociety(actor, "hold_payouts", owner.organisation.id, { ...dated.input, heldUntil: new Date(dated.now.getTime() + 86_400_000) }, dated.now);
+    expect(await heldUntil()).toBeNull();
+  });
 });
 
 describe("delayed recovery", () => {

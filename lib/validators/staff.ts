@@ -33,5 +33,6 @@ export const staffHandoverSchema = z.object({
   incomingStaffId: z.string().min(1).max(200),
   outgoingAccess: z.enum(["admin", "revoked"]),
   currentPassword: z.string().min(1).max(200),
-  acknowledgement: z.literal(handoverAcknowledgement)
+  acknowledgement: z.literal(handoverAcknowledgement),
+  mfaCode: staffGrantCodeSchema
 }).strict();

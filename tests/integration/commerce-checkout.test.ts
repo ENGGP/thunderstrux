@@ -170,6 +170,11 @@ describe("commerce checkout", () => {
     expect(await prisma.commerceOrder.findUniqueOrThrow({ where: { id: order.id } })).toMatchObject({ status: "pending", requiresCompensationReview: false });
     expect(await prisma.order.findUniqueOrThrow({ where: { id: ticket.id } })).toMatchObject({ status: "pending" });
     expect(alerts(error, "commerce_webhook_identity_mismatch")).toBe(5);
+    // PAY-079: a paid Session naming an order this database doesn't have alerts; an unpaid one doesn't.
+    await deliver("checkout.session.completed", { ...base, id: "cs_no_such_order", metadata: { ...base.metadata, commerceOrderId: "no-such-order" } });
+    expect(alerts(error, "commerce_webhook_identity_mismatch")).toBe(6);
+    await deliver("checkout.session.completed", { ...base, id: "cs_no_such_order_unpaid", payment_status: "unpaid", metadata: { ...base.metadata, commerceOrderId: "no-such-order" } });
+    expect(alerts(error, "commerce_webhook_identity_mismatch")).toBe(6);
   });
 
   test("a wrong amount, currency or destination, or a family that can't fulfil, becomes a compensation review and releases the hold", async () => {

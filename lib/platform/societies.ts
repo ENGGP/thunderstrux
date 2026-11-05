@@ -47,8 +47,13 @@ export async function changeSociety(actor: PlatformActor, action: SocietyAction,
       return { change: { action: restrict ? "platform.society_restricted" : "platform.society_unrestricted", ...target }, result: {} };
     }
     if (action === "hold_payouts") {
-      const until = input.heldUntil ?? null;
-      if (until && until <= now) throw new PlatformRefusal("Pick an end date in the future, or leave it empty to hold until released.");
+      const asked = input.heldUntil ?? null;
+      if (asked && asked <= now) throw new PlatformRefusal("Pick an end date in the future, or leave it empty to hold until released.");
+      // PAY-085: a hold already running (such as ownership recovery's 7 days) is only ever
+      // lengthened here: the later end wins, and no end beats any date. Ending it early is the release below.
+      const current = society.payoutsHeldUntil;
+      const running = society.payoutsHeldAt && (!current || current > now);
+      const until = !running ? asked : asked && current ? (asked > current ? asked : current) : null;
       await tx.organisation.update({ where: { id: society.id }, data: { payoutsHeldAt: now, payoutsHeldUntil: until, payoutsHeldReason: input.reason.trim() } });
       await history("platform.payouts_held", until ? { until: until.toISOString() } : {});
       return { change: { action: "platform.payouts_held", ...target, metadata: { until: until?.toISOString() ?? null, replaced: Boolean(society.payoutsHeldAt) } }, result: {} };

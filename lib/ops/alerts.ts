@@ -39,6 +39,8 @@ export type OperationalAlertName =
   // A card issuer's early fraud warning: refunded automatically, or why not.
   | "early_fraud_warning"
   | "dispute_reversal_unresolved"
+  // PAY-088: a sale whose dispute is still open reaches Stripe's hold limit within a week.
+  | "dispute_hold_ending"
   | "society_payout_failed"
   // PAY-028: a payout the payout worker didn't make (an instant payout, or a changed schedule).
   | "society_payout_unexpected"

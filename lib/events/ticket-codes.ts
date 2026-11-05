@@ -110,8 +110,10 @@ type CodeInput = z.infer<typeof ticketCodeSchema>;
 type CodeUpdate = z.infer<typeof ticketCodeUpdateSchema>;
 
 // Every code change takes the event lock first, as checkout and edits do, so a
-// limit, a price and the uses counted against it never interleave.
+// limit, a price and the uses counted against it never interleave. The society is
+// checked before the lock, so another society's event is never locked (DEF-098).
 async function lockedEvent(tx: Prisma.TransactionClient, organisationId: string, eventId: string) {
+  if (!(await tx.event.count({ where: scopedByOrganisation(organisationId, { id: eventId }) }))) throw new EventLifecycleNotFoundError();
   if (!(await lockEventInventory(tx, eventId))) throw new EventLifecycleNotFoundError();
   const event = await tx.event.findFirst({
     where: scopedByOrganisation(organisationId, { id: eventId }),

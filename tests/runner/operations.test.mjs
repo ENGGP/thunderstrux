@@ -24,12 +24,13 @@ test("a deploy refuses an env file with an empty EMAIL_FROM, before touching any
   assert.match(deploy.stderr, /Set EMAIL_FROM in the env file/);
 });
 
-test("a rollback's environment snapshot meets the deploy check before the old app starts (SEC-072)", async () => {
+test("restoring the release that was serving checks its environment and reports a failure, without refusing it (SEC-072)", async () => {
   const source = await readFile("scripts/operations.mjs", "utf8");
-  const check = source.indexOf("await assertDeployableEnvironment(rollbackContext");
+  const check = source.indexOf("await reportUndeployableEnvironment(rollbackContext");
   assert.ok(check > 0 && check < source.indexOf('await compose(rollbackContext, ["up"'));
-  // Failure recovery brings back the app that was live a moment ago, and reports a failing check.
-  assert.match(source, /assertDeployableEnvironment\(recoveryContext, recoveryEnv\)\s*\.catch/);
+  const recovery = source.indexOf("await reportUndeployableEnvironment(recoveryContext");
+  assert.ok(recovery > 0 && recovery < source.indexOf('await compose(recoveryContext, ["up"'));
+  assert.match(source, /async function reportUndeployableEnvironment[^]*?assertDeployableEnvironment\(ctx, env\)\.catch/);
 });
 
 test("operations identifiers are narrowly scoped", () => {

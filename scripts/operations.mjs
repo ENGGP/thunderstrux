@@ -263,6 +263,12 @@ async function assertDeployableEnvironment(ctx, env) {
   assertDeployedAppEnvironment(configured.services?.app?.environment);
 }
 
+// SEC-072: for restoring the release that was serving before this deploy: never refuses it.
+async function reportUndeployableEnvironment(ctx, env) {
+  await assertDeployableEnvironment(ctx, env).catch((check) =>
+    console.error(`Restoring the previous release, whose environment fails today's deploy check: ${check.message}. Fix its env file before the next deploy.`));
+}
+
 async function acquireLock(ctx) {
   await mkdir(ctx.stateDir, { recursive: true, mode: 0o700 });
   await restrictStateDirectory(ctx.stateDir);
@@ -356,8 +362,9 @@ async function deploy(ctx) {
       if (!hasActiveEnv) throw new Error("No protected previous environment snapshot is available");
       if (!previousManifest?.imageRef) throw new Error("Previous release has no immutable image reference");
       const rollbackContext = contextWithEnvFile(ctx, activeEnvFile);
-      // SEC-072: the snapshot coming back may predate SEC-053, so it meets today's deploy check first.
-      await assertDeployableEnvironment(rollbackContext, { ...shellEnv(), APP_IMAGE: previousManifest.imageRef });
+      // SEC-072: the snapshot coming back may predate SEC-053. It was serving a moment ago, so it
+      // comes back either way (refusing would only leave the site down), and a failing check is reported.
+      await reportUndeployableEnvironment(rollbackContext, { ...shellEnv(), APP_IMAGE: previousManifest.imageRef });
       await compose(rollbackContext, ["up", "-d", "--no-build", "--force-recreate", "app"], {
         env: { ...shellEnv(), APP_IMAGE: previousManifest.imageRef }
       });
@@ -409,10 +416,8 @@ async function deploy(ctx) {
       if (previousImageId) {
         const recoveryContext = hasActiveEnv ? contextWithEnvFile(ctx, activeEnvFile) : ctx;
         const recoveryEnv = { ...shellEnv(), APP_IMAGE: previousManifest?.imageRef ?? previousImageId };
-        // SEC-072: no migration ran, so this is the app that was live a moment ago: it comes back
-        // either way (refusing would leave the site down), and an environment that fails today's check is reported.
-        await assertDeployableEnvironment(recoveryContext, recoveryEnv)
-          .catch((check) => console.error(`The previous release is back, but its environment fails the deploy check: ${check.message}`));
+        // SEC-072: no migration ran, so this is the app that was live a moment ago: as for a rollback.
+        await reportUndeployableEnvironment(recoveryContext, recoveryEnv);
         await compose(recoveryContext, ["up", "-d", "--no-build", "--force-recreate", "app"], { env: recoveryEnv }).catch(() => {});
       }
       // The stopped workers are the previous release's containers, unchanged.

@@ -28,12 +28,12 @@ export function staffInviteFailure(error: unknown) {
 // SEC-046: an invitation, a resend or a role change gives access, so unless staff
 // MFA is off it needs a fresh code, not just this session's sign-in grant. A
 // revocation never does: it has to work fast in an incident.
-export async function requireStaffGrantCode(request: Request, actor: { id: string; mfaSessionId?: string }, mfaCode: string | undefined) {
+export async function requireStaffGrantCode(request: Request, actor: { id: string; mfaSessionId?: string }, mfaCode: string | undefined, prompt = "Enter your authenticator code to give staff access") {
   if (mfaCode) {
     const limited = await enforceRateLimit({ policy: "staff_mfa_verify", request, keyParts: [actor.id] });
     if (limited) return limited;
   }
-  await requireFreshStaffMfa(actor, mfaCode, "Enter your authenticator code to give staff access");
+  await requireFreshStaffMfa(actor, mfaCode, prompt);
 }
 export async function invitationIssuanceLimits(request: Request, actorId: string, organisationId: string, email: string) {
   return await enforceRateLimit({ policy: "staff_invite_actor", request, keyParts: [actorId, organisationId], required: true }) ??

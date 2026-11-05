@@ -62,7 +62,11 @@ export function StaffHandover({ orgSlug, orgName, targets, codeNeeded }: { orgSl
           <TextInput label="Authenticator code" hint="6 digits from your authenticator app" autoComplete="one-time-code" inputMode="numeric" required value={mfaCode} onChange={event => setMfaCode(event.target.value)} disabled={busy} />
         )}
       </div>
-      <p className="text-sm text-ink-soft">If you have an authenticator, verify this sign-in under Account settings, Password and security, before submitting.</p>
+      <p className="text-sm text-ink-soft">
+        {codeNeeded
+          ? "Handing over needs a code from your authenticator. If you haven't set one up, do that under Account settings, Password and security, first."
+          : "If you have an authenticator, verify this sign-in under Account settings, Password and security, before submitting."}
+      </p>
       <div>
         <Button busy={busy} busyLabel="Handing over…" type="submit" variant="danger" disabled={!target || !currentPassword || acknowledgement !== handoverAcknowledgement || (codeNeeded && !mfaCode.trim())}>Hand over ownership</Button>
       </div>

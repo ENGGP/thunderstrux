@@ -136,8 +136,11 @@ describe("disconnect", () => {
     await expect(createOrganisationDashboardLink(owner.organisation.id, { actor })).rejects.toThrow("holding this society's payouts");
     expect(await prisma.auditLog.count({ where: { action: "stripe_connect.dashboard_opened" } })).toBe(0);
     // Onboarding collects the payout bank account, which the dashboard can change too (PAY-083).
+    // No key, so a regression fails here instead of reaching Stripe.
+    vi.stubEnv("STRIPE_SECRET_KEY", "");
     await expect(startOrganisationStripeOnboarding(owner.organisation.id, { actor })).rejects.toThrow("holding this society's payouts");
     await expect(continueOrganisationStripeOnboarding(owner.organisation.id, { actor })).rejects.toThrow("holding this society's payouts");
+    vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_integration_placeholder");
 
     // A hold whose end has passed no longer stops it.
     await prisma.organisation.update({ where: { id: owner.organisation.id }, data: { payoutsHeldUntil: new Date(Date.now() - 1000) } });

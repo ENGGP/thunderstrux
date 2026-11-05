@@ -1,6 +1,6 @@
 ---
 status: historical
-last-reviewed: 2026-11-04
+last-reviewed: 2026-11-05
 owner: engineering
 related: ["[[Issue and Defect Register]]", "[[Evidence Ledger]]"]
 ---
@@ -15,6 +15,13 @@ Rows moved here unchanged from the register on 2026-10-26. File paths and run ID
 
 | ID | Resolved | Defect and root cause | Fix and evidence |
 | --- | --- | --- | --- |
+| SEC-060 | 2026-11-05 | Found by the run-3 security audit (critic gap). The checkout-recovery worker's `checkout_attempt_recovery_failed` alert passed the raw error, whose message left the host, which #31 had stopped for the other workers. | Run-3 PR: it sends the error's name only; the worker log keeps the rest. The alert's per-name cooldown stays: #40 made it a count per sweep. |
+| SEC-059 | 2026-11-05 | Found by the run-3 security audit (critic gap). #66 bound guest ticket orders to the session's guest identity but not merchandise and membership orders, so a guest session whose checkout attempt named another identity's order could cancel it. | Run-3 PR: `canOpenGuestCommerceOrder` requires the order's `guestIdentityId` too. Test: `pending-checkout.test.ts`. |
+| SEC-058 | 2026-11-05 | Found by the run-3 security audit (low, new from SEC-049). Sign-out counted on the fail-closed `login_ip_global`, so anyone behind the same address, or a Redis outage, made it fail, leaving the session and its staff MFA grant live while the client hid the error. | Run-3 PR: sign-out skips that limit and keeps the 10 KB cap. Test: `rate-limit.test.ts`. |
+| PAY-083 | 2026-11-05 | Found by the run-3 security audit (critic gap). During a payout hold the Express Dashboard link and disconnect were refused (PAY-070, PAY-071), but onboarding links, which collect the payout bank account, were not. | Run-3 PR: `refuseRestrictedOrHeld` refuses both onboarding routes during a hold. Test: `connect-safety.test.ts`. |
+| PAY-082 | 2026-11-05 | Found by the run-3 security audit (critic gap). Staff could void any number of tickets under a part-lost dispute or a partial refund made in Stripe, stranding a paying buyer, and a later win then refunded the whole order. | Run-3 PR: picks are capped at the returned amount's share of the order's tickets, rounded up (409 past that). Test: `purchase-disputes.test.ts`. |
+| PAY-081 | 2026-11-05 | Found by the run-3 security audit (low, left by PAY-073). A win reached through an appeal (`lost`, then `appeal_*`, then `won`) wasn't seen as a win after a loss, since the status just before it was `open`: tickets stayed void with no refund, a membership stayed ended, and nobody was told. | Run-3 PR: a dispute counts as lost before when it has a reversal (only a loss queues one). Tests: `purchase-disputes.test.ts`, `commerce-payment-recovery.test.ts`. |
+| PAY-080 | 2026-11-05 | Found by the run-3 security audit (low, left by PAY-072). A win after a part loss whose reversal had gone left every ticket valid and the society's share taken, with no alert. | Run-3 PR: with no ticket voided, a reversal claimed, `uncertain` or `succeeded` alerts `won_after_loss`; the runbook returns the share by a transfer in Stripe. Test: `purchase-disputes.test.ts`. |
 | SEC-057 | 2026-11-04 | Found by the run-2 security audit (lead N7). The resend budget was per order, so one society could queue unbounded ticket email into the queue and provider account every society shares. | PR 6: `order_resend_society` (200 an hour per society, closed on a Redis error) and a resend already waiting adds no second email. Test: `rate-limit.test.ts`. |
 | SEC-056 | 2026-11-04 | Found by the run-2 security audit (lead N3). The CSV formula guard checked only the first character, so a leading space, a full-width sign or a formula after a semicolon or tab still ran in some spreadsheets. | PR 6: those are defused and quoted (`lib/export/csv.ts`). Test: `order-exports.test.ts`. |
 | SEC-055 | 2026-11-04 | Found by the run-2 security audit (lead N1). Crafted uploads (16-bit, interlaced, several at once) could multiply decode memory past the container's limit. | PR 6: 16-bit and interlaced PNGs are refused, libvips runs one thread, and at most two images decode at once (503 past that). Progressive JPEGs stay accepted. Test: `assets.test.ts`. |

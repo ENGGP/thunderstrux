@@ -36,7 +36,7 @@ All take the order from the dashboard's selected society and lock it scoped to t
 | --- | --- | --- | --- |
 | `POST /api/orders/[orderId]/refunds` | `orders:refund` + fresh MFA code unless MFA is `off` | `reason` (8 to 500), `confirmation` (the order's short reference), `mfaCode` | 200 when Stripe confirmed, 202 pending or uncertain; 400 `confirmation_mismatch`; 409 `not_refundable`, `in_progress`, `already_refunded`, `disputed`, `verification_failed`, `provider_refused` |
 | `POST /api/orders/[orderId]/cancel` | `orders:refund` + fresh MFA code | `reason`, `mfaCode` | `{ status: "cancelled" }` or `already_cancelled`; 409 `not_cancellable` |
-| `POST /api/orders/[orderId]/review` | `orders:refund` | `{ action: "restore_tickets", reason }` or `{ action: "mark_reviewed" }` | 409 `not_allowed` |
+| `POST /api/orders/[orderId]/review` | `orders:refund` | `{ action: "restore_tickets", reason }` or `{ action: "mark_reviewed", ticketIds? }` | 409 `not_allowed` (also more tickets than the returned amount covers) |
 | `POST /api/orders/[orderId]/compensation-refund/confirm` | `orders:refund` | `refundId` (`re_...`) | 404; 409 when Stripe's refund doesn't verify or the job isn't confirmable |
 | `PATCH /api/orders/[orderId]/refund-manual` | `orders:refund_mark` + fresh MFA code unless MFA is `off` | `reason` (8-500), `mfaCode` | 409 refusals below |
 
@@ -115,7 +115,7 @@ A payment Stripe took that the order couldn't honour ([[Payment Lifecycle#Fulfil
 - The event's PaymentIntent must resolve to an order whose Session names it, in the same currency, paid to the seller snapshot (orders without a snapshot skip that check). Anything else changes nothing and logs `stripe.refund.unmatched`.
 - `externalRefundedAmount` becomes the total of the payment's **succeeded** refunds that Thunderstrux didn't make; pending ones count for nothing. Each change clears `externalRefundReviewedAt` and appends `external_refund_recorded`.
 - Full amount on a `paid` order or one under review (tickets count refunds made here too): `refundStatus = refunded`, tickets `void` (`refunded_outside`, places back on sale), memberships end. A review closes as above.
-- Partial: tickets stay valid and the order reads Payment review until staff `mark_reviewed` (`external_refund_reviewed`), picking the tickets it covered (`void` `refunded_outside`, back on sale; none keeps all valid; DEBT-002), or a refund here takes the rest.
+- Partial: tickets stay valid and the order reads Payment review until staff `mark_reviewed` (`external_refund_reviewed`), picking the tickets it covered (`void` `refunded_outside`, back on sale; none keeps all valid; DEBT-002), at most the refunded amount's share of the order's tickets, rounded up (PAY-082: 409 past that), or a refund here takes the rest.
 - A later drop (a refund that failed after succeeding) is recorded, but voided tickets and ended memberships stay so.
 - **Not taken back from the society (PAY-027):** `externalUnreversedAmount` records what Stripe shows refunded on the payment but not reversed from its transfer (`unreversedRefundAmount`: the charge's `amount_refunded` less the transfer's `amount_reversed`). Above 0 it alerts `outside_refund_not_reversed`, and the payout hold keeps the sale's share until Stripe shows it reversed; the payout worker re-reads it before each run, so a reversal made by hand is seen within the hour.
 

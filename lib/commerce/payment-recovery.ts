@@ -104,7 +104,7 @@ export async function reconcileCommerceDisputeEvent(event: Stripe.Event) {
       organisationId, actorUserId: null, action: `commerce_order.dispute_${existing ? outcome : "opened"}`, targetType: "CommerceOrder", targetId: commerceOrderId,
       metadata: { disputeId: current.id, providerStatus: current.status, amount: current.amount }
     } });
-    if (worst === "won" && record.previous === "lost") {
+    if (worst === "won" && record.wasLost) {
       await cancelQueuedReversals(tx, { commerceOrderId });
       review = "won_after_loss";
     }

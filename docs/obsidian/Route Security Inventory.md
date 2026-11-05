@@ -36,7 +36,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 | --- | --- |
 | Sign-up and link requests (`auth/signup`, `auth/verification/request`, `auth/password/request`) | origin → `signup_ip` → body → `signup_email` (per purpose) → service |
 | Link redemption (`auth/verification/confirm`, `auth/password/confirm`) | origin → body → `account_token_ip` → `account_token_digest` → service |
-| Auth.js POSTs (`auth/[...nextauth]`) | every POST: `login_ip_global` → at most 10 KB read before Auth.js parses it (else 400, SEC-049); sign-out also deletes the login's MFA grant |
+| Auth.js POSTs (`auth/[...nextauth]`) | every POST but sign-out: `login_ip_global`; every POST: at most 10 KB read before Auth.js parses it (else 400, SEC-049); sign-out skips the limit (SEC-058) and deletes the login's MFA grant |
 | Sign-in (credentials callback) | then a plain form with an address (else 400, SEC-040, SEC-041) → one `email` field (else 400, SEC-007) → `login_ip_email` → `login_known_device` for a browser with a valid known-device cookie, else `login_email` (per account across addresses, DEBT-002, SEC-050) → the password-work gate (503 when full, SEC-019) → Auth.js (its own CSRF) |
 | Guest links (`guest/email/request`, `guest/recover`) | origin → `guest_email_ip` → body → `guest_email_address` → service |
 | Society enquiry (`orgs/[orgSlug]/enquiries`) | origin → `society_enquiry_ip` → `society_enquiry` (IP, slug) → body → `society_enquiry` (sender) → service |
@@ -98,7 +98,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 
 | Policy | Limit / window | Fail | Key parts | Routes |
 | --- | --- | --- | --- | --- |
-| `login_ip_global` | 500 / 10 min | closed | IP | every Auth.js POST (not required) |
+| `login_ip_global` | 500 / 10 min | closed | IP | every Auth.js POST but sign-out (not required) |
 | `login_ip_email` | 10 / 10 min | closed | IP, email | credentials sign-in (not required) |
 | `login_email` | 30 / 1 h | closed | email | credentials sign-in without a known-device cookie (not required); someone else's guesses lock only new browsers, for an hour |
 | `login_known_device` | 10 / 10 min | closed | email + device | credentials sign-in from a browser that signed in before (SEC-050) |

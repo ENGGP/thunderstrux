@@ -456,6 +456,28 @@ describe("refunds made outside Thunderstrux", () => {
       .toMatchObject({ metadata: { refundedOutside: 1500, tickets: [ticketReference(first.id)] } });
   });
 
+  test("staff pick no more tickets than a part loss or a refund made in Stripe paid for (PAY-082)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const ticketsOf = async (fixture: Fixture) => (await prisma.ticket.findMany({ where: { orderId: fixture.order.id }, orderBy: { issueSequence: "asc" }, select: { id: true } })).map((ticket) => ticket.id);
+
+    const disputed = await paidOrder();
+    stripe.dispute.mockResolvedValue(disputeObject(disputed, "lost", { amount: 1000 }));
+    await reconcileDisputeEvent(signedEvent("charge.dispute.closed", disputeObject(disputed, "lost", { amount: 1000 })));
+    const [first, second] = await ticketsOf(disputed);
+    expect((await reviewAs(disputed, { action: "mark_reviewed", ticketIds: [first, second] })).status).toBe(409);
+    expect((await orderState(disputed.order.id)).tickets.every((ticket) => ticket.validity === "active")).toBe(true);
+    expect((await reviewAs(disputed, { action: "mark_reviewed", ticketIds: [first] })).status).toBe(200);
+    expect((await orderState(disputed.order.id)).tickets).toEqual([{ validity: "void", validityReason: "dispute_lost" }, { validity: "active", validityReason: null }]);
+
+    const refunded = await paidOrder();
+    stripe.refunds.mockResolvedValue({ data: [dashboardRefund(refunded, 1000)] });
+    await reconcileExternalRefundEvent(signedEvent("refund.updated", dashboardRefund(refunded, 1000)));
+    const picks = await ticketsOf(refunded);
+    expect((await reviewAs(refunded, { action: "mark_reviewed", ticketIds: picks })).status).toBe(409);
+    expect((await reviewAs(refunded, { action: "mark_reviewed", ticketIds: [picks[1]] })).status).toBe(200);
+    expect((await orderState(refunded.order.id)).tickets).toEqual([{ validity: "active", validityReason: null }, { validity: "void", validityReason: "refunded_outside" }]);
+  });
+
   test("a refund made in Stripe that, with refunds made here, covers the whole order makes it Refunded", async () => {
     const fixture = await paidOrder();
     await prisma.refundRequest.create({ data: { orderId: fixture.order.id, organisationId: fixture.owner.organisation.id, amount: 1500, reason: "Refunded one ticket here.", operationKey: unique("refund"), status: "succeeded", resolvedAt: new Date() } });
@@ -893,6 +915,50 @@ describe("dispute transitions", () => {
     await deliver(fixture, "won");
     expect(await prisma.refundRequest.count({ where: { orderId: fixture.order.id } })).toBe(0);
     expect(alertsOf(error, "purchase_dispute_needs_review")).toEqual([expect.objectContaining({ reason: "won_after_loss" })]);
+  });
+
+  test("lost for part, reversed, then won: every ticket stands, so the society's share taken back is a person's call (PAY-080)", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fixture = await paidOrder();
+    const transferId = `tr_${fixture.order.id}`;
+    stripe.charge.mockResolvedValue({ id: fixture.chargeId, transfer: transferId });
+    stripe.transfer.mockResolvedValue({ id: transferId, amount: 3000, amount_reversed: 0, currency: "aud", destination: fixture.owner.organisation.stripeAccountId });
+    stripe.reversals.mockResolvedValue({ data: [] });
+    stripe.reverse.mockImplementation(async (_id: string, params: { amount: number; metadata: Record<string, string> }) => ({ id: unique("trr"), amount: params.amount, metadata: params.metadata }));
+    await deliver(fixture, "lost", { amount: 1500 }, "charge.dispute.closed");
+    expect(await processDisputeReversalBatch(25, new Date(Date.now() + 1000))).toMatchObject({ results: [{ status: "succeeded" }] });
+    await deliver(fixture, "won", { amount: 1500 });
+    expect((await orderState(fixture.order.id)).tickets.every((ticket) => ticket.validity === "active")).toBe(true);
+    expect(await disputeRow(fixture)).toMatchObject({ reversalStatus: "succeeded", reversalAmount: 1500 });
+    expect(await prisma.refundRequest.count({ where: { orderId: fixture.order.id } })).toBe(0);
+    expect(alertsOf(error, "purchase_dispute_needs_review").map((alert) => alert.reason)).toEqual(["lost_for_part", "won_after_loss"]);
+  });
+
+  test("lost for part, then won before the reversal went: nothing was taken, so nothing alerts (PAY-080)", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fixture = await paidOrder();
+    await deliver(fixture, "lost", { amount: 1500 }, "charge.dispute.closed");
+    await deliver(fixture, "won", { amount: 1500 });
+    expect((await disputeRow(fixture)).reversalStatus).toBe("cancelled");
+    expect(alertsOf(error, "purchase_dispute_needs_review").map((alert) => alert.reason)).toEqual(["lost_for_part"]);
+  });
+
+  test("lost, appealed, then won: the buyer is refunded, or a person decides for a used order (PAY-081)", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const unused = await paidOrder();
+    await deliver(unused, "lost", {}, "charge.dispute.closed");
+    await deliver(unused, "appeal_under_review");
+    await deliver(unused, "won");
+    expect(await disputeRow(unused)).toMatchObject({ reversalStatus: "cancelled" });
+    expect(await prisma.refundRequest.findMany({ where: { orderId: unused.order.id } })).toEqual([expect.objectContaining({ amount: 3000, actorUserId: null })]);
+
+    const used = await paidOrder();
+    await deliver(used, "lost", {}, "charge.dispute.closed");
+    await prisma.ticket.updateMany({ where: { orderId: used.order.id }, data: { checkedInAt: new Date() } });
+    await deliver(used, "appeal_needs_response");
+    await deliver(used, "won");
+    expect(await prisma.refundRequest.count({ where: { orderId: used.order.id } })).toBe(0);
+    expect(alertsOf(error, "purchase_dispute_needs_review")).toEqual([expect.objectContaining({ orderId: used.order.id, reason: "won_after_loss" })]);
   });
 
   test("a dispute lost for part of the payment keeps the tickets for staff to pick, and alerts (PAY-074)", async () => {

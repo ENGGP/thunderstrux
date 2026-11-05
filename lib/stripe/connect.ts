@@ -82,7 +82,7 @@ export class StripeDisconnectBlockedError extends Error {
 // T55: a restricted society can't change where its money goes until support lifts it.
 const societyRestricted = "Thunderstrux support has restricted this society, so its Stripe account can't be changed or opened. The owners were emailed.";
 // PAY-070: a hold (support's, or the 7 days after an ownership recovery) keeps the money where it is.
-const payoutsHeldBlocks = "Thunderstrux support is holding this society's payouts, so its Stripe account can't be disconnected or opened until the hold ends. The owners were emailed.";
+const payoutsHeldBlocks = "Thunderstrux support is holding this society's payouts, so its Stripe account can't be disconnected, opened or set up until the hold ends. The owners were emailed.";
 
 export class StripeDisconnectUnavailableError extends Error {
   constructor() {
@@ -716,11 +716,15 @@ export async function markAccountStatusError(
 
 type FreshCode = { actor: { id: string; mfaSessionId?: string }; mfaCode?: string };
 
-// A restricted society can't change where its money goes, so onboarding stops too (T55).
-async function refuseRestricted(orgId: string) {
-  const organisation = await prisma.organisation.findUnique({ where: { id: orgId }, select: { restrictedAt: true } });
+// A restricted society can't change where its money goes, so onboarding stops too (T55),
+// and so does a held one's, as the dashboard link does (PAY-083).
+async function refuseRestrictedOrHeld(orgId: string) {
+  const organisation = await prisma.organisation.findUnique({ where: { id: orgId }, select: { restrictedAt: true, payoutsHeldAt: true, payoutsHeldUntil: true } });
   if (organisation?.restrictedAt) {
     throw new OrganisationStripeConnectValidationError(societyRestricted, [{ path: ["organisationId"], message: societyRestricted }]);
+  }
+  if (organisation && payoutsHeld(organisation)) {
+    throw new OrganisationStripeConnectValidationError(payoutsHeldBlocks, [{ path: ["organisationId"], message: payoutsHeldBlocks }]);
   }
 }
 
@@ -728,24 +732,21 @@ async function refuseRestricted(orgId: string) {
 // continuing it needs a fresh authenticator code, like the dashboard link.
 export async function startOrganisationStripeOnboarding(orgId: string, { actor, mfaCode }: FreshCode, returnOrigin?: string) {
   await requireFreshStaffMfa(actor, mfaCode, "Enter your authenticator code to continue to Stripe");
-  await refuseRestricted(orgId);
+  await refuseRestrictedOrHeld(orgId);
   const { accountId, orgSlug } = await createExpressAccount(orgId, actor.id);
   return createOnboardingLink(accountId, orgSlug, returnOrigin);
 }
 
 export async function continueOrganisationStripeOnboarding(orgId: string, { actor, mfaCode }: FreshCode, returnOrigin?: string) {
   await requireFreshStaffMfa(actor, mfaCode, "Enter your authenticator code to continue to Stripe");
+  await refuseRestrictedOrHeld(orgId);
   const organisation = await prisma.organisation.findUnique({
     where: { id: orgId },
-    select: { slug: true, stripeAccountId: true, restrictedAt: true }
+    select: { slug: true, stripeAccountId: true }
   });
 
   if (!organisation) {
     throw new OrganisationStripeConnectNotFoundError();
-  }
-
-  if (organisation.restrictedAt) {
-    throw new OrganisationStripeConnectValidationError(societyRestricted, [{ path: ["organisationId"], message: societyRestricted }]);
   }
 
   if (!organisation.stripeAccountId) {

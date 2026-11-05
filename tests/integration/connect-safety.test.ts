@@ -8,7 +8,7 @@ import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-recon
 import { getStripeSessionDashboardUrl } from "@/lib/orders/order-detail";
 import { MfaInputError } from "@/lib/security/staff-mfa";
 import { getStripe, isLiveStripeKey, StripeConfigurationError } from "@/lib/stripe";
-import { createOrganisationDashboardLink, disconnectAccount, heldMoneyBlocksDisconnect, markAccountStatusError, StripeDisconnectBlockedError, StripeDisconnectUnavailableError } from "@/lib/stripe/connect";
+import { continueOrganisationStripeOnboarding, createOrganisationDashboardLink, disconnectAccount, heldMoneyBlocksDisconnect, markAccountStatusError, startOrganisationStripeOnboarding, StripeDisconnectBlockedError, StripeDisconnectUnavailableError } from "@/lib/stripe/connect";
 import { checkoutSession } from "@/tests/helpers/stripe-mocks";
 import { createEvent, createOrder, createOrganisationAccount, createReservation } from "@/tests/helpers/test-data";
 
@@ -123,7 +123,7 @@ describe("disconnect", () => {
   });
 
   // PAY-070: support's hold, or the 7 days after an ownership recovery, keeps the money where it is.
-  test("is refused while support holds the society's payouts, before Stripe's schedule is touched; the dashboard link too (PAY-071)", async () => {
+  test("is refused while support holds the society's payouts, before Stripe's schedule is touched; the dashboard link and onboarding too (PAY-071, PAY-083)", async () => {
     const owner = await createOrganisationAccount({ stripeReady: true });
     const actor = { id: owner.user.id };
     const linked = async () => (await prisma.organisation.findUniqueOrThrow({ where: { id: owner.organisation.id } })).stripeAccountId;
@@ -135,6 +135,9 @@ describe("disconnect", () => {
     expect(await linked()).not.toBeNull();
     await expect(createOrganisationDashboardLink(owner.organisation.id, { actor })).rejects.toThrow("holding this society's payouts");
     expect(await prisma.auditLog.count({ where: { action: "stripe_connect.dashboard_opened" } })).toBe(0);
+    // Onboarding collects the payout bank account, which the dashboard can change too (PAY-083).
+    await expect(startOrganisationStripeOnboarding(owner.organisation.id, { actor })).rejects.toThrow("holding this society's payouts");
+    await expect(continueOrganisationStripeOnboarding(owner.organisation.id, { actor })).rejects.toThrow("holding this society's payouts");
 
     // A hold whose end has passed no longer stops it.
     await prisma.organisation.update({ where: { id: owner.organisation.id }, data: { payoutsHeldUntil: new Date(Date.now() - 1000) } });

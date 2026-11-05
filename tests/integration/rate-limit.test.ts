@@ -526,7 +526,7 @@ describe("rate-limited routes", () => {
   }
   const form = { "content-type": "application/x-www-form-urlencoded" };
 
-  test("every Auth.js POST reads at most 10 KB and counts on the per-address limit (SEC-049)", async () => {
+  test("every Auth.js POST reads at most 10 KB, and all but sign-out count on the per-address limit (SEC-049, SEC-058)", async () => {
     const nextAuthPost = vi.fn(async () => new Response(null, { status: 302 }));
     const { rateLimit, POST } = await authRoute(nextAuthPost);
     for (const path of ["signout", "session", "signin", "signin/credentials"]) {
@@ -550,8 +550,16 @@ describe("rate-limited routes", () => {
       await rateLimit.enforceRateLimit({ policy: "login_ip_global", request: spent, keyParts: [rateLimit.getRateLimitClientIp(spent)] });
     }
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    expect((await POST(new NextRequest("http://localhost/api/auth/signout", { method: "POST", headers: form, body: "csrfToken=x" }))).status).toBe(429);
-    expect(nextAuthPost).toHaveBeenCalledTimes(1);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const post = (path: string) => POST(new NextRequest(`http://localhost/api/auth/${path}`, { method: "POST", headers: form, body: "csrfToken=x" }));
+    // Others behind the same address spent its budget: they are refused, sign-out still works.
+    expect((await post("session")).status).toBe(429);
+    expect((await post("signout")).status).toBe(302);
+    // So does a limiter outage, which fails closed for everything else.
+    rateLimit.setRateLimitTestBackendFailure(new Error("synthetic Redis failure"));
+    expect((await post("session")).status).toBe(503);
+    expect((await post("signout")).status).toBe(302);
+    expect(nextAuthPost).toHaveBeenCalledTimes(3);
   });
 
   test("a browser that signed in before still gets in while anonymous guesses lock the account (SEC-050)", async () => {

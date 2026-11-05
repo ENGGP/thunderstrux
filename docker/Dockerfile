@@ -5,10 +5,10 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Keep the digest-pinned base, but refresh required Debian packages from its
-# security repository, including vulnerable PCRE and Perl inherited from the base.
+# security repository, including vulnerable PCRE, Perl and APT (CVE-2026-109518) inherited from the base.
 # hadolint ignore=DL3008
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates libpcre2-8-0 openssl perl-base \
+  && apt-get install -y --no-install-recommends ca-certificates libpcre2-8-0 openssl perl-base apt libapt-pkg6.0 \
   && rm -rf /var/lib/apt/lists/*
 
 # Build stages add pnpm through Corepack, at the version package.json's packageManager

@@ -10,8 +10,6 @@ import { MembershipRevocationError } from "@/lib/memberships/revocation";
 import { OrderRefundError } from "@/lib/payments/order-refunds";
 import { StripeConfigurationError } from "@/lib/stripe";
 import type { OrganisationPermission } from "@/lib/permissions";
-import { requireFreshStaffMfa } from "@/lib/security/fresh-staff-mfa";
-import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { MfaConfigurationError, MfaInputError, MfaRequiredError } from "@/lib/security/staff-mfa";
 import { organisationActor } from "@/lib/organisations/http";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
@@ -66,8 +64,7 @@ export async function planRead(request: Request, orgSlug: string, read: (organis
 const endSchema = z.object({
   reason: z.string().trim().min(8, "Give a reason of at least 8 characters").max(500),
   // A refund also needs the order's short reference typed back.
-  confirmation: z.string().trim().min(1).max(20).optional(),
-  mfaCode: z.string().trim().max(20).optional()
+  confirmation: z.string().trim().min(1).max(20).optional()
 }).strict();
 
 // The 409 detail names what the action was on: a membership grant or a merchandise order (API-002).
@@ -98,8 +95,7 @@ const endRules = (target: "grantId" | "orderId") => [
 
 // Staff actions that end or undo a purchase: membership revoke, cancel (T23b)
 // and refund (T23c), and merchandise refund and free cancellation (T28b).
-// Trusted origin, live permission, a reason and, unless staff MFA is off, a
-// fresh authenticator code, as for ticket refunds and free cancellations.
+// Trusted origin, live permission and a reason, as for ticket refunds and free cancellations.
 export async function staffEndRoute(
   request: Request,
   orgSlug: string,
@@ -114,11 +110,6 @@ export async function staffEndRoute(
     const { actor, organisationId } = await organisationActor(orgSlug, permission);
     const body = await validateJson(request, endSchema);
     if (!body.success) return validationError(body.details);
-    if (body.data.mfaCode) {
-      const limited = await enforceRateLimit({ policy: "staff_mfa_verify", request, keyParts: [actor.id] });
-      if (limited) return limited;
-    }
-    await requireFreshStaffMfa(actor, body.data.mfaCode, "Enter your authenticator code to continue");
     const result = await run(organisationId, { id: actor.id }, body.data);
     return NextResponse.json(result, { status: status(result), headers: noStore });
   } catch (error) {

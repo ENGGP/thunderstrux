@@ -24,8 +24,7 @@ export function OrderDetailActions({
   requiresCompensationReview,
   free = false,
   disputed = false,
-  cancelFree = null,
-  markNeedsCode = false
+  cancelFree = null
 }: {
   orderId: string;
   buyerEmail: string | null;
@@ -41,13 +40,10 @@ export function OrderDetailActions({
   // A buyer's dispute pauses resends and every refund action until it is resolved.
   disputed?: boolean;
   // Set when this staff member may cancel this free registration; cancelled once it has been.
-  cancelFree?: { buyer: string; ticketCount: number; needsCode: boolean; cancelled: boolean } | null;
+  cancelFree?: { buyer: string; ticketCount: number; cancelled: boolean } | null;
   // Set when this staff member may refund or cancel this order's tickets (DEBT-002, as
   // Humanitix): `left` is what can still be refunded, in cents, and `tickets` the valid ones.
-  refund?: { left: number; unitPrice: number; buyer: string; reference: string; needsCode: boolean; tickets: RefundableTicket[] } | null;
-  // Marking a refund made outside Thunderstrux, or confirming one made in Stripe (SEC-036), asks for a
-  // fresh authenticator code unless staff MFA is off.
-  markNeedsCode?: boolean;
+  refund?: { left: number; unitPrice: number; buyer: string; reference: string; tickets: RefundableTicket[] } | null;
 }) {
   const router = useRouter();
   // Each result names the action it answers and shows under that action, so the card never jumps.
@@ -56,7 +52,7 @@ export function OrderDetailActions({
   const [confirmingRefund, setConfirmingRefund] = useState(false);
   const [refundId, setRefundId] = useState("");
   const [refunding, setRefunding] = useState(false);
-  const [refundForm, setRefundForm] = useState({ reason: "", confirmation: "", mfaCode: "" });
+  const [refundForm, setRefundForm] = useState({ reason: "", confirmation: "" });
   const [refundError, setRefundError] = useState("");
   const [cancelling, setCancelling] = useState(false);
   // The refund dialog: every valid ticket picked, for all it can refund, cancelled and emailed.
@@ -99,7 +95,7 @@ export function OrderDetailActions({
       await fetchJson(`/api/orders/${orderId}/cancel`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ reason: refundForm.reason, ...(cancelFree?.needsCode ? { mfaCode: refundForm.mfaCode } : {}) })
+        body: JSON.stringify({ reason: refundForm.reason })
       });
       setCancelling(false);
       router.refresh();
@@ -131,7 +127,6 @@ export function OrderDetailActions({
         body: JSON.stringify({
           reason: refundForm.reason,
           confirmation: refundForm.confirmation,
-          ...(refund?.needsCode ? { mfaCode: refundForm.mfaCode } : {}),
           ...(byTicket ? { ticketIds: picked, amount: cents, cancelTickets, notifyBuyer, ...(notifyBuyer && buyerMessage.trim() ? { buyerMessage } : {}) } : {})
         })
       });
@@ -151,7 +146,7 @@ export function OrderDetailActions({
       await fetchJson(`/api/orders/${orderId}/compensation-refund/confirm`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ refundId, ...(markNeedsCode ? { mfaCode: refundForm.mfaCode } : {}) })
+        body: JSON.stringify({ refundId })
       });
       setMessage({ ok: true, text: "Stripe refund verified and compensation resolved.", at: "verify" });
       router.refresh();
@@ -170,7 +165,7 @@ export function OrderDetailActions({
       await fetchJson(`/api/orders/${orderId}/refund-manual`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ reason: refundForm.reason, ...(markNeedsCode ? { mfaCode: refundForm.mfaCode } : {}) })
+        body: JSON.stringify({ reason: refundForm.reason })
       });
       setConfirmingRefund(false);
       setMessage({ ok: true, text: "Marked as refunded.", at: "mark" });
@@ -277,12 +272,7 @@ export function OrderDetailActions({
                 value={refundId}
               />
             </div>
-            {markNeedsCode ? (
-              <div className="w-full sm:w-48">
-                <TextInput autoComplete="one-time-code" inputMode="numeric" label="Authenticator code" onChange={(event) => setRefundForm({ ...refundForm, mfaCode: event.target.value })} value={refundForm.mfaCode} />
-              </div>
-            ) : null}
-            <Button disabled={isBusy || !refundId.trim() || (markNeedsCode && !refundForm.mfaCode.trim())} onClick={confirmCompensationRefund} type="button">
+            <Button disabled={isBusy || !refundId.trim()} onClick={confirmCompensationRefund} type="button">
               Verify completed refund
             </Button>
           </div>
@@ -405,9 +395,6 @@ export function OrderDetailActions({
             <p className="text-sm text-ink-soft">A refund comes out of the society&apos;s Stripe balance, and the Thunderstrux fee on it is returned too.</p>
             <TextInput hint="Recorded in the order history. 8 to 500 characters." label="Reason" maxLength={500} onChange={(event) => setRefundForm({ ...refundForm, reason: event.target.value })} value={refundForm.reason} />
             <TextInput autoComplete="off" label={`Type ${refund.reference} to confirm`} onChange={(event) => setRefundForm({ ...refundForm, confirmation: event.target.value })} value={refundForm.confirmation} />
-            {refund.needsCode ? (
-              <TextInput autoComplete="one-time-code" inputMode="numeric" label="Authenticator code" onChange={(event) => setRefundForm({ ...refundForm, mfaCode: event.target.value })} value={refundForm.mfaCode} />
-            ) : null}
             {byTicket && picked.length && cents !== null ? (
               <p className="font-semibold text-ink" aria-live="polite">
                 {cents > 0 ? `Refund ${formatMoney(cents)}` : "No refund"}
@@ -438,9 +425,6 @@ export function OrderDetailActions({
               <li>The places don&apos;t go back on sale by themselves.</li>
             </ul>
             <TextArea hint="Recorded in the order history. 8 to 500 characters." label="Reason" maxLength={500} onChange={(event) => setRefundForm({ ...refundForm, reason: event.target.value })} rows={2} value={refundForm.reason} />
-            {cancelFree.needsCode ? (
-              <TextInput autoComplete="one-time-code" inputMode="numeric" label="Authenticator code" onChange={(event) => setRefundForm({ ...refundForm, mfaCode: event.target.value })} value={refundForm.mfaCode} />
-            ) : null}
           </div>
         </ConfirmDialog>
       ) : null}
@@ -462,9 +446,6 @@ export function OrderDetailActions({
             undone. It doesn&apos;t send money or change the payment in Stripe.
           </p>
           <TextArea hint="How and when you refunded the buyer. Recorded in the order history. 8 to 500 characters." label="Reason" maxLength={500} onChange={(event) => setRefundForm({ ...refundForm, reason: event.target.value })} rows={2} value={refundForm.reason} />
-          {markNeedsCode ? (
-            <TextInput autoComplete="one-time-code" inputMode="numeric" label="Authenticator code" onChange={(event) => setRefundForm({ ...refundForm, mfaCode: event.target.value })} value={refundForm.mfaCode} />
-          ) : null}
         </div>
       </ConfirmDialog>
     </div>

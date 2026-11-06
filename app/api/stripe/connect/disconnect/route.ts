@@ -9,7 +9,7 @@ import { validateJson } from "@/lib/validators";
 import { disconnectAccount, notConnectedStatus } from "@/lib/stripe/connect";
 import { stripeDisconnectSchema } from "@/lib/validators/stripe-connect";
 
-// Refused while orders still depend on the account; needs a fresh authenticator code when staff MFA is on.
+// Refused while orders still depend on the account.
 export async function POST(request: Request) {
   const trustedOriginError = enforceTrustedMutationRequest(request);
 
@@ -37,13 +37,7 @@ export async function POST(request: Request) {
       return limitResponse;
     }
 
-    // Authenticator guesses share the staff verification limit.
-    if (validation.data.mfaCode) {
-      const codeLimit = await enforceRateLimit({ policy: "staff_mfa_verify", request, keyParts: [user.id] });
-      if (codeLimit) return codeLimit;
-    }
-
-    await disconnectAccount(organisationId, { actor: user, mfaCode: validation.data.mfaCode });
+    await disconnectAccount(organisationId, { actor: user });
 
     return NextResponse.json({
       disconnected: true,

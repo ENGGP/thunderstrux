@@ -11,7 +11,6 @@ import {
   type OrganisationPermission,
   type OrganisationStaffRole
 } from "@/lib/permissions";
-import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
 import { zoneCity } from "@/lib/zoned-time";
 
 export type EventTab = "summary" | "attendees" | "orders" | "edit" | "preview";
@@ -70,7 +69,7 @@ export function EventWorkspaceHeader({
         actions={
           editing ? null : canManage ? (
             <EventActions
-              cancel={hasOrganisationPermission(staffRole, "orders:refund") ? { needsCode: mfaEnforcementMode() !== "off" } : null}
+              cancel={hasOrganisationPermission(staffRole, "orders:refund")}
               event={event}
               inHeader
               size="md"

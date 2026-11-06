@@ -13,7 +13,6 @@ import { readMembership } from "@/lib/memberships/roster";
 import { readTimeZone } from "@/lib/organisations/profile";
 import { latestCommerceRefundRequest, orderReference } from "@/lib/payments/order-refunds";
 import { hasOrganisationPermission } from "@/lib/permissions";
-import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
 import { zoneCity } from "@/lib/zoned-time";
 
 export const metadata: Metadata = { title: "Member" };
@@ -149,7 +148,6 @@ export default async function MemberPage({ params }: { params: Promise<{ grantId
                 reference={orderReference(membership.orderId)}
                 grantId={membership.id}
                 member={membership.name}
-                needsCode={mfaEnforcementMode() !== "off"}
                 orgSlug={organisation.slug}
               />
             </div>

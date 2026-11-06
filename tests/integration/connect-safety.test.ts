@@ -6,7 +6,6 @@ import { prisma } from "@/lib/db";
 import { reconcileCompletedCheckoutSessionWithSideEffects } from "@/lib/payments/checkout-fulfilment-orchestrator";
 import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-reconciliation";
 import { getStripeSessionDashboardUrl } from "@/lib/orders/order-detail";
-import { MfaInputError } from "@/lib/security/staff-mfa";
 import { getStripe, isLiveStripeKey, StripeConfigurationError } from "@/lib/stripe";
 import { continueOrganisationStripeOnboarding, createOrganisationDashboardLink, disconnectAccount, heldMoneyBlocksDisconnect, markAccountStatusError, startOrganisationStripeOnboarding, StripeDisconnectBlockedError, StripeDisconnectUnavailableError } from "@/lib/stripe/connect";
 import { checkoutSession } from "@/tests/helpers/stripe-mocks";
@@ -203,20 +202,14 @@ describe("disconnect", () => {
     expect((await prisma.organisation.findUniqueOrThrow({ where: { id: owner.organisation.id } })).stripeAccountStatus).toBe("NOT_CONNECTED");
   });
 
-  test("needs an authenticator code when staff MFA is on", async () => {
+  // Only ownership handover asks for a fresh code; the route's staff check guards the sign-in.
+  test("asks for no authenticator code past the sign-in, even with staff MFA on", async () => {
     const owner = await createOrganisationAccount({ stripeReady: true });
     vi.stubEnv("MFA_ENFORCEMENT_MODE", "enforce");
-    await expect(disconnectAccount(owner.organisation.id, { actor: { id: owner.user.id } })).rejects.toBeInstanceOf(MfaInputError);
-    expect((await prisma.organisation.findUniqueOrThrow({ where: { id: owner.organisation.id } })).stripeAccountId).not.toBeNull();
+    await disconnectAccount(owner.organisation.id, { actor: { id: owner.user.id } });
+    expect((await prisma.organisation.findUniqueOrThrow({ where: { id: owner.organisation.id } })).stripeAccountId).toBeNull();
   });
 
-  test("opening the Stripe dashboard also needs an authenticator code when staff MFA is on, before Stripe is asked (T53)", async () => {
-    const owner = await createOrganisationAccount({ stripeReady: true });
-    vi.stubEnv("MFA_ENFORCEMENT_MODE", "enforce");
-    await expect(createOrganisationDashboardLink(owner.organisation.id, { actor: { id: owner.user.id } })).rejects.toBeInstanceOf(MfaInputError);
-    await expect(createOrganisationDashboardLink(owner.organisation.id, { actor: { id: owner.user.id }, mfaCode: "123456" })).rejects.toThrow();
-    expect(await prisma.auditLog.count({ where: { action: "stripe_connect.dashboard_opened" } })).toBe(0);
-  });
 });
 
 describe("status refresh failure", () => {

@@ -11,16 +11,14 @@ import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 import { newKey } from "@/lib/client/checkout";
 
 // Refund a paid order or cancel a free one (T28b, orders:refund). Each needs a
-// reason and, when staff MFA is on, an authenticator code; a refund also needs
-// the order's short reference typed back.
+// reason; a refund also needs the order's short reference typed back.
 export function MerchandiseMoneyActions({
   orgSlug,
   orderId,
   buyer,
   action,
   amount,
-  reference,
-  needsCode
+  reference
 }: {
   orgSlug: string;
   orderId: string;
@@ -28,11 +26,10 @@ export function MerchandiseMoneyActions({
   action: "refund" | "cancel";
   amount: string;
   reference: string;
-  needsCode: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ reason: "", confirmation: "", mfaCode: "" });
+  const [form, setForm] = useState({ reason: "", confirmation: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const refund = action === "refund";
@@ -44,7 +41,7 @@ export function MerchandiseMoneyActions({
       await fetchJson(`/api/orgs/${orgSlug}/merchandise/orders/${orderId}/${action}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason: form.reason, ...(refund ? { confirmation: form.confirmation } : {}), ...(needsCode ? { mfaCode: form.mfaCode } : {}) })
+        body: JSON.stringify({ reason: form.reason, ...(refund ? { confirmation: form.confirmation } : {}) })
       });
       setOpen(false);
       router.refresh();
@@ -104,9 +101,6 @@ export function MerchandiseMoneyActions({
             value={form.reason}
           />
           {refund ? <TextInput label={`Type ${reference} to confirm`} onChange={(event) => setForm({ ...form, confirmation: event.target.value })} value={form.confirmation} /> : null}
-          {needsCode ? (
-            <TextInput autoComplete="one-time-code" inputMode="numeric" label="Authenticator code" onChange={(event) => setForm({ ...form, mfaCode: event.target.value })} value={form.mfaCode} />
-          ) : null}
         </div>
       </ConfirmDialog>
     </div>

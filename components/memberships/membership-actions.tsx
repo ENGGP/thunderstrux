@@ -12,8 +12,7 @@ type Action = "revoke" | "cancel" | "refund";
 
 // The member page's "Manage this membership" card: refund a paid membership
 // (T23c), revoke without a refund, or cancel a free one (T23b). Each needs a
-// reason and, when staff MFA is on, an authenticator code; a refund also
-// needs the order's short reference typed back.
+// reason; a refund also needs the order's short reference typed back.
 export function MembershipActions({
   orgSlug,
   grantId,
@@ -22,8 +21,7 @@ export function MembershipActions({
   canCancel,
   canRefund,
   amount,
-  reference,
-  needsCode
+  reference
 }: {
   orgSlug: string;
   grantId: string;
@@ -35,11 +33,10 @@ export function MembershipActions({
   canRefund: boolean;
   amount: string;
   reference: string;
-  needsCode: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState<Action | null>(null);
-  const [form, setForm] = useState({ reason: "", confirmation: "", mfaCode: "" });
+  const [form, setForm] = useState({ reason: "", confirmation: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -53,8 +50,7 @@ export function MembershipActions({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           reason: form.reason,
-          ...(open === "refund" ? { confirmation: form.confirmation } : {}),
-          ...(needsCode ? { mfaCode: form.mfaCode } : {})
+          ...(open === "refund" ? { confirmation: form.confirmation } : {})
         })
       });
       setOpen(null);
@@ -79,15 +75,6 @@ export function MembershipActions({
       />
       {open === "refund" ? (
         <TextInput label={`Type ${reference} to confirm`} onChange={(event) => setForm({ ...form, confirmation: event.target.value })} value={form.confirmation} />
-      ) : null}
-      {needsCode ? (
-        <TextInput
-          autoComplete="one-time-code"
-          inputMode="numeric"
-          label="Authenticator code"
-          onChange={(event) => setForm({ ...form, mfaCode: event.target.value })}
-          value={form.mfaCode}
-        />
       ) : null}
     </div>
   );
@@ -116,7 +103,6 @@ export function MembershipActions({
           </Button>
         ) : null}
       </div>
-      {needsCode ? <p className="text-sm text-ink-soft">You&apos;ll need your authenticator code.</p> : null}
       {error ? (
         <Notice role="alert" title="Not changed" tone="danger">
           <p className="mt-0.5">{error}</p>

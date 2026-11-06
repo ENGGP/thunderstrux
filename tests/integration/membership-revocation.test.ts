@@ -104,24 +104,18 @@ describe("ending a membership early", () => {
     expect((await prisma.membershipGrant.findUniqueOrThrow({ where: { id: paid.grant.id } })).revokedAt).toBeNull();
   });
 
-  test("with staff MFA on, the routes need a fresh authenticator code, and go through with one", async () => {
+  test("with staff MFA on, a verified sign-in revokes with no further code; an unverified one is refused", async () => {
     const { society, grant } = await membership();
-    vi.stubEnv("MFA_ENFORCEMENT_MODE", "enroll");
+    vi.stubEnv("MFA_ENFORCEMENT_MODE", "enforce");
     vi.stubEnv("MFA_ENCRYPTION_KEY", Buffer.alloc(32, 7).toString("base64"));
     vi.stubEnv("RATE_LIMIT_ENABLED", "true");
-    for (const action of ["revoke", "cancel"] as const) {
-      const missing = await end(action, society.organisation.slug, grant.id);
-      expect(missing.status).toBe(400);
-      expect(missing.body.error.details[0].path).toEqual(["mfaCode"]);
-    }
-    vi.stubEnv("MFA_ENFORCEMENT_MODE", "enforce");
     expect((await end("revoke", society.organisation.slug, grant.id)).status).toBe(403);
     expect((await prisma.membershipGrant.findUniqueOrThrow({ where: { id: grant.id } })).revokedAt).toBeNull();
 
     setRateLimitTestBackend(createTestRateLimitBackend());
     onTestFinished(() => setRateLimitTestBackend(null));
-    const { code } = await enrolStaffMfa(society.user);
-    expect(await end("revoke", society.organisation.slug, grant.id, { reason, mfaCode: code() })).toMatchObject({ status: 200, body: { status: "revoked" } });
+    await enrolStaffMfa(society.user);
+    expect(await end("revoke", society.organisation.slug, grant.id, { reason })).toMatchObject({ status: 200, body: { status: "revoked" } });
   });
 
   test("leaving the society removes only the free join; the membership stays active", async () => {

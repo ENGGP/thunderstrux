@@ -36,13 +36,7 @@ export async function POST(request: Request) {
       return limitResponse;
     }
 
-    // Authenticator guesses share the staff verification limit.
-    if (validation.data.mfaCode) {
-      const codeLimit = await enforceRateLimit({ policy: "staff_mfa_verify", request, keyParts: [user.id] });
-      if (codeLimit) return codeLimit;
-    }
-
-    const url = await continueOrganisationStripeOnboarding(organisationId, { actor: user, mfaCode: validation.data.mfaCode }, trustedRequestOrigin(request));
+    const url = await continueOrganisationStripeOnboarding(organisationId, { actor: user }, trustedRequestOrigin(request));
 
     return NextResponse.json({ url });
   } catch (error) {

@@ -4,7 +4,5 @@ export const organisationConnectSchema = z.object({
   organisationId: z.string().trim().min(1)
 });
 
-// Onboarding, the dashboard link and disconnect also carry the authenticator code when staff MFA is on.
-export const stripeDisconnectSchema = organisationConnectSchema.extend({
-  mfaCode: z.string().trim().min(1).max(40).optional()
-});
+// Onboarding, the dashboard link and disconnect name the society only.
+export const stripeDisconnectSchema = organisationConnectSchema;

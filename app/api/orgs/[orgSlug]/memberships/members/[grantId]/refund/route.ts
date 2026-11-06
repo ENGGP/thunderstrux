@@ -3,7 +3,7 @@ import { refundMembership } from "@/lib/memberships/revocation";
 
 type Context = { params: Promise<{ orgSlug: string; grantId: string }> };
 
-// Body: { reason, confirmation, mfaCode }. Refunds a paid membership's order through
+// Body: { reason, confirmation }. Refunds a paid membership's order through
 // Stripe (orders:refund); the membership ends when Stripe confirms. 200 when
 // confirmed, 202 while Stripe is processing or its answer is being checked.
 export async function POST(request: Request, context: Context) {

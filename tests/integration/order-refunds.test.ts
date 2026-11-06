@@ -288,27 +288,8 @@ describe("whole-order refunds", () => {
     expect(await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).toMatchObject({ refundStatus: "refunded" });
   });
 
-  test("with staff MFA on, the route needs a fresh authenticator code before anything is recorded", async () => {
-    const fixture = await paidOrder();
-    // "enroll" lets the dashboard through without a grant, so the route's own code check answers.
-    vi.stubEnv("MFA_ENFORCEMENT_MODE", "enroll");
-    vi.stubEnv("MFA_ENCRYPTION_KEY", Buffer.alloc(32, 7).toString("base64"));
-    vi.stubEnv("RATE_LIMIT_ENABLED", "true");
-    setMockSession({ userId: fixture.owner.user.id, email: fixture.owner.user.email, accountRole: "organisation" });
-    const send = (body: Record<string, string>) => refundRoute(
-      jsonRequest(`http://localhost:3000/api/orders/${fixture.order.id}/refunds`, { reason: "Buyer asked for a refund.", confirmation: orderReference(fixture.order.id), ...body }),
-      routeContext({ orderId: fixture.order.id })
-    );
-    const missing = await send({});
-    expect(missing.status).toBe(400);
-    expect((await parseJsonResponse(missing)).error.details[0].path).toEqual(["mfaCode"]);
-    vi.stubEnv("MFA_ENFORCEMENT_MODE", "enforce");
-    expect((await send({})).status).toBe(403);
-    expect(await prisma.refundRequest.count()).toBe(0);
-    expect(stripe.retrieve).not.toHaveBeenCalled();
-  });
-
-  test("with staff MFA enforced, a valid authenticator code lets the refund through; the same code can't be used again", async () => {
+  // As Humanitix and Eventbrite: the authenticator guards the sign-in, not each refund.
+  test("with staff MFA enforced, a sign-in verified with the authenticator refunds without another code; an unverified one is refused", async () => {
     const fixture = await paidOrder();
     stripe.create.mockImplementation(async (params: { metadata: { refundRequestId: string } }) => providerRefund(fixture, params.metadata.refundRequestId));
     vi.stubEnv("MFA_ENFORCEMENT_MODE", "enforce");
@@ -316,20 +297,20 @@ describe("whole-order refunds", () => {
     vi.stubEnv("RATE_LIMIT_ENABLED", "true");
     setRateLimitTestBackend(createTestRateLimitBackend());
     onTestFinished(() => setRateLimitTestBackend(null));
-    const { code } = await enrolStaffMfa(fixture.owner.user);
-    const send = (mfaCode: string) => refundRoute(
-      jsonRequest(`http://localhost:3000/api/orders/${fixture.order.id}/refunds`, { reason: "Buyer asked for a refund.", confirmation: orderReference(fixture.order.id), mfaCode }),
+    const send = () => refundRoute(
+      jsonRequest(`http://localhost:3000/api/orders/${fixture.order.id}/refunds`, { reason: "Buyer asked for a refund.", confirmation: orderReference(fixture.order.id) }),
       routeContext({ orderId: fixture.order.id })
     );
 
-    const refunded = await send(code());
+    setMockSession({ userId: fixture.owner.user.id, email: fixture.owner.user.email, accountRole: "organisation" });
+    expect((await send()).status).toBe(403);
+    expect(await prisma.refundRequest.count({ where: { orderId: fixture.order.id } })).toBe(0);
+
+    await enrolStaffMfa(fixture.owner.user);
+    const refunded = await send();
     expect(refunded.status).toBe(200);
     expect(await parseJsonResponse(refunded)).toMatchObject({ status: "succeeded" });
-    const replay = await send(code());
-    expect(replay.status).toBe(400);
-    expect((await parseJsonResponse(replay)).error.details[0].path).toEqual(["mfaCode"]);
     expect(stripe.create).toHaveBeenCalledTimes(1);
-    expect(await prisma.refundRequest.count({ where: { orderId: fixture.order.id } })).toBe(1);
   });
 
   test("the refund worker's modules load without the auth secret", async () => {

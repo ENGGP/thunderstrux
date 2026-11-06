@@ -7,7 +7,6 @@ import { Button, buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Icon } from "@/components/ui/icon";
-import { TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge, type Status } from "@/components/ui/status-badge";
@@ -28,7 +27,7 @@ type StripeConnectState =
   | "ERROR";
 
 // Stripe actions that can change where payouts go, each its own route under /api/stripe/connect/.
-type CodeAction = "onboard" | "continue" | "dashboard";
+type StripeAction = "onboard" | "continue" | "dashboard";
 
 type ConnectStatus = {
   accountId: string | null;
@@ -138,11 +137,7 @@ export function StripeConnectSettings({ orgSlug, timeZone }: { orgSlug: string; 
   const [isOpeningDashboard, setIsOpeningDashboard] = useState(false);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
-  const [needsCode, setNeedsCode] = useState(false);
-  const [mfaCode, setMfaCode] = useState("");
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
-  const [codeFor, setCodeFor] = useState<CodeAction | null>(null);
-  const [codeError, setCodeError] = useState<string | null>(null);
 
   const checkStatus = useCallback(
     async (targetOrganisation: Organisation, showMessage = false) => {
@@ -235,42 +230,20 @@ export function StripeConnectSettings({ orgSlug, timeZone }: { orgSlug: string; 
     };
   }, [checkStatus, organisation]);
 
-  async function redirectToOnboarding(endpoint: string, extra: Record<string, string> = {}) {
-    if (!organisation) {
-      return;
-    }
-
-    const data = await fetchJson<{ url: string }>(endpoint, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({ organisationId: organisation.id, ...extra })
-    });
-
-    window.location.href = data.url;
-  }
-
-  // Stripe setup and its dashboard can change where payouts go, so with staff
-  // MFA on each asks for a fresh authenticator code first (T53).
-  async function askForCode(action: CodeAction) {
-    setMessage(null);
-    setMfaCode("");
-    setCodeError(null);
-    // The server decides; this only chooses whether to ask for a code.
-    const mfa = await fetchJson<{ mode: string }>("/api/me/mfa/status").catch(() => ({ mode: "enforce" }));
-    if (mfa.mode === "off") return goToStripe(action, false);
-    setCodeFor(action);
-  }
-
-  async function goToStripe(action: CodeAction, withCode: boolean) {
+  // Stripe setup and its dashboard open in this tab, as Stripe's login links are meant to.
+  async function goToStripe(action: StripeAction) {
+    if (!organisation) return;
     const busy = action === "dashboard" ? setIsOpeningDashboard : action === "onboard" ? setIsStartingOnboarding : setIsContinuingOnboarding;
+    setMessage(null);
     busy(true);
-    setCodeError(null);
 
     try {
-      // An empty field sends no code, so the server asks for one in words.
-      await redirectToOnboarding(`/api/stripe/connect/${action}`, withCode && mfaCode.trim() ? { mfaCode } : {});
+      const data = await fetchJson<{ url: string }>(`/api/stripe/connect/${action}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ organisationId: organisation.id })
+      });
+      window.location.assign(data.url);
     } catch (error) {
       if (action === "onboard" && error instanceof ClientApiError && error.payload?.state === "PLATFORM_NOT_READY") {
         setStatus({
@@ -290,23 +263,16 @@ export function StripeConnectSettings({ orgSlug, timeZone }: { orgSlug: string; 
           actionRequired: error.payload.actionRequired,
           error: error.payload.message
         });
-        setCodeFor(null);
         busy(false);
         return;
       }
-      const text = getClientErrorMessage(error, action === "dashboard" ? "Unable to open the Stripe dashboard." : "Unable to continue to Stripe.");
-      if (withCode) setCodeError(text);
-      else setMessage({ ok: false, text });
+      setMessage({ ok: false, text: getClientErrorMessage(error, action === "dashboard" ? "Unable to open the Stripe dashboard." : "Unable to continue to Stripe.") });
       busy(false);
     }
   }
 
-  async function openDisconnect() {
-    setMfaCode("");
+  function openDisconnect() {
     setDisconnectError(null);
-    // The server decides; this only chooses whether to show the code field.
-    const mfa = await fetchJson<{ mode: string }>("/api/me/mfa/status").catch(() => ({ mode: "enforce" }));
-    setNeedsCode(mfa.mode !== "off");
     setConfirmingDisconnect(true);
   }
 
@@ -322,7 +288,7 @@ export function StripeConnectSettings({ orgSlug, timeZone }: { orgSlug: string; 
       const data = await fetchJson<{ disconnected: boolean; status: ConnectStatus }>("/api/stripe/connect/disconnect", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ organisationId: organisation.id, ...(needsCode && mfaCode.trim() ? { mfaCode } : {}) })
+        body: JSON.stringify({ organisationId: organisation.id })
       });
 
       setStatus(data.status);
@@ -441,7 +407,7 @@ export function StripeConnectSettings({ orgSlug, timeZone }: { orgSlug: string; 
           : "Not yet. Ticket money is held in Stripe until you add a bank account. Sales keep working meanwhile.",
       action:
         status?.state === "READY" && !status.payouts_enabled ? (
-          <Button busy={isContinuingOnboarding} busyLabel="Redirecting…" onClick={() => askForCode("continue")} size="sm" type="button">
+          <Button busy={isContinuingOnboarding} busyLabel="Redirecting…" onClick={() => goToStripe("continue")} size="sm" type="button">
             {payoutsPaused(status) ? "Update your details in Stripe" : "Add a bank account in Stripe"}
           </Button>
         ) : null
@@ -449,7 +415,7 @@ export function StripeConnectSettings({ orgSlug, timeZone }: { orgSlug: string; 
   ];
 
   const dashboardButton = (label: string, variant: "primary" | "secondary") => (
-    <Button busy={isOpeningDashboard} busyLabel="Opening Stripe…" disabled={!status?.dashboard_available} onClick={() => askForCode("dashboard")} type="button" variant={variant}>
+    <Button busy={isOpeningDashboard} busyLabel="Opening Stripe…" disabled={!status?.dashboard_available} onClick={() => goToStripe("dashboard")} type="button" variant={variant}>
       {label}
     </Button>
   );
@@ -513,19 +479,19 @@ export function StripeConnectSettings({ orgSlug, timeZone }: { orgSlug: string; 
             ) : null}
 
             {isPlatformNotReady ? (
-              <Button busy={isStartingOnboarding} busyLabel="Retrying…" onClick={() => askForCode("onboard")} type="button" variant="secondary">
+              <Button busy={isStartingOnboarding} busyLabel="Retrying…" onClick={() => goToStripe("onboard")} type="button" variant="secondary">
                 Retry after completion
               </Button>
             ) : null}
 
             {!isConnected && !isPlatformNotReady ? (
-              <Button busy={isStartingOnboarding} busyLabel="Redirecting…" onClick={() => askForCode("onboard")} type="button">
+              <Button busy={isStartingOnboarding} busyLabel="Redirecting…" onClick={() => goToStripe("onboard")} type="button">
                 Connect Stripe
               </Button>
             ) : null}
 
             {status?.state === "CONNECTED_INCOMPLETE" || status?.state === "RESTRICTED" || (status?.state === "READY" && requirements.length > 0) ? (
-              <Button busy={isContinuingOnboarding} busyLabel="Redirecting…" onClick={() => askForCode("continue")} type="button">
+              <Button busy={isContinuingOnboarding} busyLabel="Redirecting…" onClick={() => goToStripe("continue")} type="button">
                 {status.state === "RESTRICTED" ? "Fix in Stripe" : status.state === "READY" ? "Update details in Stripe" : "Continue Stripe setup"}
               </Button>
             ) : null}
@@ -543,7 +509,7 @@ export function StripeConnectSettings({ orgSlug, timeZone }: { orgSlug: string; 
             ) : null}
 
             {status?.dashboard_available ? (
-              <Button busy={isOpeningDashboard} busyLabel="Opening Stripe…" onClick={() => askForCode("dashboard")} type="button" variant="secondary">
+              <Button busy={isOpeningDashboard} busyLabel="Opening Stripe…" onClick={() => goToStripe("dashboard")} type="button" variant="secondary">
                 Open Stripe dashboard
               </Button>
             ) : null}
@@ -611,35 +577,6 @@ export function StripeConnectSettings({ orgSlug, timeZone }: { orgSlug: string; 
       ) : null}
 
       <ConfirmDialog
-        busy={isOpeningDashboard || isStartingOnboarding || isContinuingOnboarding}
-        confirmLabel="Open Stripe"
-        onCancel={() => setCodeFor(null)}
-        onConfirm={() => codeFor && goToStripe(codeFor, true)}
-        open={codeFor !== null}
-        title={codeFor === "dashboard" ? "Open Stripe dashboard?" : "Continue to Stripe?"}
-      >
-        <div className="grid gap-4">
-          <p>
-            {codeFor === "dashboard" ? "Stripe's dashboard" : "Stripe setup"} can change the bank account payouts go to, so it
-            needs your authenticator code.
-          </p>
-          <TextInput
-            autoComplete="one-time-code"
-            hint="6 digits from your authenticator app"
-            inputMode="numeric"
-            label="Authenticator code"
-            onChange={(event) => setMfaCode(event.target.value)}
-            value={mfaCode}
-          />
-          {codeError ? (
-            <p className="text-sm text-danger" role="alert">
-              {codeError}
-            </p>
-          ) : null}
-        </div>
-      </ConfirmDialog>
-
-      <ConfirmDialog
         busy={isDisconnecting}
         confirmLabel="Disconnect"
         destructive
@@ -653,16 +590,6 @@ export function StripeConnectSettings({ orgSlug, timeZone }: { orgSlug: string; 
             Paid tickets go off sale for every event until you connect again. Your Stripe account and its balance are not
             touched: Stripe pays anything left into your bank on its usual schedule. Past orders keep the account they were paid to.
           </p>
-          {needsCode ? (
-            <TextInput
-              autoComplete="one-time-code"
-              hint="6 digits from your authenticator app"
-              inputMode="numeric"
-              label="Authenticator code"
-              onChange={(event) => setMfaCode(event.target.value)}
-              value={mfaCode}
-            />
-          ) : null}
           {disconnectError ? (
             <p className="text-sm text-danger" role="alert">
               {disconnectError}

@@ -15,7 +15,6 @@ import {
   OrganisationStripeConnectValidationError,
   startOrganisationStripeOnboarding
 } from "@/lib/stripe/connect";
-import { MfaInputError } from "@/lib/security/staff-mfa";
 import { createOrganisationAccount, createOrganisationStaff, createUser, unique } from "@/tests/helpers/test-data";
 
 const stripeMocks = vi.hoisted(() => ({
@@ -262,13 +261,12 @@ describe("Stripe Connect application service", () => {
     ).rejects.toBeInstanceOf(OrganisationStripeConnectValidationError);
   });
 
-  test("with staff MFA on, Stripe onboarding needs a fresh authenticator code, because it sets where payouts go", async () => {
+  // Only ownership handover asks for a fresh code; Stripe verifies the person on its own pages.
+  test("with staff MFA on, continuing Stripe onboarding asks for no authenticator code past the sign-in", async () => {
     const { organisation, user } = await createOrganisationAccount({ stripeReady: true });
     vi.stubEnv("MFA_ENFORCEMENT_MODE", "enforce");
-    vi.stubEnv("MFA_ENCRYPTION_KEY", Buffer.alloc(32, 7).toString("base64"));
-    await expect(startOrganisationStripeOnboarding(organisation.id, { actor: { id: user.id } })).rejects.toBeInstanceOf(MfaInputError);
-    await expect(continueOrganisationStripeOnboarding(organisation.id, { actor: { id: user.id } })).rejects.toBeInstanceOf(MfaInputError);
-    expect(stripeMocks.createAccountLink).not.toHaveBeenCalled();
+    stripeMocks.createAccountLink.mockResolvedValueOnce({ url: "https://connect.stripe.com/setup/e/test" });
+    await expect(continueOrganisationStripeOnboarding(organisation.id, { actor: { id: user.id } })).resolves.toBe("https://connect.stripe.com/setup/e/test");
   });
 
   test("an Accounts v2 event saves the account as Stripe has it now; the Connect webhook no longer reads accounts", async () => {

@@ -37,20 +37,20 @@ async function asStaff(organisationId: string, role: "owner" | "admin" | "event_
 }
 
 describe("Stripe Express dashboard link", () => {
-  test("with staff MFA on, the link needs an authenticator code before Stripe is asked (T53)", async () => {
-    // Enroll mode lets an unenrolled owner past the login check, so the code step itself answers.
+  // Only ownership handover asks for a fresh code; Stripe verifies the person on its login page.
+  test("with staff MFA on, the link needs no authenticator code past the sign-in", async () => {
+    // Enroll mode lets an unenrolled owner past the login check, as a verified sign-in would be.
     vi.stubEnv("MFA_ENFORCEMENT_MODE", "enroll");
     vi.stubEnv("MFA_ENCRYPTION_KEY", Buffer.alloc(32, 7).toString("base64"));
-    // Staff MFA operations require rate limiting; an in-memory backend stands in for Redis.
     vi.stubEnv("RATE_LIMIT_ENABLED", "true");
     setRateLimitTestBackend(createTestRateLimitBackend());
     setRateLimitTestEnabled(true);
     const { organisation } = await createOrganisationAccount({ stripeReady: true });
     await asStaff(organisation.id, "owner");
-    const refused = await ask(organisation.id);
-    expect(refused.status).toBe(400);
-    expect((await parseJsonResponse(refused)).error.message).toContain("authenticator code");
-    expect(stripe.createLoginLink).not.toHaveBeenCalled();
+    stripe.createLoginLink.mockResolvedValueOnce({ url: "https://connect.stripe.com/express/test" });
+    const opened = await ask(organisation.id);
+    expect(opened.status).toBe(200);
+    expect(await parseJsonResponse(opened)).toEqual({ url: "https://connect.stripe.com/express/test" });
   });
 
   test("staff who manage payments get a fresh sign-in link to their society's own account, one per click", async () => {

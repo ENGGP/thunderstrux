@@ -1033,9 +1033,6 @@ describe("dispute transitions", () => {
     expect((await orderState(fixture.order.id)).tickets.every((ticket) => ticket.validity === "active")).toBe(true);
   });
 
-<<<<<<< HEAD
-  test("under staff MFA, a verified sign-in voids the tickets a part loss covered with no further code (PAY-084 superseded)", async () => {
-=======
   // PAY-092: the win-after-loss handling needed the payment's worst outcome to be won.
   test("a chargeback won after its loss beside another still open or lost cancels only its own reversal and tells a person (PAY-092)", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -1089,8 +1086,7 @@ describe("dispute transitions", () => {
     expect((await orderState(fixture.order.id)).tickets).toEqual([{ validity: "void", validityReason: "dispute_lost" }, { validity: "active", validityReason: null }]);
   });
 
-  test("under staff MFA, voiding the tickets a part loss covered needs a fresh code; reviewing with none picked doesn't (PAY-084)", async () => {
->>>>>>> 2708a518 (Close audit-4 findings 1/3: money (PAY-090 to PAY-097, SEC-075, DEF-102))
+  test("under staff MFA, a verified sign-in voids the tickets a part loss covered with no further code (PAY-084 superseded)", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.stubEnv("MFA_ENFORCEMENT_MODE", "enforce");
     vi.stubEnv("RATE_LIMIT_ENABLED", "true");

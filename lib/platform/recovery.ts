@@ -195,7 +195,8 @@ export async function completeRecovery(actor: PlatformActor, requestId: string, 
     const until = keepOpen ? null : society.payoutsHeldUntil && society.payoutsHeldUntil > holdEnd ? society.payoutsHeldUntil : holdEnd;
     // A longer or open-ended hold keeps its own reason, which may be an investigation (SEC-082).
     const ours = until?.getTime() === holdEnd.getTime();
-    const reason = society.payoutsHeldAt && society.payoutsHeldReason ? `Ownership recovered: payouts wait 7 days. Earlier hold: ${society.payoutsHeldReason}` : "Ownership recovered: payouts wait 7 days";
+    const earlier = society.payoutsHeldAt && (!society.payoutsHeldUntil || society.payoutsHeldUntil > now) ? society.payoutsHeldReason : null;
+    const reason = earlier ? `Ownership recovered: payouts wait 7 days. Earlier hold: ${earlier}` : "Ownership recovered: payouts wait 7 days";
     await tx.organisation.update({ where: { id: society.id }, data: { payoutsHeldAt: society.payoutsHeldAt ?? now, payoutsHeldUntil: until, ...(ours ? { payoutsHeldReason: reason } : {}) } });
     await societyHistory(tx, [{ organisationId: society.id, action: "platform.ownership_recovered", targetType: "User", targetId: user.id, metadata: { name: name(user), ...(until ? { payoutsHeldUntil: until.toISOString() } : {}) } }]);
     await notifyPeople(tx, { eventKey: `platform-recovery/${request.id}/completed`, template: "ownership_recovered", recipients: [...recipients, ...currentLeads(society)],

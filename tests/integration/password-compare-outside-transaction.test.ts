@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { hash } from "bcryptjs";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { prisma } from "@/lib/db";
 import { accountTokenDigest, changePassword, consumePasswordReset, consumeVerification, lockAccount, AccountTokenError } from "@/lib/auth/account-lifecycle";
@@ -74,8 +75,8 @@ describe("password compares run outside transactions (SEC-077)", () => {
 
   test("a password that changes while it is being checked refuses the stale check", async () => {
     const { user, raw } = await unverifiedWithToken();
-    const other = await createUser();
-    const replaced = (await prisma.user.findUniqueOrThrow({ where: { id: other.id } })).password;
+    // Fixture users may share one cached hash, so the new password is hashed here.
+    const replaced = await hash("a-different-password", 4);
 
     let paused = pauseCompare();
     const consuming = consumeVerification(raw, "password123");

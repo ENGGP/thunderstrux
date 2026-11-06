@@ -371,6 +371,12 @@ describe("Stripe Connect application service", () => {
     expect(error.mock.calls.map(([line]) => String(line)).filter((line) => line.includes('"event":"payout_destination_changed"')).map((line) => JSON.parse(line))).toEqual([
       expect.objectContaining({ organisationId: organisation.id, stripeAccountId: accountId, last4: "6789" })
     ]);
+    // A first bank account while onboarding (payouts not on yet) starts the wait but tells support nothing.
+    const onboarding = await createOrganisationAccount({ stripeReady: true });
+    await prisma.organisation.update({ where: { id: onboarding.organisation.id }, data: { stripePayoutsEnabled: false } });
+    await signedConnectEvent({ id: unique("evt"), type: "account.external_account.created", account: onboarding.organisation.stripeAccountId, data: { object: bank } });
+    expect((await prisma.organisation.findUniqueOrThrow({ where: { id: onboarding.organisation.id } })).payoutDestinationChangedAt).toBeInstanceOf(Date);
+    expect(error.mock.calls.filter(([line]) => String(line).includes('"event":"payout_destination_changed"'))).toHaveLength(1);
     error.mockRestore();
     expect(await notices()).toEqual([user.email, treasurer.email].sort().map((recipient) => ({ recipient })));
     expect(await prisma.auditLog.count({ where: { organisationId: organisation.id, action: "stripe_connect.payout_account_changed" } })).toBe(1);
@@ -382,7 +388,8 @@ describe("Stripe Connect application service", () => {
     expect(await notices()).toHaveLength(4);
     // An account no society uses is ignored.
     expect((await signedConnectEvent({ id: unique("evt"), type: "account.external_account.created", account: "acct_unknown", data: { object: bank } })).status).toBe(200);
-    expect(await prisma.auditLog.count({ where: { action: "stripe_connect.payout_account_changed" } })).toBe(2);
+    // This society's two, and the onboarding society's one.
+    expect(await prisma.auditLog.count({ where: { action: "stripe_connect.payout_account_changed" } })).toBe(3);
   });
 
   // SEC-034: two onboarding requests at once, the second reading after the first committed.

@@ -482,9 +482,9 @@ export async function notifyPayoutAccountChanged(event: Stripe.Event) {
   if (!accountId) return { count: 0 };
   const where = external.object === "bank_account" ? `${external.bank_name ?? "a bank account"} ending ${external.last4}` : `a card ending ${external.last4}`;
   const now = new Date();
-  const changed = await prisma.$transaction(async (tx) => {
-    const organisations = await tx.organisation.findMany({ where: { stripeAccountId: accountId }, select: { id: true, slug: true, name: true } });
-    const recordedNow: string[] = [];
+  const { recorded, alert } = await prisma.$transaction(async (tx) => {
+    const organisations = await tx.organisation.findMany({ where: { stripeAccountId: accountId }, select: { id: true, slug: true, name: true, stripePayoutsEnabled: true } });
+    const result = { recorded: 0, alert: [] as string[] };
     for (const organisation of organisations) {
       // Stripe may deliver an event twice; the email is keyed to it, and so is this row.
       const recorded = await tx.auditLog.findFirst({
@@ -501,14 +501,16 @@ export async function notifyPayoutAccountChanged(event: Stripe.Event) {
         organisationId: organisation.id, actorUserId: null, action: "stripe_connect.payout_account_changed", targetType: "Organisation", targetId: organisation.id,
         metadata: { stripeAccountId: accountId, stripeEventId: event.id, last4: external.last4 }
       } });
-      recordedNow.push(organisation.id);
+      result.recorded += 1;
+      // A first bank account, added while onboarding, starts the wait but tells support nothing new.
+      if (organisation.stripePayoutsEnabled) result.alert.push(organisation.id);
     }
-    return recordedNow;
+    return result;
   });
-  for (const organisationId of changed) {
+  for (const organisationId of alert) {
     emitOperationalAlert("payout_destination_changed", { organisationId, stripeAccountId: accountId, last4: external.last4, dedupeKey: `payout_destination_changed:${event.id}:${organisationId}` });
   }
-  return { count: changed.length };
+  return { count: recorded };
 }
 
 // The webhook and a Settings refresh both save through here, so a transition

@@ -358,7 +358,11 @@ describe("checkout and reservation logic", () => {
       await tx.organisation.update({ where: { id: organisation.id }, data: { stripeAccountId: null, stripeAccountStatus: "NOT_CONNECTED", stripeChargesEnabled: false, stripePayoutsEnabled: false } });
       const checkout = createEventCheckout({ userId: member.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, quantity: 1, expectedUnitPrice: 1000, idempotencyKey: unique("checkout") })
         .then(() => "sold", (error: unknown) => error);
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // Commit only once the checkout is waiting on a lock this transaction holds.
+      await vi.waitFor(async () => {
+        const [{ waiting }] = await prisma.$queryRaw<Array<{ waiting: number }>>`SELECT count(*)::int AS waiting FROM pg_locks WHERE NOT granted`;
+        expect(waiting).toBeGreaterThan(0);
+      }, { timeout: 4000, interval: 50 });
       return { checkout };
     });
     expect(await raced.checkout).toMatchObject({ kind: "stripe_not_ready" });

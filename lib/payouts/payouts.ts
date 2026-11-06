@@ -174,8 +174,10 @@ export const payoutsHeld = (organisation: { payoutsHeldAt: Date | null; payoutsH
 // hold or pause will let go at the cap (PAY-093).
 async function keepHeldAccountsManual(limit: number, now: Date) {
   // Spelled out rather than NOT payoutsAllowedWhere: an open-ended hold's null end compares as unknown, not false.
+  // An account out of this platform's reach (ERROR with payouts off, PAY-034) can't move money and can't be asked.
+  const reachable = { OR: [{ stripeAccountStatus: null }, { stripeAccountStatus: { not: "ERROR" } }] };
   const skipped = { OR: [
-    { stripePayoutsEnabled: false }, { restrictedAt: { not: null } },
+    { stripePayoutsEnabled: false, ...reachable }, { restrictedAt: { not: null } },
     { payoutsHeldAt: { not: null }, OR: [{ payoutsHeldUntil: null }, { payoutsHeldUntil: { gt: now } }] },
     { payoutDestinationChangedAt: { gt: new Date(now.getTime() - payoutDestinationWaitMs) } }
   ] };
@@ -188,9 +190,13 @@ async function keepHeldAccountsManual(limit: number, now: Date) {
   for (const organisation of held) {
     const claimed = await prisma.organisation.updateMany({ where: { id: organisation.id, payoutCheckedAt: organisation.payoutCheckedAt }, data: { payoutCheckedAt: now } });
     if (claimed.count !== 1) continue;
+    // Apart from the repair below, so neither failure skips the other.
     try {
-      // First, so a Stripe error below never skips the notice.
       await alertDisputeHoldEnding({ id: organisation.id, stripeAccountId: organisation.stripeAccountId as string }, now);
+    } catch (error) {
+      logWarn("payouts.hold_ending_unchecked", { organisationId: organisation.id, error });
+    }
+    try {
       await ensureManualPayouts(getStripe(), organisation.stripeAccountId as string);
     } catch (error) {
       logWarn("payouts.manual_not_restored", { organisationId: organisation.id, stripeAccountId: organisation.stripeAccountId, error });

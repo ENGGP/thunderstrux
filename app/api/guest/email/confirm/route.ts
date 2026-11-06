@@ -17,7 +17,7 @@ export async function POST(request: Request) {
   try {
     const session = await redeemGuestAccess(body.data.token);
     const response = NextResponse.json({ callbackUrl: session.callbackUrl }, { headers: { "Cache-Control": "no-store" } });
-    response.cookies.set(guestCookieName, session.sessionId, guestCookieOptions(session.sessionExpiresAt));
+    response.cookies.set(guestCookieName, session.sessionId, guestCookieOptions());
     return response;
   } catch (error) { return mapRouteError(error, { operation: "guest.email_confirm", request, rules: [routeErrorRule(GuestAccessError, (invalid) => badRequest(invalid.message))] }); }
 }

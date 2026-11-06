@@ -11,6 +11,7 @@ const ownersDecoding = new Set<string>();
 
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 export const maxStoredEdge = 2048;
+export const maxJpegScans = 64;
 export class AssetError extends Error {
   constructor(readonly status: 400 | 404 | 409 | 413 | 429 | 503, message: string) { super(message); }
 }
@@ -34,6 +35,7 @@ function imageType(bytes: Buffer) {
     // Walk JPEG marker/scan boundaries so an EOI followed by a second payload is rejected.
     let offset = 2;
     let inScan = false;
+    let scans = 0;
     while (offset < bytes.length) {
       if (inScan) {
         if (bytes[offset++] !== 255) continue;
@@ -51,6 +53,8 @@ function imageType(bytes: Buffer) {
       if (length < 2) break;
       offset += length;
       inScan = marker === 218;
+      // SEC-079: real progressive JPEGs use about 10 scans; each scan re-decodes the whole image.
+      if (inScan && ++scans > maxJpegScans) throw new AssetError(400, "Save the image as a standard JPEG");
     }
   }
   throw new AssetError(400, "Upload a valid JPEG, PNG or WebP image without trailing content");

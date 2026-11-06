@@ -15,7 +15,7 @@ import { PlatformAccessError, PlatformRefusal, requirePlatformOperator } from "@
 import { revokeOperatorFromWeb, runIntegrityAudit, setWorkerPaused } from "@/lib/platform/operations";
 import { grantPlatformOperator, revokePlatformOperator } from "@/lib/platform/operators";
 import { readNeeds } from "@/lib/platform/overview";
-import { cancelRecovery, completeRecovery, readRecoveryRequest, recoveryDelayMs, requestRecovery } from "@/lib/platform/recovery";
+import { cancelRecovery, completeRecovery, readRecoveryRequest, recoveryDelayMs, recoveryRequestLifetimeMs, requestRecovery } from "@/lib/platform/recovery";
 import { changeSociety } from "@/lib/platform/societies";
 import { createTestRateLimitBackend, setRateLimitTestBackend, setRateLimitTestEnabled } from "@/lib/security/rate-limit";
 import { totpCode } from "@/lib/security/staff-mfa";
@@ -346,7 +346,7 @@ describe("delayed recovery", () => {
     await prisma.user.update({ where: { id: owner.user.id }, data: { disabledAt: new Date() } });
     const changed = next();
     await expect(completeRecovery(actor, requestId, changed.input, changed.now)).rejects.toThrow("changed since it was made");
-    expect((await readRecoveryRequest(requestId))?.checks.map((check) => check.ok)).toEqual([false, true, true, true, true, false]);
+    expect((await readRecoveryRequest(requestId))?.checks.map((check) => check.ok)).toEqual([false, true, true, true, true, false, true, true]);
     const cancel = next("Someone objected");
     await cancelRecovery(actor, requestId, cancel.input, cancel.now);
     expect(await notices("recovery_cancelled")).toHaveLength(1);
@@ -392,6 +392,62 @@ describe("delayed recovery", () => {
   });
 });
 
+// SEC-082: what happens during the wait decides. A request too old for its notices to still be
+// on record lapses; a holder who used the authenticator, or a society that revoked the claimant,
+// refuses it; the completion reaches today's owners and admins; a longer hold keeps its reason.
+describe("recovery honours what changed during the wait", () => {
+  test("a request older than 14 days lapses, and a holder who used the authenticator since refuses the reset", async () => {
+    const { actor, next, advance } = await operator();
+    const owner = await createOrganisationAccount();
+    await enrolStaffMfa(owner.user, "target-session");
+    const step = next("Lost their phone; support email 3 Nov");
+    const { requestId } = await requestRecovery(actor, { ...step.input, kind: "mfa_reset", userId: owner.user.id, evidence: "Wrote from the account's own address" }, step.now);
+    await deliver();
+    // The holder signs in with their authenticator during the 72 hours.
+    await prisma.mfaGrant.create({ data: { userId: owner.user.id, sessionDigest: "signed-in-since", verifiedAt: new Date(Date.now() + 1_000), expiresAt: new Date(Date.now() + 3_600_000) } });
+    advance(recoveryDelayMs);
+    const used = next();
+    await expect(completeRecovery(actor, requestId, used.input, used.now)).rejects.toThrow("used their authenticator after it was made");
+    expect((await readRecoveryRequest(requestId))?.checks.at(-1)).toMatchObject({ ok: false });
+    await prisma.mfaGrant.deleteMany({ where: { sessionDigest: "signed-in-since" } });
+    advance(recoveryRequestLifetimeMs);
+    const late = next();
+    await expect(completeRecovery(actor, requestId, late.input, late.now)).rejects.toThrow("more than 14 days old");
+    expect(await prisma.userMfa.count({ where: { userId: owner.user.id } })).toBe(1);
+  });
+
+  test("ownership recovery is refused once the society revoked the claimant, tells today's owners and admins, and keeps a longer hold's reason", async () => {
+    const { actor, next, advance } = await operator();
+    const owner = await createOrganisationAccount({ stripeReady: true });
+    const claimant = await createMember();
+    const row = await createOrganisationStaff({ organisationId: owner.organisation.id, userId: claimant.id, role: "event_manager" });
+    const step = next("Owner graduated; new president asked");
+    const { requestId } = await requestRecovery(actor, { ...step.input, kind: "ownership", userId: claimant.id, organisationId: owner.organisation.id, evidence: "Club register lists them" }, step.now);
+    await deliver();
+    await prisma.organisationStaff.update({ where: { id: row.id }, data: { status: "revoked", revokedAt: new Date(Date.now() + 1_000) } });
+    advance(recoveryDelayMs);
+    const revoked = next();
+    await expect(completeRecovery(actor, requestId, revoked.input, revoked.now)).rejects.toThrow("revoked this person's staff access");
+    expect((await readRecoveryRequest(requestId))?.checks.at(-1)).toMatchObject({ ok: false });
+
+    // Another society: an admin joins during the wait and a longer investigation hold is running.
+    const other = await createOrganisationAccount({ stripeReady: true });
+    const president = await createMember();
+    const second = next("Owner graduated; new president asked");
+    const { requestId: otherId } = await requestRecovery(actor, { ...second.input, kind: "ownership", userId: president.id, organisationId: other.organisation.id, evidence: "Club register lists them" }, second.now);
+    await deliver();
+    const lateAdmin = await createMember();
+    await createOrganisationStaff({ organisationId: other.organisation.id, userId: lateAdmin.id, role: "admin" });
+    const longHold = new Date(second.now.getTime() + 30 * 86_400_000);
+    await prisma.organisation.update({ where: { id: other.organisation.id }, data: { payoutsHeldAt: new Date(), payoutsHeldUntil: longHold, payoutsHeldReason: "Fraud review" } });
+    advance(recoveryDelayMs);
+    const ready = next();
+    await completeRecovery(actor, otherId, ready.input, ready.now);
+    expect((await prisma.notificationOutbox.findMany({ where: { template: "ownership_recovered" } })).map((n) => n.recipient)).toContain(lateAdmin.email);
+    expect(await prisma.organisation.findUniqueOrThrow({ where: { id: other.organisation.id } })).toMatchObject({ payoutsHeldUntil: longHold, payoutsHeldReason: "Fraud review" });
+  });
+});
+
 describe("recovery needs its requester's standing", () => {
   test("a request can't be completed once its operator was revoked, demoted or disabled; it can still be cancelled (SEC-047)", async () => {
     const asker = await operator();
@@ -405,7 +461,7 @@ describe("recovery needs its requester's standing", () => {
     await revokePlatformOperator({ email: asker.user.email, reason: "Integration test revoke", by: "cli:test" });
     const revoked = completer.next();
     await expect(completeRecovery(completer.actor, requestId, revoked.input, revoked.now)).rejects.toThrow("can no longer do recoveries");
-    expect((await readRecoveryRequest(requestId))?.checks.map((check) => check.ok)).toEqual([true, true, true, true, false, true]);
+    expect((await readRecoveryRequest(requestId))?.checks.map((check) => check.ok)).toEqual([true, true, true, true, false, true, true, true]);
     await grantPlatformOperator({ email: asker.user.email, role: "support", note: "Back as support only", by: "cli:test" });
     const demoted = completer.next();
     await expect(completeRecovery(completer.actor, requestId, demoted.input, demoted.now)).rejects.toThrow("can no longer do recoveries");

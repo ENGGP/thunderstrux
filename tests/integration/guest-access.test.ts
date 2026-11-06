@@ -114,11 +114,14 @@ describe("guest email links", () => {
 
 describe("guest sessions", () => {
   test("redemption sets an HttpOnly, SameSite cookie whose session has its own CSRF token", async () => {
-    await requestGuestAccess("cookie@example.com", "/events/abc/checkout");
+    // SEC-083: a stored return path drops its fragment, so an emailed link can't carry a token in it.
+    await requestGuestAccess("cookie@example.com", "/events/abc/checkout#token=planted");
     const response = await confirm(await emailedToken());
     expect(await parseJsonResponse(response)).toEqual({ callbackUrl: "/events/abc/checkout" });
     expect(response.headers.get("cache-control")).toBe("no-store");
     const cookie = sessionCookie(response);
+    // SEC-083: it lasts for the browser session only; the server still ends it after two hours.
+    expect(cookie.header).not.toMatch(/Expires=|Max-Age=/i);
     expect(cookie.header).toMatch(/HttpOnly/i);
     expect(cookie.header).toMatch(/SameSite=lax/i);
     expect(cookie.header).toMatch(/Path=\//);

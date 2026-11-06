@@ -4,7 +4,7 @@ import { encode } from "next-auth/jwt";
 import { proxy } from "@/proxy";
 import { authSecret } from "@/lib/auth/secret";
 import { appCookieSecure } from "@/lib/auth/public-origin";
-import { guestCookieOptions } from "@/lib/guest/guest-access";
+import { guestClearCookie, guestCookieOptions } from "@/lib/guest/guest-access";
 import { prisma } from "@/lib/db";
 import { createMember } from "@/tests/helpers/test-data";
 
@@ -60,6 +60,9 @@ describe("proxy session cookies", () => {
     vi.stubEnv("NODE_ENV", nodeEnv);
     vi.stubEnv("AUTH_URL", authUrl);
     expect(appCookieSecure()).toBe(secure);
-    expect(guestCookieOptions(new Date()).secure).toBe(secure);
+    expect(guestCookieOptions().secure).toBe(secure);
+    // SEC-083: a browser-session cookie, with no expiry of its own.
+    expect(guestCookieOptions()).not.toHaveProperty("expires");
+    expect(guestClearCookie().includes("; Secure")).toBe(secure);
   });
 });

@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { assertNotificationConfiguration } from "@/lib/email/notification-crypto";
 import { enqueueNotification } from "@/lib/email/notification-outbox";
-import { safeReturnPath } from "@/lib/security/safe-return-path";
+import { safeReturnPath, storedReturnPath } from "@/lib/security/safe-return-path";
 import { appUrl } from "@/lib/app-url";
 import { appCookieSecure } from "@/lib/auth/public-origin";
 
@@ -26,8 +26,13 @@ export const guestSessionEndedMessage = "Your guest session has ended. Confirm y
 export const guestDigest = (raw: string) => createHash("sha256").update(raw).digest("hex");
 const newSecret = () => randomBytes(32).toString("base64url");
 
-export function guestCookieOptions(expires: Date) {
-  return { httpOnly: true, secure: appCookieSecure(), sameSite: "lax" as const, path: "/", expires };
+// A browser-session cookie: closing the browser ends it, as signing out does (SEC-083). The
+// session itself still ends on the server after two hours.
+export function guestCookieOptions() {
+  return { httpOnly: true, secure: appCookieSecure(), sameSite: "lax" as const, path: "/" };
+}
+export function guestClearCookie() {
+  return `${guestCookieName}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${appCookieSecure() ? "; Secure" : ""}`;
 }
 
 async function revokeOpenGrants(tx: Prisma.TransactionClient, guestIdentityId: string, now: Date) {
@@ -53,7 +58,7 @@ export async function requestGuestAccess(email: string, callbackUrl?: string, no
     const grant = await tx.guestAccessGrant.create({ data: {
       guestIdentityId: identity.id, purpose: "checkout", tokenDigest: guestDigest(raw),
       buyerFirstName: name.firstName?.trim() || null, buyerLastName: name.lastName?.trim() || null,
-      callbackPath: safeReturnPath(callbackUrl, "/events"), expiresAt: new Date(now.getTime() + linkLifetimeMs)
+      callbackPath: storedReturnPath(callbackUrl, "/events"), expiresAt: new Date(now.getTime() + linkLifetimeMs)
     } });
     const link = new URL("/guest/access", appUrl());
     link.hash = new URLSearchParams({ token: raw }).toString();

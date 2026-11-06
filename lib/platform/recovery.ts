@@ -18,6 +18,12 @@ import { lockSociety, societySelect } from "./societies";
 
 export const recoveryDelayMs = 72 * 60 * 60_000;
 export const ownershipPayoutHoldMs = 7 * 24 * 60 * 60_000;
+// SEC-082: the notices a request sent are kept 30 days, and completion checks them, so a
+// request lapses well before then; one older than this is cancelled and made again.
+export const recoveryRequestLifetimeMs = 14 * 24 * 60 * 60_000;
+const lapsed = "This request is more than 14 days old, so it can't be completed. Cancel it and start a new one if it's still needed.";
+const revokedSinceText = "This request can't be completed: the society revoked this person's staff access after it was made. Cancel it, and check with the society's owners.";
+const usedSince = "This request can't be completed: the account holder used their authenticator after it was made. Cancel it, and check with them.";
 const changed = "This request can't be completed: the account or society changed since it was made. Cancel it and start a new one if it's still needed.";
 const requesterGone = "This request can't be completed: the operator who made it can no longer do recoveries. Cancel it and start a new one if it's still needed.";
 const untold = "This request can't be completed until everyone it names has been told: a notice is still waiting or failed. Cancel it and start a new one if one failed.";
@@ -43,6 +49,11 @@ async function mfaResetRecipients(tx: Prisma.TransactionClient, user: { id: stri
   }) : [];
   return [{ email: user.email, userId: user.id, relation: "account holder" }, ...colleagues.map((row) => ({ email: row.user.email, userId: row.user.id, relation: roleLabels[row.role].toLowerCase() }))];
 }
+
+// The society's current owners and admins, so people added during the 72 hours hear of the completion too (SEC-082).
+const currentLeads = (society: Prisma.OrganisationGetPayload<{ select: typeof societySelect }>): Recipient[] =>
+  society.staff.filter((row) => !row.user.disabledAt && (row.role === "owner" || row.role === "admin"))
+    .map((row) => ({ email: row.user.email, userId: row.user.id, relation: roleLabels[row.role].toLowerCase() }));
 
 // Everyone an ownership recovery tells: every active staff member, the society's contact address, and the new owner.
 function ownershipRecipients(society: Prisma.OrganisationGetPayload<{ select: typeof societySelect }>, user: { id: string; email: string }): Recipient[] {
@@ -112,6 +123,20 @@ async function requesterStanding(db: Pick<Prisma.TransactionClient, "platformOpe
 }
 
 const everyoneTold = (people: Array<{ acceptedAt: Date | null }>) => people.length > 0 && people.every((row) => row.acceptedAt !== null);
+const lapsedAt = (request: { createdAt: Date }, now: Date) => now.getTime() - request.createdAt.getTime() > recoveryRequestLifetimeMs;
+type Reader = Pick<Prisma.TransactionClient, "userMfa" | "mfaGrant" | "organisationStaff">;
+// Someone who can still use the authenticator doesn't need it reset: a code accepted since the
+// request (a sign-in, or a recovery code) refuses it, as account recovery elsewhere does (SEC-082).
+async function authenticatorUsedSince(db: Reader, userId: string, since: Date) {
+  const mfa = await db.userMfa.findUnique({ where: { userId }, select: { lastAcceptedStep: true } });
+  if (mfa?.lastAcceptedStep != null && Number(mfa.lastAcceptedStep) * 30_000 >= since.getTime()) return true;
+  return await db.mfaGrant.count({ where: { userId, verifiedAt: { gt: since } } }) > 0;
+}
+// The society's own decision during the 72 hours stands: one that revoked the claimant refuses it.
+async function revokedSince(db: Reader, organisationId: string, userId: string, since: Date) {
+  const row = await db.organisationStaff.findUnique({ where: { organisationId_userId: { organisationId, userId } }, select: { revokedAt: true } });
+  return Boolean(row?.revokedAt && row.revokedAt > since);
+}
 
 // The request, locked in the order every change takes: its accounts (target and
 // requester, sorted), then its society, then the request.
@@ -132,6 +157,7 @@ export async function completeRecovery(actor: PlatformActor, requestId: string, 
   return platformWrite(actor, "platform:recovery", input, async (tx) => {
     const { request, user, society, requester } = await lockRequest(tx, requestId);
     if (now < request.executeAfter) throw new PlatformRefusal(`Not ready yet: it can be completed from ${formatDateTime(request.executeAfter)}, Brisbane time.`);
+    if (lapsedAt(request, now)) throw new PlatformRefusal(lapsed);
     if (!requester) throw new PlatformRefusal(requesterGone);
     if (!user) throw new PlatformRefusal(changed);
     const people = await told(tx, request.id);
@@ -142,6 +168,7 @@ export async function completeRecovery(actor: PlatformActor, requestId: string, 
     const complete = () => tx.platformRecoveryRequest.update({ where: { id: request.id }, data: { status: "completed", completedAt: now } });
     if (request.kind === "mfa_reset") {
       if (!(await tx.userMfa.findUnique({ where: { userId: user.id }, select: { enabledAt: true } }))?.enabledAt) throw new PlatformRefusal(changed);
+      if (await authenticatorUsedSince(tx, user.id, request.createdAt)) throw new PlatformRefusal(usedSince);
       await complete();
       await tx.mfaRecoveryCode.deleteMany({ where: { userId: user.id } });
       await tx.mfaGrant.deleteMany({ where: { userId: user.id } });
@@ -155,6 +182,7 @@ export async function completeRecovery(actor: PlatformActor, requestId: string, 
       return { change: { action: "platform.mfa_reset_completed", ...base, metadata: { userId: user.id } }, result: {} };
     }
     if (!society || society.staff.some((row) => row.role === "owner" && row.user.id === user.id)) throw new PlatformRefusal(changed);
+    if (await revokedSince(tx, society.id, user.id, request.createdAt)) throw new PlatformRefusal(revokedSinceText);
     await complete();
     await tx.organisationStaff.upsert({
       where: { organisationId_userId: { organisationId: society.id, userId: user.id } },
@@ -165,9 +193,13 @@ export async function completeRecovery(actor: PlatformActor, requestId: string, 
     const holdEnd = new Date(now.getTime() + ownershipPayoutHoldMs);
     const keepOpen = society.payoutsHeldAt && !society.payoutsHeldUntil;
     const until = keepOpen ? null : society.payoutsHeldUntil && society.payoutsHeldUntil > holdEnd ? society.payoutsHeldUntil : holdEnd;
-    await tx.organisation.update({ where: { id: society.id }, data: { payoutsHeldAt: society.payoutsHeldAt ?? now, payoutsHeldUntil: until, ...(keepOpen ? {} : { payoutsHeldReason: "Ownership recovered: payouts wait 7 days" }) } });
+    // A longer or open-ended hold keeps its own reason, which may be an investigation (SEC-082).
+    const ours = until?.getTime() === holdEnd.getTime();
+    const earlier = society.payoutsHeldAt && (!society.payoutsHeldUntil || society.payoutsHeldUntil > now) ? society.payoutsHeldReason : null;
+    const reason = earlier ? `Ownership recovered: payouts wait 7 days. Earlier hold: ${earlier}` : "Ownership recovered: payouts wait 7 days";
+    await tx.organisation.update({ where: { id: society.id }, data: { payoutsHeldAt: society.payoutsHeldAt ?? now, payoutsHeldUntil: until, ...(ours ? { payoutsHeldReason: reason } : {}) } });
     await societyHistory(tx, [{ organisationId: society.id, action: "platform.ownership_recovered", targetType: "User", targetId: user.id, metadata: { name: name(user), ...(until ? { payoutsHeldUntil: until.toISOString() } : {}) } }]);
-    await notifyPeople(tx, { eventKey: `platform-recovery/${request.id}/completed`, template: "ownership_recovered", recipients,
+    await notifyPeople(tx, { eventKey: `platform-recovery/${request.id}/completed`, template: "ownership_recovered", recipients: [...recipients, ...currentLeads(society)],
       message: `Thunderstrux support made ${name(user)} (${user.email}) an owner of ${society.name}. Nobody else's role changed.${until ? ` Payouts wait until ${formatDateTime(until)}, Brisbane time.` : ""}` });
     return { change: { action: "platform.ownership_recovered", ...base, organisationId: society.id, metadata: { userId: user.id, payoutsHeldUntil: until?.toISOString() ?? null } }, result: {} };
   }, now);
@@ -227,7 +259,11 @@ export async function readRecoveryRequest(id: string) {
       : { ok: !request.organisation?.staff.some((row) => row.userId === target.id), text: `${name(target)} isn't an owner yet` },
     { ok: otherOpen === 0, text: request.organisation ? "No other request is open for this society" : "No other request is open for this account" },
     { ok: await requesterStanding(prisma, request.requestedBy), text: `${name(request.requestedBy)}, who asked, can still do recoveries` },
-    { ok: everyoneTold(people), text: "Everyone it names was told" }
+    { ok: everyoneTold(people), text: "Everyone it names was told" },
+    { ok: !lapsedAt(request, new Date()), text: "It was made in the last 14 days" },
+    request.kind === "mfa_reset"
+      ? { ok: !(await authenticatorUsedSince(prisma, target.id, request.createdAt)), text: "The authenticator hasn't been used since it was made" }
+      : { ok: !(request.organisation && await revokedSince(prisma, request.organisation.id, target.id, request.createdAt)), text: `The society hasn't revoked ${name(target)} since it was made` }
   ];
   return { request, people, checks };
 }

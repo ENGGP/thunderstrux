@@ -608,6 +608,8 @@ describe("rate-limited routes", () => {
     expect((await signIn(device)).status).toBe(302);
     const out = await POST(new NextRequest("http://localhost/api/auth/signout", { method: "POST", headers: form, body: "csrfToken=x" }));
     expect(out.headers.getSetCookie()).toContainEqual(expect.stringMatching(/^thunderstrux-known-device=; Path=\/api\/auth\/callback\/credentials; Max-Age=0; HttpOnly/));
+    // SEC-083: signing out also ends a guest session in this browser.
+    expect(out.headers.getSetCookie()).toContainEqual(expect.stringMatching(/^thunderstrux-guest=; Path=\/; Max-Age=0; HttpOnly/));
   });
 
   test("signing out ends that login's staff MFA grant, and only that one (#49)", async () => {

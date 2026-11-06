@@ -65,6 +65,18 @@ test("16-bit and interlaced PNGs are refused, and a third image decoding at once
   await expect(sanitiseImage(plain, "image/png")).resolves.toMatchObject({ width: 16, height: 16 });
 });
 
+// SEC-079: each scan re-decodes the whole image, so a JPEG may carry at most 64 of them.
+// The crafted file repeats one real scan; an ordinary progressive JPEG (about 10) still passes.
+test("a JPEG with an abnormal number of scans is refused before it is decoded (SEC-079)", async () => {
+  const jpeg = await sharp({ create: { width: 64, height: 64, channels: 3, background: "#3366cc" } }).jpeg().toBuffer();
+  const sos = jpeg.indexOf(Buffer.from([0xff, 0xda]));
+  const scan = jpeg.subarray(sos, jpeg.length - 2);
+  const repeat = (count: number) => Buffer.concat([jpeg.subarray(0, sos), ...Array(count).fill(scan), Buffer.from([0xff, 0xd9])]);
+  await expect(sanitiseImage(repeat(65), "image/jpeg")).rejects.toMatchObject({ status: 400, message: "Save the image as a standard JPEG" });
+  const progressive = await sharp({ create: { width: 640, height: 480, channels: 3, background: "#3366cc" } }).jpeg({ progressive: true }).toBuffer();
+  await expect(sanitiseImage(progressive, "image/jpeg")).resolves.toMatchObject({ width: 640 });
+});
+
 test("large progressive and CMYK JPEGs are refused, and one society holds one decoding slot at a time (SEC-066)", async () => {
   const wide = (width: number) => sharp({ create: { width, height: 1000, channels: 3, background: "#3366cc" } });
   const message = "Save the image as a standard JPEG, or at most 2048 pixels on its longest side";

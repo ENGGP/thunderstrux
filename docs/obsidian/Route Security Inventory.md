@@ -52,7 +52,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 | Staff order decisions (`refunds`, `cancel`) | origin → context → permission → sign-in → body → service; `review` the same |
 | `refund-manual` | origin → context → `orders:refund_mark` → sign-in → strict body |
 | `resend` | origin → context → `orders:email_resend` → order in this society (404) → `order_resend` → `order_resend_society` → sign-in; a resend already waiting adds no second email (SEC-057) |
-| Email and notification requeue | origin → context → `orders:email_resend` → order/job exists (404) → `order_resend` → `order_resend_society` (SEC-065) → bounded strict body → sign-in |
+| Email and notification requeue | origin → context → `orders:email_resend` → order/job exists (404) → `order_resend` → `order_resend_society` (SEC-065; the batch spends it once per email and names the rest once it runs out, SEC-084) → bounded strict body → sign-in |
 | `compensation-refund/confirm` | origin → body → context → `orders:refund` → sign-in (SEC-036) |
 | Society slug routes (`organisationActor`: profile, assets, calendar, memberships, merchandise) | origin (writes) → sign-in → slug → permission (+MFA) → rate limit where one applies → body |
 | Staff end routes (membership revoke/cancel/refund, merchandise refund/cancel) | as slug routes |
@@ -154,6 +154,7 @@ Not rate limited: public reads (abusive read volume belongs to the hosting edge)
 - Stripe is reached by navigation, so the CSP needs no Stripe allowance. Every browser test fails on a CSP violation.
 - `/api/*` gets `Cache-Control: private, no-store` unless the path starts with `public/` or `health`. Routes that set their own: `GET /api/public/organisations/search` `public, max-age=60`; `GET /api/public/assets/[assetId]` `public, max-age=300` for a shared image and `private, no-store` for a members-only event image, with an `ETag` and 304; `GET /api/health/ready` `no-store`. `GET /api/public/events` and `GET /api/public/events/[eventId]` set none.
 - `images.unoptimized`: `/_next/image` answers 404, so the server never keeps or transcodes withdrawn images.
+- `experimental.serverActions.bodySizeLimit` is `64kb`: Next parses a multipart POST to any page before it checks for a server action, and the only actions (the two admin ones) carry short strings, so an anonymous body can no longer drive a long parse (SEC-078).
 
 ## Tokens at rest
 

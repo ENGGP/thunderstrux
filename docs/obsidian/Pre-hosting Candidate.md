@@ -24,7 +24,7 @@ It is a candidate, not a release: nothing here claims hosted operation, live pay
 
 | Setting | Candidate value | Why |
 | --- | --- | --- |
-| `MFA_ENFORCEMENT_MODE` | `enforce` | Staff money and authority actions need a fresh authenticator code (SEC-001). |
+| `MFA_ENFORCEMENT_MODE` | `enforce` | Staff sign in with an authenticator, and an ownership handover asks for a fresh code (SEC-001, SEC-076). |
 | `LEGACY_ORGANISATION_ACCESS_MODE` | `deny` | Only live staff rows grant authority. |
 | `RATE_LIMIT_ENABLED` | `true` (forced in `docker-compose.hosted.yml`), Redis and the edge-set client-IP header | Sign-in, checkout and staff actions are rate limited (SEC-002). |
 | `ALERT_WEBHOOK_URL` (secret file) | required | Monitor and payment paths alert through it (OPS-002). |

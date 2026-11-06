@@ -262,7 +262,7 @@ describe("dashboard read services", () => {
     expect(past).toHaveLength(25);
     expect(past.map((row) => row.id)).toEqual(revoked.slice(1).reverse().map((row) => row.id));
     // The staff screen lists them apart from who has access now.
-    const html = await renderPage(createElement(StaffManagement, { canManageOwners: true, codeNeeded: false, initialInvites: [], initialStaff: staff, orgSlug: organisation.slug, pastInvites: [], timeZone: "Australia/Brisbane" }));
+    const html = await renderPage(createElement(StaffManagement, { canManageOwners: true, initialInvites: [], initialStaff: staff, orgSlug: organisation.slug, pastInvites: [], timeZone: "Australia/Brisbane" }));
     expect(html).toContain("Past staff");
     expect(html).toContain("The 25 most recently revoked.");
     expect(html.match(/Revoke access for /g)).toHaveLength(1);

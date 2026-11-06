@@ -81,12 +81,9 @@ export function StaffManagement({
   initialInvites,
   pastInvites,
   canManageOwners,
-  codeNeeded,
   timeZone
 }: {
   canManageOwners: boolean;
-  // SEC-046: giving access needs a fresh authenticator code unless staff MFA is off.
-  codeNeeded: boolean;
   orgSlug: string;
   initialStaff: StaffRow[];
   initialInvites: InviteRow[];
@@ -111,14 +108,7 @@ export function StaffManagement({
   // Revoking an invitation kills its emailed link, so it asks first, like revoking staff.
   const [revokingInvite, setRevokingInvite] = useState<{ id: string; email: string } | null>(null);
   const [pending, setPending] = useState<PendingChange | null>(null);
-  const [mfaCode, setMfaCode] = useState("");
-  const [codeFor, setCodeFor] = useState<{ kind: "invite" } | { kind: "resend"; inviteId: string; email: string } | null>(null);
   const [dialogError, setDialogError] = useState<string>();
-  const withCode = () => (mfaCode.trim() ? { mfaCode: mfaCode.trim() } : {});
-
-  function askForCode(action: NonNullable<typeof codeFor>) {
-    setMfaCode(""); setDialogError(undefined); setCodeFor(action);
-  }
 
   async function refreshStaff() {
     const payload = await fetchJson<{
@@ -132,8 +122,7 @@ export function StaffManagement({
 
   function inviteStaff(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (codeNeeded) askForCode({ kind: "invite" });
-    else void createInvite();
+    void createInvite();
   }
 
   async function createInvite() {
@@ -147,15 +136,13 @@ export function StaffManagement({
       await fetchJson<{ invite: InviteRow }>(`/api/orgs/${orgSlug}/staff/invites`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, role, ...withCode() })
+        body: JSON.stringify({ email, role })
       });
-      setCodeFor(null);
       setNotice("Invitation email queued. Ask the recipient to sign in with their verified email and accept the link.");
       setEmail("");
       await refreshStaff();
     } catch (inviteError) {
-      const message = getClientErrorMessage(inviteError, "Could not create staff invite.");
-      if (codeFor) setDialogError(message); else setError(message);
+      setError(getClientErrorMessage(inviteError, "Could not create staff invite."));
     } finally {
       setIsSubmitting(false);
       setInviting(false);
@@ -172,14 +159,14 @@ export function StaffManagement({
       await fetchJson(`/api/orgs/${orgSlug}/staff/${staffId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, ...(data.role ? withCode() : {}) })
+        body: JSON.stringify(data)
       });
       setPending(null);
       setNotice(data.role ? `Role changed to ${roleLabels[data.role]}.` : "Staff access revoked.");
       await refreshStaff();
     } catch (updateError) {
       const message = getClientErrorMessage(updateError, "Could not update staff access.");
-      // A role change keeps its dialog open, so a mistyped code can be fixed there.
+      // A role change keeps its dialog open and says why there.
       if (data.role) setDialogError(message);
       else { setError(message); setPending(null); }
     } finally {
@@ -190,13 +177,11 @@ export function StaffManagement({
   async function manageInvite(inviteId: string, action: "resend" | "revoke") {
     setError(null); setNotice(null); setResultAt("invites"); setIsSubmitting(true);
     try {
-      await fetchJson(`/api/orgs/${orgSlug}/staff/invites/${inviteId}/${action}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(action === "resend" ? withCode() : {}) });
-      setCodeFor(null);
+      await fetchJson(`/api/orgs/${orgSlug}/staff/invites/${inviteId}/${action}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
       setNotice(action === "resend" ? "New invitation emailed. The link in the earlier email no longer works." : "Invitation revoked. Its link no longer works.");
       await refreshStaff();
     } catch (failure) {
-      const message = getClientErrorMessage(failure, "Could not update invitation.");
-      if (codeFor) setDialogError(message); else setError(message);
+      setError(getClientErrorMessage(failure, "Could not update invitation."));
     }
     finally { setIsSubmitting(false); setRevokingInvite(null); }
   }
@@ -288,7 +273,7 @@ export function StaffManagement({
                       className="h-9 min-w-32 rounded-control border border-line-strong bg-surface px-2 text-sm text-ink aria-disabled:border-line aria-disabled:bg-inert aria-disabled:text-ink-soft"
                       aria-label={`Role for ${row.user.email}`}
                       disabled={isSubmitting || lastOwner || row.status !== "active" || (!canManageOwners && row.role === "owner")}
-                      onChange={(value) => { setMfaCode(""); setDialogError(undefined); setPending({ row, role: value as StaffRole }); }}
+                      onChange={(value) => { setDialogError(undefined); setPending({ row, role: value as StaffRole }); }}
                       value={row.role}
                     >
                       {roles.filter(item => canManageOwners || item !== "owner" || row.role === "owner").map((item) => (
@@ -346,7 +331,7 @@ export function StaffManagement({
                 </div>
                 {(canManageOwners || invite.role !== "owner") && (
                   <div className="flex flex-wrap gap-2">
-                    <Button disabled={isSubmitting} onClick={() => codeNeeded ? askForCode({ kind: "resend", inviteId: invite.id, email: invite.email }) : manageInvite(invite.id, "resend")} size="sm" type="button" variant="secondary">
+                    <Button disabled={isSubmitting} onClick={() => manageInvite(invite.id, "resend")} size="sm" type="button" variant="secondary">
                       Resend invitation
                     </Button>
                     <Button disabled={isSubmitting} onClick={() => setRevokingInvite({ id: invite.id, email: invite.email })} size="sm" type="button" variant="dangerText">
@@ -427,28 +412,6 @@ export function StaffManagement({
 
       <ConfirmDialog
         busy={isSubmitting}
-        confirmLabel={codeFor?.kind === "resend" ? "Resend invitation" : "Create invite"}
-        error={dialogError}
-        onCancel={() => setCodeFor(null)}
-        onConfirm={() => codeFor?.kind === "resend" ? manageInvite(codeFor.inviteId, "resend") : createInvite()}
-        open={codeFor !== null}
-        title={codeFor?.kind === "resend" ? `Resend the invitation to ${codeFor.email}?` : `Invite ${email.trim() || "this person"} as ${roleLabels[role]}?`}
-      >
-        <div className="grid gap-4">
-          <p>Giving someone access to this society needs your authenticator code. Every owner is emailed when they accept.</p>
-          <TextInput
-              autoComplete="one-time-code"
-              hint="6 digits from your authenticator app"
-              inputMode="numeric"
-              label="Authenticator code"
-              onChange={(event) => setMfaCode(event.target.value)}
-              value={mfaCode}
-            />
-        </div>
-      </ConfirmDialog>
-
-      <ConfirmDialog
-        busy={isSubmitting}
         confirmLabel={pending?.role ? "Change role" : "Revoke access"}
         destructive={!pending?.role}
         error={pending?.role ? dialogError : undefined}
@@ -468,19 +431,7 @@ export function StaffManagement({
         }
       >
         {pending?.role
-          ? codeNeeded ? (
-            <div className="grid gap-4">
-              <p>Their permissions change immediately, on every device they are signed in on. Enter your authenticator code to confirm; every owner is emailed.</p>
-              <TextInput
-                autoComplete="one-time-code"
-                hint="6 digits from your authenticator app"
-                inputMode="numeric"
-                label="Authenticator code"
-                onChange={(event) => setMfaCode(event.target.value)}
-                value={mfaCode}
-              />
-            </div>
-          ) : "Their permissions change immediately, on every device they are signed in on."
+          ? "Their permissions change immediately, on every device they are signed in on. Every owner is emailed."
           : "They lose access to this society's dashboard immediately, on every device. Their personal account, tickets and joined societies are not affected. You can invite them again later."}
       </ConfirmDialog>
     </div>

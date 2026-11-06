@@ -181,37 +181,29 @@ test("actor and token quotas reject writes and replay without adding audit rows"
   for (let i = 0; i < 11; i++) expect((await acceptRoute(jsonRequest("http://localhost/api/staff/invites/accept", { token: invite.token }))).status).toBe(i < 10 ? 200 : 429);
   expect(await prisma.auditLog.count({ where: { action: "staff.invite.accepted" } })).toBe(1);
 });
-test("giving access needs a fresh code under staff MFA, revoking doesn't, and every owner hears of a grant (SEC-046)", async () => {
+// As Humanitix and Eventbrite: the authenticator guards the sign-in; only an ownership handover asks again.
+test("under staff MFA a verified sign-in invites, resends, changes roles and reactivates with no further code, and every owner hears of a grant (SEC-046)", async () => {
   vi.stubEnv("MFA_ENFORCEMENT_MODE", "enforce"); vi.stubEnv("RATE_LIMIT_ENABLED", "true");
-  // A fresh code per step: the clock moves 30 seconds before each.
-  vi.useFakeTimers({ toFake: ["Date"] }); const start = Date.now(); const step = (n: number) => vi.setSystemTime(start + n * 30_000);
-  const data = await fixture(); const mfa = await enrolStaffMfa(data.user);
+  const data = await fixture(); await enrolStaffMfa(data.user);
   const slug = { orgSlug: data.organisation.slug }; const url = "http://localhost/api/orgs/x/staff/invites";
-  const noCode = await issueRoute(jsonRequest(url, { email: data.recipient.email, role: "admin" }), routeContext(slug));
-  expect(noCode.status).toBe(400); expect((await noCode.json()).error.details[0].path).toEqual(["mfaCode"]);
-  expect((await issueRoute(jsonRequest(url, { email: data.recipient.email, role: "admin", mfaCode: "000000" }), routeContext(slug))).status).toBe(400);
-  expect(await prisma.organisationStaffInvite.count()).toBe(0);
-  step(1); const issued = await issueRoute(jsonRequest(url, { email: data.recipient.email, role: "admin", mfaCode: mfa.code(1) }), routeContext(slug));
+  const issued = await issueRoute(jsonRequest(url, { email: data.recipient.email, role: "admin" }), routeContext(slug));
   expect(issued.status).toBe(201); const inviteId = (await issued.json()).invite.id;
   const resendUrl = `http://localhost/api/orgs/x/staff/invites/${inviteId}/resend`; const inviteContext = routeContext({ ...slug, inviteId });
-  expect((await resendRoute(jsonRequest(resendUrl, {}), inviteContext)).status).toBe(400);
-  step(2); expect((await resendRoute(jsonRequest(resendUrl, { mfaCode: mfa.code(2) }), inviteContext)).status).toBe(200);
+  expect((await resendRoute(jsonRequest(resendUrl, {}), inviteContext)).status).toBe(200);
   expect((await prisma.organisationStaffInvite.findUniqueOrThrow({ where: { id: inviteId } })).version).toBe(2);
+  // The old code field is gone from the strict bodies.
+  expect((await issueRoute(jsonRequest(url, { email: data.recipient.email, role: "admin", mfaCode: "123456" }), routeContext(slug))).status).toBe(400);
 
   const helper = await createMember();
   const staff = await createOrganisationStaff({ organisationId: data.organisation.id, userId: helper.id, role: "check_in_staff" });
   const staffUrl = `http://localhost/api/orgs/x/staff/${staff.id}`; const staffContext = routeContext({ ...slug, staffId: staff.id });
-  expect((await patchStaff(jsonRequest(staffUrl, { role: "admin" }, { method: "PATCH" }), staffContext)).status).toBe(400);
-  expect((await prisma.organisationStaff.findUniqueOrThrow({ where: { id: staff.id } })).role).toBe("check_in_staff");
-  step(3); expect((await patchStaff(jsonRequest(staffUrl, { role: "admin", mfaCode: mfa.code(3) }, { method: "PATCH" }), staffContext)).status).toBe(200);
+  expect((await patchStaff(jsonRequest(staffUrl, { role: "admin" }, { method: "PATCH" }), staffContext)).status).toBe(200);
   const notices = () => prisma.notificationOutbox.findMany({ where: { template: "business_notice", organisationId: data.organisation.id }, select: { recipient: true } });
   expect(await notices()).toEqual([{ recipient: data.user.email }]);
-  // Revocation works on the sign-in grant alone, for an incident; so does revoking an invitation.
   expect((await patchStaff(jsonRequest(staffUrl, { status: "revoked" }, { method: "PATCH" }), staffContext)).status).toBe(200);
   expect((await revokeRoute(jsonRequest(`http://localhost/api/orgs/x/staff/invites/${inviteId}/revoke`, {}), inviteContext)).status).toBe(200);
-  // Bringing the revoked row back gives access again, so it needs a code too.
-  expect((await patchStaff(jsonRequest(staffUrl, { status: "active" }, { method: "PATCH" }), staffContext)).status).toBe(400);
-  expect((await prisma.organisationStaff.findUniqueOrThrow({ where: { id: staff.id } })).status).toBe("revoked");
+  expect((await patchStaff(jsonRequest(staffUrl, { status: "active" }, { method: "PATCH" }), staffContext)).status).toBe(200);
+  expect((await prisma.organisationStaff.findUniqueOrThrow({ where: { id: staff.id } })).status).toBe("active");
 });
 test("accepting an invitation tells every active owner; a preserved role doesn't (SEC-046)", async () => {
   const data = await fixture();

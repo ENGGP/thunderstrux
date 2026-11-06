@@ -51,7 +51,7 @@ describe("society dates use the society's zone, not Brisbane", () => {
   });
 
   test("the staff screen dates invitations and revocations in the society's zone", async () => {
-    const html = await renderPage(createElement(StaffManagement, { codeNeeded: false,
+    const html = await renderPage(createElement(StaffManagement, {
       canManageOwners: true,
       initialInvites: [{ id: "invite-1", email: "pending@example.com", role: "event_manager", expiresAt: instant }],
       initialStaff: [{ id: "staff-1", role: "event_manager", status: "revoked", revokedAt: instant, user: { email: "past@example.com", firstName: null, lastName: null } }],

@@ -7,7 +7,6 @@ import { enqueueNotification } from "@/lib/email/notification-outbox";
 import { formatDate } from "@/lib/format";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { organisationRolesWithPermission } from "@/lib/permissions";
-import { requireFreshStaffMfa } from "@/lib/security/fresh-staff-mfa";
 import { keepStripePayoutsManual, payoutSummary, payoutsHeld, restoreStripePayoutSchedule, type PayoutSummary } from "@/lib/payouts/payouts";
 import { heldMoney } from "@/lib/payouts/release";
 import { logWarn } from "@/lib/ops/logger";
@@ -581,14 +580,8 @@ async function notifyStripeManagers(
 }
 
 // Unlinks the account locally; the Stripe account and its money are untouched,
-// and past orders keep the account they were paid to. Outside MFA "off", the
-// actor confirms with a fresh authenticator code.
-export async function disconnectAccount(
-  orgId: string,
-  { actor, mfaCode }: { actor: { id: string; mfaSessionId?: string }; mfaCode?: string }
-) {
-  await requireFreshStaffMfa(actor, mfaCode, "Enter your authenticator code to disconnect Stripe");
-
+// and past orders keep the account they were paid to.
+export async function disconnectAccount(orgId: string, { actor }: StaffActor) {
   // PAY-005: before unlinking, Stripe takes payouts back, so the money still
   // held for events isn't left waiting. A disconnect then refused under the lock
   // below goes straight back on manual payouts.
@@ -714,7 +707,7 @@ export async function markAccountStatusError(
   };
 }
 
-type FreshCode = { actor: { id: string; mfaSessionId?: string }; mfaCode?: string };
+type StaffActor = { actor: { id: string } };
 
 // A restricted society can't change where its money goes, so onboarding stops too (T55),
 // and so does a held one's, as the dashboard link does (PAY-083).
@@ -729,17 +722,14 @@ async function refuseRestrictedOrHeld(orgId: string) {
   return organisation;
 }
 
-// Stripe's onboarding collects the bank account payouts go to, so starting or
-// continuing it needs a fresh authenticator code, like the dashboard link.
-export async function startOrganisationStripeOnboarding(orgId: string, { actor, mfaCode }: FreshCode, returnOrigin?: string) {
-  await requireFreshStaffMfa(actor, mfaCode, "Enter your authenticator code to continue to Stripe");
+// Stripe's onboarding collects the bank account payouts go to; Stripe verifies the person there.
+export async function startOrganisationStripeOnboarding(orgId: string, { actor }: StaffActor, returnOrigin?: string) {
   await refuseRestrictedOrHeld(orgId);
   const { accountId, orgSlug } = await createExpressAccount(orgId, actor.id);
   return createOnboardingLink(accountId, orgSlug, returnOrigin);
 }
 
-export async function continueOrganisationStripeOnboarding(orgId: string, { actor, mfaCode }: FreshCode, returnOrigin?: string) {
-  await requireFreshStaffMfa(actor, mfaCode, "Enter your authenticator code to continue to Stripe");
+export async function continueOrganisationStripeOnboarding(orgId: string, _staff: StaffActor, returnOrigin?: string) {
   const organisation = await refuseRestrictedOrHeld(orgId);
 
   if (!organisation) {
@@ -769,9 +759,7 @@ export async function continueOrganisationStripeOnboarding(orgId: string, { acto
 // (balance, payouts, bank details), made when a staff member asks for it. The
 // platform's view of the account (dashboard.stripe.com/connect/accounts/...)
 // only opens for the platform owner, never for the society.
-// The Express Dashboard can change where payouts go, so opening it needs a fresh code, like disconnect (T53).
-export async function createOrganisationDashboardLink(orgId: string, { actor, mfaCode }: FreshCode) {
-  await requireFreshStaffMfa(actor, mfaCode, "Enter your authenticator code to open the Stripe dashboard");
+export async function createOrganisationDashboardLink(orgId: string, { actor }: StaffActor) {
   const actorUserId = actor.id;
   const organisation = await prisma.organisation.findUnique({ where: { id: orgId }, select: { stripeAccountId: true, stripeDetailsSubmitted: true, restrictedAt: true, payoutsHeldAt: true, payoutsHeldUntil: true } });
   if (!organisation) throw new OrganisationStripeConnectNotFoundError();

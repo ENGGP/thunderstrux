@@ -661,15 +661,10 @@ describe("orders API", () => {
     const ticket = await prisma.ticket.create({ data: { issueSequence: 1, orderId: order.id, eventId: event.id, ticketTypeId: ticketType.id, organisationId: organisation.id } });
 
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
-    // With staff MFA on, the mark needs a fresh code: it voids tickets and ends the payout hold.
-    vi.stubEnv("MFA_ENFORCEMENT_MODE", "enroll");
-    vi.stubEnv("MFA_ENCRYPTION_KEY", Buffer.alloc(32, 7).toString("base64"));
-    vi.stubEnv("RATE_LIMIT_ENABLED", "true");
-    const withoutCode = await markManualRefund(jsonRequest(`http://localhost/api/orders/${order.id}`, { reason: "Refunded by bank transfer" }, { method: "PATCH" }), routeContext({ orderId: order.id }));
-    expect(withoutCode.status).toBe(400);
-    expect((await parseJsonResponse(withoutCode)).error.details[0].path).toEqual(["mfaCode"]);
+    // The old code field is gone from the strict body; the mark itself needs only the reason.
+    const withCode = await markManualRefund(jsonRequest(`http://localhost/api/orders/${order.id}`, { reason: "Refunded by bank transfer", mfaCode: "123456" }, { method: "PATCH" }), routeContext({ orderId: order.id }));
+    expect(withCode.status).toBe(400);
     expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).isManuallyRefunded).toBe(false);
-    vi.stubEnv("MFA_ENFORCEMENT_MODE", "off");
 
     const response = await markManualRefund(
       jsonRequest(`http://localhost/api/orders/${order.id}`, { reason: "Refunded by bank transfer" }, {

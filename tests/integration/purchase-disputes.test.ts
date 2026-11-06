@@ -1028,35 +1028,20 @@ describe("dispute transitions", () => {
     expect((await orderState(fixture.order.id)).tickets.every((ticket) => ticket.validity === "active")).toBe(true);
   });
 
-  test("under staff MFA, voiding the tickets a part loss covered needs a fresh code; reviewing with none picked doesn't (PAY-084)", async () => {
+  test("under staff MFA, a verified sign-in voids the tickets a part loss covered with no further code (PAY-084 superseded)", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.stubEnv("MFA_ENFORCEMENT_MODE", "enforce");
     vi.stubEnv("RATE_LIMIT_ENABLED", "true");
     setRateLimitTestBackend(createTestRateLimitBackend());
     onTestFinished(() => setRateLimitTestBackend(null));
-    vi.useFakeTimers({ toFake: ["Date"] }); const start = Date.now();
-    try {
-      const fixture = await paidOrder();
-      await deliver(fixture, "needs_response", { amount: 1500 }, "charge.dispute.created");
-      await deliver(fixture, "lost", { amount: 1500 });
-      const mfa = await enrolStaffMfa(fixture.owner.user);
-      const review = (body: Record<string, unknown>) =>
-        reviewRoute(jsonRequest(`http://localhost:3000/api/orders/${fixture.order.id}/review`, body), routeContext({ orderId: fixture.order.id }));
-      const [first] = await prisma.ticket.findMany({ where: { orderId: fixture.order.id }, orderBy: { issueSequence: "asc" }, select: { id: true } });
-      const noCode = await review({ action: "mark_reviewed", ticketIds: [first.id] });
-      expect(noCode.status).toBe(400);
-      expect((await noCode.json()).error.details[0].path).toEqual(["mfaCode"]);
-      expect((await orderState(fixture.order.id)).tickets.every((ticket) => ticket.validity === "active")).toBe(true);
-      vi.setSystemTime(start + 30_000);
-      expect((await review({ action: "mark_reviewed", ticketIds: [first.id], mfaCode: mfa.code(1) })).status).toBe(200);
-      expect((await orderState(fixture.order.id)).tickets).toEqual([{ validity: "void", validityReason: "dispute_lost" }, { validity: "active", validityReason: null }]);
-
-      const other = await paidOrder();
-      await deliver(other, "needs_response", { amount: 1500 }, "charge.dispute.created");
-      await deliver(other, "lost", { amount: 1500 });
-      await enrolStaffMfa(other.owner.user);
-      expect((await reviewRoute(jsonRequest(`http://localhost:3000/api/orders/${other.order.id}/review`, { action: "mark_reviewed" }), routeContext({ orderId: other.order.id }))).status).toBe(200);
-    } finally { vi.useRealTimers(); }
+    const fixture = await paidOrder();
+    await deliver(fixture, "needs_response", { amount: 1500 }, "charge.dispute.created");
+    await deliver(fixture, "lost", { amount: 1500 });
+    await enrolStaffMfa(fixture.owner.user);
+    const [first] = await prisma.ticket.findMany({ where: { orderId: fixture.order.id }, orderBy: { issueSequence: "asc" }, select: { id: true } });
+    const voided = await reviewRoute(jsonRequest(`http://localhost:3000/api/orders/${fixture.order.id}/review`, { action: "mark_reviewed", ticketIds: [first.id] }), routeContext({ orderId: fixture.order.id }));
+    expect(voided.status).toBe(200);
+    expect((await orderState(fixture.order.id)).tickets).toEqual([{ validity: "void", validityReason: "dispute_lost" }, { validity: "active", validityReason: null }]);
   });
 
   test("restoring after a won chargeback leaves a bank's open inquiry live, so its loss still counts (PAY-077)", async () => {

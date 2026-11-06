@@ -15,7 +15,6 @@ import { staffMerchandiseOrder, type StaffMerchandiseOrder } from "@/lib/merchan
 import { pickupSettings } from "@/lib/merchandise/pickups";
 import { hasOrganisationPermission } from "@/lib/permissions";
 import { ticketOrderProjection } from "@/lib/purchases/projection";
-import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
 
 export const metadata: Metadata = { title: "Merchandise order" };
 
@@ -197,10 +196,10 @@ export default async function MerchandiseOrderPage({ params }: { params: Promise
                 <dd>{order.refundStatus === "refunded" ? formatMoney(order.totalAmount) : order.refundStatus === "processing" ? "Processing" : order.externalRefundedAmount ? `${formatMoney(order.externalRefundedAmount)} in Stripe` : "Nothing"}</dd>
               </dl>
               {can("orders:refund") && open && !free ? (
-                <MerchandiseMoneyActions action="refund" amount={formatMoney(order.totalAmount - order.externalRefundedAmount)} buyer={buyer} needsCode={mfaEnforcementMode() !== "off"} orderId={order.id} orgSlug={organisation.slug} reference={order.reference} />
+                <MerchandiseMoneyActions action="refund" amount={formatMoney(order.totalAmount - order.externalRefundedAmount)} buyer={buyer} orderId={order.id} orgSlug={organisation.slug} reference={order.reference} />
               ) : null}
               {can("orders:refund") && open && free && order.pickupStatus !== "collected" ? (
-                <MerchandiseMoneyActions action="cancel" amount="Free" buyer={buyer} needsCode={mfaEnforcementMode() !== "off"} orderId={order.id} orgSlug={organisation.slug} reference={order.reference} />
+                <MerchandiseMoneyActions action="cancel" amount="Free" buyer={buyer} orderId={order.id} orgSlug={organisation.slug} reference={order.reference} />
               ) : null}
               <p className="text-sm text-ink-soft">Owners, admins and finance managers. A refund doesn&apos;t record a return.</p>
             </Card>

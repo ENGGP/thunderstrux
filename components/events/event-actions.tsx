@@ -46,13 +46,12 @@ export function EventActions({
   event,
   size = "sm",
   inHeader = false,
-  cancel = null
+  cancel = false
 }: {
   event: ActionEvent;
   size?: "sm" | "md";
-  // Cancel event (EVT-004), offered to staff who may also refund; needsCode
-  // asks for an authenticator code unless staff MFA is off.
-  cancel?: { needsCode: boolean } | null;
+  // Cancel event (EVT-004), offered to staff who may also refund.
+  cancel?: boolean;
   // The event's own header: "Edit event", the public link outside the menu,
   // and back to the list after a delete.
   inHeader?: boolean;
@@ -62,7 +61,7 @@ export function EventActions({
   const menu = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState<"unpublish" | "delete" | "cancel" | null>(null);
-  const [cancelForm, setCancelForm] = useState({ reason: "", confirmation: "", mfaCode: "" });
+  const [cancelForm, setCancelForm] = useState({ reason: "", confirmation: "" });
   const [cancelError, setCancelError] = useState("");
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const blockerId = `${id}-blocker`;
@@ -148,7 +147,7 @@ export function EventActions({
       const result = await fetchJson<CancelResult>(`/api/events/${event.id}/cancel`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ reason: cancelForm.reason, confirmation: cancelForm.confirmation, ...(cancel?.needsCode ? { mfaCode: cancelForm.mfaCode } : {}) })
+        body: JSON.stringify({ reason: cancelForm.reason, confirmation: cancelForm.confirmation })
       });
       setConfirming(null);
       setMessage({
@@ -343,9 +342,6 @@ export function EventActions({
             </ul>
             <TextArea hint="Emailed to every ticket holder and kept in History. 8 to 500 characters." label="Message to ticket holders" maxLength={500} onChange={(change) => setCancelForm({ ...cancelForm, reason: change.target.value })} rows={3} value={cancelForm.reason} />
             <TextInput autoComplete="off" label={`Type ${event.title} to confirm`} onChange={(change) => setCancelForm({ ...cancelForm, confirmation: change.target.value })} value={cancelForm.confirmation} />
-            {cancel.needsCode ? (
-              <TextInput autoComplete="one-time-code" inputMode="numeric" label="Authenticator code" onChange={(change) => setCancelForm({ ...cancelForm, mfaCode: change.target.value })} value={cancelForm.mfaCode} />
-            ) : null}
           </div>
         </ConfirmDialog>
       ) : null}

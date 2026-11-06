@@ -29,7 +29,6 @@ export default async function StaffSettingsPage() {
       />
       <StaffManagement
         canManageOwners={organisation.staffRole === "owner"}
-        codeNeeded={mfaEnforcementMode() !== "off"}
         initialInvites={invites}
         initialStaff={staff}
         pastInvites={pastInvites}

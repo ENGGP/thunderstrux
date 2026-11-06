@@ -14,7 +14,6 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDate, formatDateTime, formatMoney, formatPrice, ticketReference } from "@/lib/format";
 import { readTimeZone } from "@/lib/organisations/profile";
 import { orderReference } from "@/lib/payments/order-refunds";
-import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
 import { roleHasPermission } from "@/lib/staff/live-authority";
 import { isLiveStripeKey } from "@/lib/stripe";
 import {
@@ -188,7 +187,6 @@ export default async function OrganisationOrderDetailPage({
                     unitPrice: order.unitPrice,
                     buyer: buyer?.name ?? buyer?.email ?? "the buyer",
                     reference: orderReference(order.id),
-                    needsCode: mfaEnforcementMode() !== "off",
                     tickets: valid.map((ticket) => ({ id: ticket.id, reference: ticketReference(ticket.id), type: ticket.ticketType.name, checkedIn: Boolean(ticket.checkedInAt) }))
                   }
                 : null
@@ -199,11 +197,10 @@ export default async function OrganisationOrderDetailPage({
             free={order.paymentKind === "free"}
             cancelFree={
               canRefund && order.paymentKind === "free" && order.status === "paid"
-                ? { buyer: buyer?.name ?? buyer?.email ?? "the buyer", ticketCount: order.quantity, needsCode: mfaEnforcementMode() !== "off", cancelled: Boolean(order.cancelledAt) }
+                ? { buyer: buyer?.name ?? buyer?.email ?? "the buyer", ticketCount: order.quantity, cancelled: Boolean(order.cancelledAt) }
                 : null
             }
             isManuallyRefunded={order.isManuallyRefunded}
-            markNeedsCode={mfaEnforcementMode() !== "off"}
             orderId={order.id}
             paid={order.status === "paid"}
             requiresCompensationReview={order.requiresCompensationReview}
@@ -373,7 +370,6 @@ function ReviewNotice({ order, canAct, timeZone }: { order: Awaited<ReturnType<t
           action={canAct && !order.externalRefundReviewedAt ? (
             <OrderReviewActions
               action="mark_reviewed"
-              codeNeeded={mfaEnforcementMode() !== "off"}
               covering="dispute"
               orderId={order.id}
               preselect={Math.floor(dispute.amount / order.unitPrice)}
@@ -418,7 +414,6 @@ function ReviewNotice({ order, canAct, timeZone }: { order: Awaited<ReturnType<t
         canAct ? (
           <OrderReviewActions
             action="mark_reviewed"
-            codeNeeded={mfaEnforcementMode() !== "off"}
             orderId={order.id}
             // The tickets the amount covers whole are picked first; staff change it, or pick none for a goodwill refund.
             preselect={Math.floor(order.externalRefundedAmount / order.unitPrice)}

@@ -107,7 +107,7 @@ An event has four independent settings ([[Database and Multi Tenancy#Models]]):
 
 ### Cancelling
 
-`POST /api/events/[eventId]/cancel` (`cancelOrganisationEvent`) cancels a published event that hasn't ended. It needs `events:manage` and `orders:refund`, the event title typed back, a message to ticket holders, and one fresh authenticator code for the whole event.
+`POST /api/events/[eventId]/cancel` (`cancelOrganisationEvent`) cancels a published event that hasn't ended. It needs `events:manage` and `orders:refund`, the event title typed back and a message to ticket holders.
 
 - **One transaction under the event lock** (all ticket types, then each order), so no checkout, fulfilment or edit interleaves: `cancelledAt`, `cancellationReason`, `saleState = closed`, `version` + 1.
 - **Waiting change notices:** every open `EventChange`, sent in part or not at all, closes as `superseded`, because the cancellation email replaces it and it would say "Your tickets are still valid" (EVT-008). Such notices already queued, claimed or failed are cancelled too, or one could still send or be requeued.
@@ -119,7 +119,7 @@ An event has four independent settings ([[Database and Multi Tenancy#Models]]):
 - **Afterwards:** edits, publish changes and reopening sales are refused (400 "This event was cancelled"); the Edit page shows a notice instead of the form. The event leaves Explore, society profiles and discovery counts; its own page and buyers' order pages say it was cancelled. A repeat answers `already_cancelled`.
 - **Money already released** (`releasedEarlyShare` in `lib/payouts/release.ts`): Stripe holds manual-payout money at most 90 days, so a sale paid more than 80 days ago was already released for payout (PAY-022). The response's `releasedEarly` is `{amount, orders}`: the society's share of those sales whose refund was opened (skipped orders don't count). The staff message says Stripe may take it from their bank account, and `event_cancelled_after_release` alerts the platform ([[Production Operations]]).
 - Audits `event.cancelled` with the counts, skipped orders and `releasedEarly`, plus each order's own `order.refund_requested` or `order.free_cancelled`.
-- **Why one code and the worker:** refunding one order at a time took a fresh code each, so a 300-ticket event took hours (EVT-004). Luma and Eventbrite cancel with one confirmation that refunds everyone and emails attendees; the worker spreads the Stripe calls and retries unknown answers. Only before the end: payouts wait until two days after the event, so the society's balance still holds the money to refund, except sales older than 80 days (above).
+- **Why one confirmation and the worker:** refunding one order at a time, a 300-ticket event took hours (EVT-004). Luma and Eventbrite cancel with one confirmation that refunds everyone and emails attendees; the worker spreads the Stripe calls and retries unknown answers. Only before the end: payouts wait until two days after the event, so the society's balance still holds the money to refund, except sales older than 80 days (above).
 - **Not done here:** memberships and merchandise aren't event-owned and are untouched; check-in doesn't separately refuse a cancelled event (its tickets are voided as refunds land).
 
 ### Editing
@@ -205,7 +205,7 @@ Rules:
 
 | Caller | Who | Stock | Buyer email |
 | --- | --- | --- | --- |
-| `cancelFreePurchase` (`POST /api/orders/[orderId]/cancel`) | staff, with a fresh code | not restored | `cancellation/{orderId}`: cancelled by the society |
+| `cancelFreePurchase` (`POST /api/orders/[orderId]/cancel`) | staff | not restored | `cancellation/{orderId}`: cancelled by the society |
 | `releaseFreeRegistration` (`POST /api/purchases/tickets/[orderId]/cancel-registration`) | the buyer, before the event starts (EVT-005) | the voided tickets go back to `TicketType.quantity`, under the event and type locks taken before the order's | `cancellation/{orderId}`: you cancelled |
 | `cancelOrganisationEvent` | staff cancelling the event | not restored (nothing sells again) | none of its own; the event's `event_cancelled` notice |
 

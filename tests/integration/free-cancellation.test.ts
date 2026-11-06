@@ -116,23 +116,18 @@ describe("cancelling a free registration", () => {
     await expect(prisma.purchaseDispute.update({ where: { id: dispute.id }, data: { resolvedAt: new Date() } })).rejects.toThrow();
   });
 
-  test("with staff MFA on, the route needs a fresh authenticator code, and goes through with one", async () => {
+  test("with staff MFA on, a verified sign-in cancels with no further code; an unverified one is refused", async () => {
     const fixture = await freeOrder();
-    // "enroll" lets the dashboard through without a grant, so the route's own code check answers.
-    vi.stubEnv("MFA_ENFORCEMENT_MODE", "enroll");
+    vi.stubEnv("MFA_ENFORCEMENT_MODE", "enforce");
     vi.stubEnv("MFA_ENCRYPTION_KEY", Buffer.alloc(32, 7).toString("base64"));
     vi.stubEnv("RATE_LIMIT_ENABLED", "true");
-    const missing = await send(fixture, { reason: "Duplicate registration." });
-    expect(missing.status).toBe(400);
-    expect((await parseJsonResponse(missing)).error.details[0].path).toEqual(["mfaCode"]);
-    vi.stubEnv("MFA_ENFORCEMENT_MODE", "enforce");
     expect((await send(fixture, { reason: "Duplicate registration." })).status).toBe(403);
     expect((await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).cancelledAt).toBeNull();
 
     setRateLimitTestBackend(createTestRateLimitBackend());
     onTestFinished(() => setRateLimitTestBackend(null));
-    const { code } = await enrolStaffMfa(fixture.owner.user);
-    expect((await send(fixture, { reason: "Duplicate registration.", mfaCode: code() })).status).toBe(200);
+    await enrolStaffMfa(fixture.owner.user);
+    expect((await send(fixture, { reason: "Duplicate registration." })).status).toBe(200);
     expect((await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).cancelledAt).not.toBeNull();
   });
 });

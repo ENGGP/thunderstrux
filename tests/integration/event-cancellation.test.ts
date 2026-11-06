@@ -282,7 +282,7 @@ describe("cancelling an event (EVT-004)", () => {
     expect(await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).toMatchObject({ requiresCompensationReview: true, fulfilmentFailureReason: "event_cancelled_before_fulfilment" });
   });
 
-  test("the wrong title, a draft, an event manager without refunds and a missing authenticator code are refused before anything changes", async () => {
+  test("the wrong title, a draft and an event manager without refunds are refused before anything changes; a verified sign-in needs no further code", async () => {
     const { society, event } = await societyEvent();
     const wrong = await cancel(society, event.id, { reason, confirmation: "Some other event" });
     expect(wrong.status).toBe(400);
@@ -298,18 +298,16 @@ describe("cancelling an event (EVT-004)", () => {
     selectMockContext({ mode: "staff", organisationId: society.organisation.id });
     expect((await cancelRoute(jsonRequest(`http://localhost:3000/api/events/${event.id}/cancel`, { reason, confirmation: event.title }), routeContext({ eventId: event.id }))).status).toBe(403);
 
+    // Under staff MFA (enroll: the dashboard lets this owner in), the cancel asks for no code of its own.
     vi.stubEnv("MFA_ENFORCEMENT_MODE", "enroll");
     vi.stubEnv("MFA_ENCRYPTION_KEY", Buffer.alloc(32, 7).toString("base64"));
     vi.stubEnv("RATE_LIMIT_ENABLED", "true");
-    const missing = await cancel(society, event.id, { reason, confirmation: event.title });
-    expect(missing.status).toBe(400);
-    expect((await parseJsonResponse(missing)).error.details[0].path).toEqual(["mfaCode"]);
-    expect((await prisma.event.findUniqueOrThrow({ where: { id: event.id } })).cancelledAt).toBeNull();
-
     setRateLimitTestBackend(createTestRateLimitBackend());
     onTestFinished(() => setRateLimitTestBackend(null));
-    const { code } = await enrolStaffMfa(society.user);
-    const response = await cancelRoute(jsonRequest(`http://localhost:3000/api/events/${event.id}/cancel`, { reason, confirmation: event.title, mfaCode: code() }), routeContext({ eventId: event.id }));
+    // Back to the owner (the manager's context was selected above), then verify the sign-in.
+    clearMockSession();
+    await enrolStaffMfa(society.user);
+    const response = await cancelRoute(jsonRequest(`http://localhost:3000/api/events/${event.id}/cancel`, { reason, confirmation: event.title }), routeContext({ eventId: event.id }));
     expect(response.status).toBe(200);
   });
 });

@@ -22,7 +22,6 @@ import { zoneCity } from "@/lib/zoned-time";
 // refund worker sends, each free registration is cancelled, and every ticket
 // holder is emailed once. Orders that can't be refunded here (disputed,
 // already refunded, in review) are skipped and reported for staff to settle.
-// The caller has verified the staff member's fresh authenticator code.
 
 export type SkippedOrder = { orderId: string; reason: RefundFailureKind };
 

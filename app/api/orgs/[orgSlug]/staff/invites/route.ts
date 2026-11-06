@@ -4,7 +4,7 @@ import { requireVerifiedUser, requireOrganisationPermission } from "@/lib/auth/a
 import { organisationIdBySlug } from "@/lib/organisations/authority";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { createOrganisationStaffInvite } from "@/lib/staff/invites";
-import { invitationIssuanceLimits, requireStaffGrantCode, staffInviteFailure } from "@/lib/staff/invite-http";
+import { invitationIssuanceLimits, staffInviteFailure } from "@/lib/staff/invite-http";
 import { validateJson } from "@/lib/validators";
 import { createStaffInviteSchema } from "@/lib/validators/staff";
 
@@ -17,9 +17,8 @@ export async function POST(request: Request, context: { params: Promise<{ orgSlu
     const organisationId = await organisationIdBySlug(orgSlug);
     if (!organisationId) return notFound("Organisation was not found");
     const authority = await requireOrganisationPermission(organisationId, "staff:manage");
-    const { mfaCode, ...invite } = input.data;
+    const invite = input.data;
     if (invite.role === "owner" && authority.staffRole !== "owner") return forbidden("Only owners can invite owners");
-    const code = await requireStaffGrantCode(request, actor, mfaCode); if (code) return code;
     const limited = await invitationIssuanceLimits(request, actor.id, organisationId, invite.email); if (limited) return limited;
     return NextResponse.json(await createOrganisationStaffInvite({ organisationId, actor, ...invite }), {
       status: 201, headers: { "Cache-Control": "private, no-store" }

@@ -101,8 +101,8 @@ describe("domain service boundaries", () => {
 
   test("Connect mutations authorize the target tenant before rate limiting and I/O", async () => {
     const cases = [
-      ["onboard", "startOrganisationStripeOnboarding(organisationId, { actor: user, mfaCode: validation.data.mfaCode }, trustedRequestOrigin(request))"],
-      ["continue", "continueOrganisationStripeOnboarding(organisationId, { actor: user, mfaCode: validation.data.mfaCode }, trustedRequestOrigin(request))"],
+      ["onboard", "startOrganisationStripeOnboarding(organisationId, { actor: user }, trustedRequestOrigin(request))"],
+      ["continue", "continueOrganisationStripeOnboarding(organisationId, { actor: user }, trustedRequestOrigin(request))"],
       ["disconnect", "disconnectAccount(organisationId, {"]
     ] as const;
 

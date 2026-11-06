@@ -49,18 +49,18 @@ There is no one universal order. Each family runs its checks in this order; a re
 | `POST /api/events` | origin → body → `events:manage` on the body's `organisationId` → sign-in |
 | Event reads (`GET events`, `GET events/[eventId]`) | `orgId` query → `events:manage` |
 | Check-in, check-out | origin → dashboard context → `tickets:check_in` → `ticket_check_in_out` → sign-in |
-| Staff order decisions (`refunds`, `cancel`) | origin → context → permission → sign-in → body → `staff_mfa_verify` when a code is sent → fresh code unless MFA mode `off` → service; `review` stops at the login grant, except `mark_reviewed` with tickets picked, which voids them and needs the code too (PAY-084) |
-| `refund-manual` | origin → context → `orders:refund_mark` → sign-in → strict body → `staff_mfa_verify` when a code is sent → fresh code unless `off` |
+| Staff order decisions (`refunds`, `cancel`) | origin → context → permission → sign-in → body → service; `review` the same |
+| `refund-manual` | origin → context → `orders:refund_mark` → sign-in → strict body |
 | `resend` | origin → context → `orders:email_resend` → order in this society (404) → `order_resend` → `order_resend_society` → sign-in; a resend already waiting adds no second email (SEC-057) |
 | Email and notification requeue | origin → context → `orders:email_resend` → order/job exists (404) → `order_resend` → `order_resend_society` (SEC-065) → bounded strict body → sign-in |
-| `compensation-refund/confirm` | origin → body → context → `orders:refund` → sign-in → `staff_mfa_verify` when a code is sent → fresh code unless MFA is `off` (SEC-036) |
+| `compensation-refund/confirm` | origin → body → context → `orders:refund` → sign-in (SEC-036) |
 | Society slug routes (`organisationActor`: profile, assets, calendar, memberships, merchandise) | origin (writes) → sign-in → slug → permission (+MFA) → rate limit where one applies → body |
-| Staff end routes (membership revoke/cancel/refund, merchandise refund/cancel) | as slug routes, then `staff_mfa_verify` when a code is sent → fresh code unless `off` |
+| Staff end routes (membership revoke/cancel/refund, merchandise refund/cancel) | as slug routes |
 | Staff management | list: slug → `staff:manage`. `PATCH`: origin → body → sign-in → slug → `staff:manage`. Invites: origin → body → verified → slug → `staff:manage` (owner role needs an owner) → invite limits. Handover: origin → body → verified → slug → owner → `account_security_change` → fresh code unless MFA is `off` (SEC-061) |
 | Invite acceptance | origin → body → `account_token_ip` → `account_token_digest` (keys prefixed `staff_invite`) → verified |
 | Society bootstrap `POST /api/orgs` | origin → organisation account → verified → `organisation_create` → body |
 | Join / leave | origin → member account → (join only) verified → `organisation_join_leave` |
-| Stripe Connect | origin → `requireStripeConnectCapability` (`stripe:manage` somewhere, +MFA) → body → `organisationId` → `stripe:manage` on it (+MFA) → `stripe_connect_mutation` → `staff_mfa_verify` when a code is sent. Status `GET`: capability → target → `stripe_connect_status` (SEC-037) |
+| Stripe Connect | origin → `requireStripeConnectCapability` (`stripe:manage` somewhere, +MFA) → body → `organisationId` → `stripe:manage` on it (+MFA) → `stripe_connect_mutation`. Status `GET`: capability → target → `stripe_connect_status` (SEC-037) |
 | Checkout (`payments/checkout/*`) | origin → body → guest branch (no login and a guest cookie: `checkout` session → guest CSRF → `checkout_create`) or member branch (verified → member account → `checkout_create`) |
 | Buyer cancel (`purchases/tickets/[orderId]/cancel`, `purchases/tickets/[orderId]/cancel-registration`, `commerce/orders/[orderId]/cancel`) | origin → order → guest (guest CSRF) or sign-in → buyer owns it (else 404) → `checkout_create` (`authorizeBuyer` in `lib/purchases/pending-checkout-http.ts`) |
 | Buyer reads (status, attempts, commerce order) | session or guest session → ownership (else 404); no origin check, no rate limit |
@@ -69,7 +69,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 ## Rules
 
 - **Authority is live.** Staff permission is read from `OrganisationStaff` on every request through `requireOrganisationPermission` and `liveStaffRole` ([[Authentication and Dashboard Access#Roles and permissions]]), never from the session or a client id. The tenant is the canonical owner (an event's society, a commerce order's society, the selected dashboard context, or a slug), never a body field taken on trust. Another society's ids answer the same 404 as a missing one.
-- **Fresh staff code.** Outside MFA mode `off`, cancelling an event (one code for all its refunds), ticket refunds and free cancellations, membership revoke, cancel and refund, merchandise refund and free cancellation, the Connect dashboard link and disconnect, and giving staff access (an invitation, its resend, a role change or a reactivation; never a revocation, which must work fast in an incident; SEC-046) each need an authenticator code in the body, verified at the route or its service by `requireFreshStaffMfa` (`lib/security/fresh-staff-mfa.ts`), not only the login grant.
+- **Fresh staff code.** Outside MFA mode `off`, only an ownership handover needs an authenticator code in the body, verified by `requireStaffGrantCode` and `requireFreshStaffMfa` (`lib/security/fresh-staff-mfa.ts`). Refunds, cancellations, staff access and Stripe Connect rely on the sign-in verified with the authenticator, as on Humanitix and Eventbrite (SEC-076).
 - **Errors.** Every route maps failures through `mapRouteError` (directly or through its family helper). Unknown errors answer a generic 500 and log `api.request_failed` with the operation and error class only. Exempt: Auth.js, both Stripe webhooks, `health`, `health/ready`, `security/csrf`.
 - **Bounds.** Prices follow `lib/validators/price.ts` (free, or 50 to 99,999,999 cents, Stripe's largest charge); ticket stock and capacity stop at 1,000,000 (`lib/validators/events.ts`), merchandise stock at 100,000; commerce totals are summed in `BigInt` and capped at 2,147,483,647 (`lib/commerce/orders.ts`).
 
@@ -182,14 +182,14 @@ Methods in backticks; "ctx" is the selected dashboard context ([[Authentication 
 | `GET` `/api/me/mfa/status`; `POST` `/api/me/mfa/setup`, `/api/me/mfa/confirm`, `/api/me/mfa/verify`, `/api/me/mfa/recovery-codes` | signed in, staff-eligible; writes: origin, MFA config, MFA limits |
 | `GET`/`POST` `/api/events`; `GET`/`PATCH`/`DELETE` `/api/events/[eventId]`; `PATCH` `/api/events/[eventId]/publish`, `/api/events/[eventId]/sales` | `events:manage` +MFA; writes: origin, ctx |
 | `POST` `/api/events/[eventId]/codes`; `PATCH` `/api/events/[eventId]/codes/[codeId]` | origin, ctx, `events:manage` +MFA; the event scoped to the selected society under its lock |
-| `POST` `/api/events/[eventId]/cancel` | origin, ctx, `events:manage` and `orders:refund` +MFA, typed title, fresh code (`staff_mfa_verify` when sent) |
+| `POST` `/api/events/[eventId]/cancel` | origin, ctx, `events:manage` and `orders:refund` +MFA, typed title |
 | `GET` `/api/events/[eventId]/tickets`; `POST` `/api/tickets/[ticketId]/check-in`, `/api/tickets/[ticketId]/check-out` (with `?eventId=`, DEBT-002) | ctx, `tickets:check_in` +MFA; writes: origin, `ticket_check_in_out` |
 | `GET` `/api/orders`, `/api/orders/[orderId]` | ctx, `orders:read` +MFA |
 | `GET` `/api/orders/export`, `/api/events/[eventId]/tickets/export` | ctx, `orders:read` +MFA (attendees also `tickets:check_in`), `data_export`; audited |
-| `POST` `/api/orders/[orderId]/refunds`, `/api/orders/[orderId]/cancel`, `/api/orders/[orderId]/review` | origin, ctx, `orders:refund` +MFA; refunds, cancel and a review that voids tickets also code |
-| `PATCH` `/api/orders/[orderId]/refund-manual` | origin, ctx, `orders:refund_mark` +MFA, fresh code |
+| `POST` `/api/orders/[orderId]/refunds`, `/api/orders/[orderId]/cancel`, `/api/orders/[orderId]/review` | origin, ctx, `orders:refund` +MFA |
+| `PATCH` `/api/orders/[orderId]/refund-manual` | origin, ctx, `orders:refund_mark` +MFA |
 | `POST` `/api/orders/[orderId]/resend`, `/api/orders/[orderId]/email-jobs/[jobId]/requeue` | origin, ctx, `orders:email_resend` +MFA, `order_resend` |
-| `POST` `/api/orders/[orderId]/compensation-refund/confirm` | origin, ctx, `orders:refund` +MFA, a fresh code unless MFA is `off`, Stripe refund evidence with the transfer reversed and the fee refunded |
+| `POST` `/api/orders/[orderId]/compensation-refund/confirm` | origin, ctx, `orders:refund` +MFA, Stripe refund evidence with the transfer reversed and the fee refunded |
 | `GET` `/api/notifications`; `POST` `/api/notifications/[jobId]/requeue`, `/api/notifications/requeue` | ctx, `orders:email_resend` +MFA; requeue: origin, `order_resend` |
 | `GET` `/api/orgs`; `POST` `/api/orgs` | signed in; create: origin, verified organisation account, `organisation_create` |
 | `GET` `/api/orgs/search` | member account |
@@ -200,16 +200,16 @@ Methods in backticks; "ctx" is the selected dashboard context ([[Authentication 
 | `POST` `/api/orgs/[orgSlug]/assets`; `GET`/`DELETE` `/api/orgs/[orgSlug]/assets/[assetId]` | the kind's permission +MFA; writes: origin, `asset_upload` / `asset_delete` |
 | `GET` `/api/orgs/[orgSlug]/calendar` | `events:read` +MFA (drafts follow `events:manage`, membership ends `members:read`) |
 | `GET`/`POST` `/api/orgs/[orgSlug]/memberships`; `PATCH` `/api/orgs/[orgSlug]/memberships/[planId]`; `POST` `/api/orgs/[orgSlug]/memberships/[planId]/publish`, `/api/orgs/[orgSlug]/memberships/[planId]/archive` | `memberships:manage` +MFA; writes: origin |
-| `POST` `/api/orgs/[orgSlug]/memberships/members/[grantId]/revoke` | origin, `memberships:manage` +MFA, code |
-| `POST` `/api/orgs/[orgSlug]/memberships/members/[grantId]/cancel`, `/api/orgs/[orgSlug]/memberships/members/[grantId]/refund` | origin, `orders:refund` +MFA, code |
+| `POST` `/api/orgs/[orgSlug]/memberships/members/[grantId]/revoke` | origin, `memberships:manage` +MFA |
+| `POST` `/api/orgs/[orgSlug]/memberships/members/[grantId]/cancel`, `/api/orgs/[orgSlug]/memberships/members/[grantId]/refund` | origin, `orders:refund` +MFA |
 | `GET`/`POST` `/api/orgs/[orgSlug]/merchandise`; `GET`/`PATCH` `/api/orgs/[orgSlug]/merchandise/[productId]`; `POST` `/api/orgs/[orgSlug]/merchandise/[productId]/publish`, `/api/orgs/[orgSlug]/merchandise/[productId]/archive`, `/api/orgs/[orgSlug]/merchandise/[productId]/restore` | `merchandise:manage` +MFA; writes: origin |
 | `POST` `/api/orgs/[orgSlug]/merchandise/pickups`, `/api/orgs/[orgSlug]/merchandise/pickups/[orderId]`, `/api/orgs/[orgSlug]/merchandise/orders/[orderId]/returns` | origin, `merchandise:fulfil` +MFA |
-| `POST` `/api/orgs/[orgSlug]/merchandise/orders/[orderId]/refund`, `/api/orgs/[orgSlug]/merchandise/orders/[orderId]/cancel` | origin, `orders:refund` +MFA, code |
-| `GET` `/api/orgs/[orgSlug]/staff`; `PATCH` `/api/orgs/[orgSlug]/staff/[staffId]` | `staff:manage` +MFA; `PATCH`: origin, strict body, owner rows need an owner, a role change or reactivation also code |
-| `POST` `/api/orgs/[orgSlug]/staff/invites`, `/api/orgs/[orgSlug]/staff/invites/[inviteId]/resend`, `/api/orgs/[orgSlug]/staff/invites/[inviteId]/revoke` | origin, verified, `staff:manage` +MFA, invite limits; create and resend also code |
-| `POST` `/api/orgs/[orgSlug]/staff/handover` | origin, verified, owner +MFA, `account_security_change`, current password |
+| `POST` `/api/orgs/[orgSlug]/merchandise/orders/[orderId]/refund`, `/api/orgs/[orgSlug]/merchandise/orders/[orderId]/cancel` | origin, `orders:refund` +MFA |
+| `GET` `/api/orgs/[orgSlug]/staff`; `PATCH` `/api/orgs/[orgSlug]/staff/[staffId]` | `staff:manage` +MFA; `PATCH`: origin, strict body, owner rows need an owner |
+| `POST` `/api/orgs/[orgSlug]/staff/invites`, `/api/orgs/[orgSlug]/staff/invites/[inviteId]/resend`, `/api/orgs/[orgSlug]/staff/invites/[inviteId]/revoke` | origin, verified, `staff:manage` +MFA, invite limits |
+| `POST` `/api/orgs/[orgSlug]/staff/handover` | origin, verified, owner +MFA, `account_security_change`, current password, code |
 | `POST` `/api/staff/invites/accept` | origin, account token limits, verified invitee |
-| `POST` `/api/stripe/connect/onboard`, `/api/stripe/connect/continue`, `/api/stripe/connect/dashboard`, `/api/stripe/connect/disconnect`; `GET` `/api/stripe/connect/status` | `stripe:manage` +MFA; writes: origin, `stripe_connect_mutation`, and a fresh code (onboarding, the dashboard and disconnect can change where money goes) |
+| `POST` `/api/stripe/connect/onboard`, `/api/stripe/connect/continue`, `/api/stripe/connect/dashboard`, `/api/stripe/connect/disconnect`; `GET` `/api/stripe/connect/status` | `stripe:manage` +MFA; writes: origin, `stripe_connect_mutation` (Stripe verifies the person on its own pages) |
 | `POST` `/api/payments/checkout/event`, `/api/payments/checkout/membership`, `/api/payments/checkout/merchandise` | origin, verified member or guest `checkout` session + guest CSRF (not membership), `checkout_create` |
 | `GET` `/api/payments/checkout/attempts/[attemptId]` | the attempt's own member or guest session |
 | `POST` `/api/purchases/tickets/[orderId]/cancel`, `/api/purchases/tickets/[orderId]/cancel-registration`, `/api/commerce/orders/[orderId]/cancel` | origin, buyer or guest session + guest CSRF, `checkout_create` |

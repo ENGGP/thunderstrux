@@ -5,7 +5,7 @@ import { requireAuthenticatedUser, requireCurrentOrganisationAccount, requireOrg
 import { cancelOrganisationEvent } from "@/lib/events/event-cancellation";
 import { eventRouteRules } from "@/lib/events/http";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
-import { MfaConfigurationError, MfaInputError, MfaRequiredError } from "@/lib/security/staff-mfa";
+import { MfaConfigurationError, MfaRequiredError } from "@/lib/security/staff-mfa";
 import { validateJson } from "@/lib/validators";
 
 type RouteContext = { params: Promise<{ eventId: string }> };
@@ -38,7 +38,6 @@ export async function POST(request: Request, context: RouteContext) {
       rules: [
         ...eventRouteRules(["x-org-id"]),
         routeErrorRule(MfaRequiredError, (failure) => forbidden(failure.message)),
-        routeErrorRule(MfaInputError, (failure) => badRequest(failure.message, [{ path: ["mfaCode"], message: failure.message }])),
         routeErrorRule(MfaConfigurationError, () => serviceUnavailable("Staff verification is unavailable"))
       ]
     });

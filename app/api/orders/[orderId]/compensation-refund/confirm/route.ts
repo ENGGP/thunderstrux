@@ -24,7 +24,7 @@ import {
   confirmCompensationRefund
 } from "@/lib/payments/compensation-refunds";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
-import { MfaConfigurationError, MfaInputError, MfaRequiredError } from "@/lib/security/staff-mfa";
+import { MfaConfigurationError, MfaRequiredError } from "@/lib/security/staff-mfa";
 import { StripeConfigurationError } from "@/lib/stripe";
 import { validateJson } from "@/lib/validators";
 
@@ -64,7 +64,6 @@ export async function POST(request: Request, context: RouteContext) {
         staleSessionRule,
         routeErrorRule(OrganisationAccessError, (entry) => forbidden(entry.message)),
         routeErrorRule(MfaRequiredError, (entry) => forbidden(entry.message)),
-        routeErrorRule(MfaInputError, (entry) => badRequest(entry.message, [{ path: ["mfaCode"], message: entry.message }])),
         routeErrorRule(MfaConfigurationError, () => serviceUnavailable("Staff verification is unavailable")),
         routeErrorRule(StripeConfigurationError, () => serviceUnavailable("Stripe is not configured.")),
         routeErrorRule(CompensationRefundNotFoundError, (entry) => notFound(entry.message)),

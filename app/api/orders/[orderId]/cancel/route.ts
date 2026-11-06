@@ -5,7 +5,7 @@ import { authenticationRule, staleSessionRule } from "@/lib/api/route-rules";
 import { OrganisationAccessError, requireAuthenticatedUser, requireCurrentOrganisationAccount, requireOrganisationPermission } from "@/lib/auth/access";
 import { FreeCancellationError, cancelFreePurchase } from "@/lib/payments/free-cancellation";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
-import { MfaConfigurationError, MfaInputError, MfaRequiredError } from "@/lib/security/staff-mfa";
+import { MfaConfigurationError, MfaRequiredError } from "@/lib/security/staff-mfa";
 import { validateJson } from "@/lib/validators";
 
 type RouteContext = { params: Promise<{ orderId: string }> };
@@ -35,7 +35,6 @@ export async function POST(request: Request, context: RouteContext) {
         staleSessionRule,
         routeErrorRule(OrganisationAccessError, (failure) => forbidden(failure.message)),
         routeErrorRule(MfaRequiredError, (failure) => forbidden(failure.message)),
-        routeErrorRule(MfaInputError, (failure) => badRequest(failure.message, [{ path: ["mfaCode"], message: failure.message }])),
         routeErrorRule(MfaConfigurationError, () => serviceUnavailable("Staff verification is unavailable")),
         routeErrorRule(FreeCancellationError, (failure) =>
           failure.kind === "not_found"

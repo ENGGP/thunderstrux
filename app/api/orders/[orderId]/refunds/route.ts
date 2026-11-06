@@ -5,7 +5,7 @@ import { authenticationRule, staleSessionRule } from "@/lib/api/route-rules";
 import { OrganisationAccessError, requireAuthenticatedUser, requireCurrentOrganisationAccount, requireOrganisationPermission } from "@/lib/auth/access";
 import { OrderRefundError, cancelOrderTickets, requestOrderRefund } from "@/lib/payments/order-refunds";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
-import { MfaConfigurationError, MfaInputError, MfaRequiredError } from "@/lib/security/staff-mfa";
+import { MfaConfigurationError, MfaRequiredError } from "@/lib/security/staff-mfa";
 import { StripeConfigurationError } from "@/lib/stripe";
 import { validateJson } from "@/lib/validators";
 import { maxTicketsPerOrder } from "@/lib/validators/payments";
@@ -62,7 +62,6 @@ export async function POST(request: Request, context: RouteContext) {
         staleSessionRule,
         routeErrorRule(OrganisationAccessError, (failure) => forbidden(failure.message)),
         routeErrorRule(MfaRequiredError, (failure) => forbidden(failure.message)),
-        routeErrorRule(MfaInputError, (failure) => badRequest(failure.message, [{ path: ["mfaCode"], message: failure.message }])),
         routeErrorRule(MfaConfigurationError, () => serviceUnavailable("Staff verification is unavailable")),
         routeErrorRule(StripeConfigurationError, () => serviceUnavailable("Stripe is not configured.")),
         routeErrorRule(OrderRefundError, (failure) =>

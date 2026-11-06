@@ -9,7 +9,7 @@ import {
   markOrganisationOrderManuallyRefunded
 } from "@/lib/orders/order-detail";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
-import { MfaConfigurationError, MfaInputError, MfaRequiredError } from "@/lib/security/staff-mfa";
+import { MfaConfigurationError, MfaRequiredError } from "@/lib/security/staff-mfa";
 import { validateJson } from "@/lib/validators";
 
 type RouteContext = {
@@ -56,7 +56,6 @@ export async function PATCH(request: Request, context: RouteContext) {
         authenticationRule,
         routeErrorRule(OrganisationAccessError, (error) => forbidden(error.message)),
         routeErrorRule(MfaRequiredError, (error) => forbidden(error.message)),
-        routeErrorRule(MfaInputError, (error) => badRequest(error.message, [{ path: ["mfaCode"], message: error.message }])),
         routeErrorRule(MfaConfigurationError, () => serviceUnavailable("Staff verification is unavailable")),
         routeErrorRule(OrganisationOrderAccessError, (error) => notFound(error.message)),
         routeErrorRule(OrganisationOrderOperationError, (error) => conflict(error.message))

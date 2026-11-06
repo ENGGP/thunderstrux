@@ -10,7 +10,7 @@ import { MembershipRevocationError } from "@/lib/memberships/revocation";
 import { OrderRefundError } from "@/lib/payments/order-refunds";
 import { StripeConfigurationError } from "@/lib/stripe";
 import type { OrganisationPermission } from "@/lib/permissions";
-import { MfaConfigurationError, MfaInputError, MfaRequiredError } from "@/lib/security/staff-mfa";
+import { MfaConfigurationError, MfaRequiredError } from "@/lib/security/staff-mfa";
 import { organisationActor } from "@/lib/organisations/http";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { validateJson } from "@/lib/validators";
@@ -75,7 +75,6 @@ const endRules = (target: "grantId" | "orderId") => [
   routeErrorRule(OrganisationAccessError, (error) =>
     error.message === "Organisation not found or access denied" ? notFound("Organisation was not found") : forbidden(error.message)
   ),
-  routeErrorRule(MfaInputError, (error) => badRequest(error.message, [{ path: ["mfaCode"], message: error.message }])),
   routeErrorRule(MfaConfigurationError, () => serviceUnavailable("Staff verification is unavailable")),
   routeErrorRule(MembershipRevocationError, (error) =>
     error.kind === "not_found" ? notFound(error.message) : apiError("CONFLICT", error.message, 409, [{ path: [target], message: error.message, reason: error.kind }])

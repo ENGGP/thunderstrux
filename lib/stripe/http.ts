@@ -3,7 +3,7 @@ import { badRequest, conflict, forbidden, notFound, routeErrorRule, serviceUnava
 import { authenticationRule, staleSessionRule } from "@/lib/api/route-rules";
 import { OrganisationAccessError } from "@/lib/auth/access";
 import { OrganisationScopeError } from "@/lib/db/organisation-scope";
-import { MfaConfigurationError, MfaInputError, MfaRequiredError } from "@/lib/security/staff-mfa";
+import { MfaConfigurationError, MfaRequiredError } from "@/lib/security/staff-mfa";
 import { StripeConfigurationError } from "@/lib/stripe";
 import {
   OrganisationStripeConnectNotFoundError,
@@ -26,7 +26,6 @@ export const connectRouteRules = [
   routeErrorRule(OrganisationStripeConnectValidationError, (error) => badRequest(error.message, error.details)),
   routeErrorRule(StripeDisconnectBlockedError, (error) => conflict(error.message)),
   routeErrorRule(MfaRequiredError, (error) => forbidden(error.message)),
-  routeErrorRule(MfaInputError, (error) => badRequest(error.message, [{ path: ["mfaCode"], message: error.message }])),
   routeErrorRule(MfaConfigurationError, () => serviceUnavailable("Staff verification is unavailable")),
   // Names no server setting to the browser (API-002), as the other Stripe routes.
   routeErrorRule(StripeConfigurationError, () => serviceUnavailable("Stripe is not configured.")),

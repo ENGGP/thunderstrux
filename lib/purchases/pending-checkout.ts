@@ -2,6 +2,7 @@ import type Stripe from "stripe";
 import { prisma } from "@/lib/db";
 import { failPendingCommerceOrder } from "@/lib/commerce/binding";
 import { logWarn } from "@/lib/ops/logger";
+import { overRateLimit } from "@/lib/security/rate-limit";
 import { reconcileExpiredCheckoutSession } from "@/lib/payments/checkout-reconciliation";
 import { getStripe } from "@/lib/stripe";
 import { lateWebhookGraceMs } from "@/lib/tickets/reservations";
@@ -37,8 +38,11 @@ export async function pendingCheckoutState(purchase: Purchase, now = new Date())
   // A cancelled event's unpaid order is never offered its payment page again.
   const held = facts.holdEndsAt && facts.holdEndsAt > now && !facts.eventCancelled ? facts.holdEndsAt : null;
   if (!facts.stripeSessionId) return held ? { state: "waiting", holdEndsAt: held, paymentUrl: null } : { state: "ended" };
+  // PAY-097: Stripe's read limit is every society's, so one order's page asks it at most a few
+  // times a minute, with no SDK retries; beyond that it reads as Stripe not answering.
+  if (await overRateLimit("pending_checkout_read", [purchase.kind, purchase.id])) return held ? { state: "waiting", holdEndsAt: held, paymentUrl: null } : { state: "ended" };
   try {
-    const session = await getStripe().checkout.sessions.retrieve(facts.stripeSessionId);
+    const session = await getStripe().checkout.sessions.retrieve(facts.stripeSessionId, {}, { maxNetworkRetries: 0 });
     if (session.status === "complete" || session.payment_status === "paid") return { state: "confirming" };
     if (session.status === "expired" || !held) return { state: "ended" };
     // The hold ends first: the stale-order job closes Stripe's page then.

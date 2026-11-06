@@ -259,14 +259,18 @@ describe("checkout and reservation logic", () => {
         message: "stripe unavailable"
       }
     });
-    expect(parseConsoleJson(error, 1)).toMatchObject({
+    const alert = parseConsoleJson(error, 1);
+    expect(alert).toMatchObject({
       level: "error",
       event: "checkout_session_creation_failure",
       reason: "stripe_error",
       eventId: event.id,
       ticketTypeId: event.ticketTypes[0].id,
-      quantity: 1
+      quantity: 1,
+      // SEC-075: the alert, which goes off-host, names the error's kind and never carries its message.
+      errorName: "StripeInvalidRequestError"
     });
+    expect(JSON.stringify(alert)).not.toContain("stripe unavailable");
     expect(info.mock.calls.map((call) => JSON.parse(String(call[0])))).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -339,6 +343,27 @@ describe("checkout and reservation logic", () => {
     await queued.checkout;
     const hold = await prisma.ticketReservation.findFirstOrThrow({ where: { userId: member.id } });
     expect(hold.expiresAt.getTime()).toBeGreaterThanOrEqual(getReservationExpiry(new Date(lockReleasedAt), event.checkoutHoldMinutes).getTime());
+    stripeMocks.createSession.mockReset();
+  });
+
+  // PAY-095: the checkout read the account before it waited for the society's row, so a disconnect that committed meanwhile went unseen.
+  test("a disconnect that commits while a checkout waits for the society's row makes it refuse, never sell to the unlinked account (PAY-095)", async () => {
+    stripeMocks.createSession.mockImplementation(async () => ({ id: unique("cs_race"), url: "https://checkout.stripe.test/session" }));
+    const { organisation } = await createOrganisationAccount({ stripeReady: true });
+    const event = await createEvent({ organisationId: organisation.id, status: "published", ticketTypes: [{ name: "General", price: 1000, quantity: 5 }] });
+    const member = await createMember();
+    // The disconnect's lock and unlink (lib/stripe/connect.ts unlinkAccount), committed while the checkout waits.
+    const raced = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "Organisation" WHERE "id" = ${organisation.id} FOR UPDATE`;
+      await tx.organisation.update({ where: { id: organisation.id }, data: { stripeAccountId: null, stripeAccountStatus: "NOT_CONNECTED", stripeChargesEnabled: false, stripePayoutsEnabled: false } });
+      const checkout = createEventCheckout({ userId: member.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, quantity: 1, expectedUnitPrice: 1000, idempotencyKey: unique("checkout") })
+        .then(() => "sold", (error: unknown) => error);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      return { checkout };
+    });
+    expect(await raced.checkout).toMatchObject({ kind: "stripe_not_ready" });
+    expect(await prisma.order.count({ where: { eventId: event.id } })).toBe(0);
+    expect(stripeMocks.createSession).not.toHaveBeenCalled();
     stripeMocks.createSession.mockReset();
   });
 

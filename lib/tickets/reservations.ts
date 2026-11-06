@@ -26,6 +26,19 @@ export const lockedPurchaseTransactionOptions = {
   maxWait: 10_000
 };
 
+// PAY-095: a checkout reads the seller's Stripe account under KEY SHARE on its society, which
+// conflicts with a disconnect's FOR UPDATE. Then the disconnect either waits and counts this
+// checkout's order, or commits first and the checkout reads the unlinked account. The order
+// insert's foreign key takes the same lock later anyway, so the lock order (Event, then
+// Organisation) is unchanged. Take it before reading the account.
+export async function lockSellerForCheckout(tx: Prisma.TransactionClient, seller: { eventId: string } | { organisationId: string }) {
+  if ("eventId" in seller) {
+    await tx.$queryRaw`SELECT o."id" FROM "Organisation" o JOIN "Event" e ON e."organisationId" = o."id" WHERE e."id" = ${seller.eventId} FOR KEY SHARE OF o`;
+  } else {
+    await tx.$queryRaw`SELECT "id" FROM "Organisation" WHERE "id" = ${seller.organisationId} FOR KEY SHARE`;
+  }
+}
+
 export async function runReservationTransaction<T>(
   operation: (tx: Prisma.TransactionClient) => Promise<T>
 ) {

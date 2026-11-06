@@ -165,14 +165,18 @@ export async function openOrderRefund(tx: Prisma.TransactionClient, input: {
   if (input.confirmation !== undefined && input.confirmation.trim().toUpperCase() !== orderReference(order.id)) {
     throw new OrderRefundError("confirmation_mismatch", `Type ${orderReference(order.id)} to confirm`);
   }
-  if (order.refundStatus === "refunded") throw new OrderRefundError("already_refunded", "This order has already been refunded");
   if (order.refundStatus === "processing") throw new OrderRefundError("in_progress", "A refund for this order is already in progress");
   // PAY-036: only an open or lost dispute fences a refund; the society kept a won one.
   if (order.disputeStatus === "open" || order.disputeStatus === "lost") throw new OrderRefundError("disputed", "The buyer has disputed this payment, so it can't be refunded here");
   // What the buyer can still get back: the total less refunds made here or in Stripe.
   const left = order.totalAmount - (await refundedSoFar(tx, { orderId: order.id, commerceOrderId: null })) - order.externalRefundedAmount;
+  // PAY-090: what is left decides, not refundStatus. Refunded says only that no ticket stands
+  // (DEBT-002): a refund that cancelled every ticket for less than the total leaves the
+  // rest, which event cancellation, a fraud warning and Refund the rest still send.
   // Refunded in full with tickets kept valid: refundStatus stays clear so they can still be cancelled.
-  if (order.paymentKind === "stripe" && order.totalAmount > 0 && left <= 0) throw new OrderRefundError("already_refunded", "Everything paid for this order has been refunded");
+  if (left <= 0 && (order.refundStatus === "refunded" || (order.paymentKind === "stripe" && order.totalAmount > 0))) {
+    throw new OrderRefundError("already_refunded", "Everything paid for this order has been refunded");
+  }
   const { selection } = input;
   const tickets = selection
     ? await pickedTickets(tx, order.id, selection.ticketIds)

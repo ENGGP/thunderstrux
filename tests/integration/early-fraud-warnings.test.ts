@@ -119,13 +119,17 @@ describe("early fraud warnings", () => {
       ["used", (orderId) => prisma.ticket.updateMany({ where: { orderId, issueSequence: 1 }, data: { checkedInAt: new Date() } }), {}],
       ["not_actionable", async () => undefined, { actionable: false }],
       ["disputed", (orderId) => prisma.order.update({ where: { id: orderId }, data: { disputeStatus: "open" } }), {}],
-      ["already_refunded", (orderId) => prisma.order.update({ where: { id: orderId }, data: { refundStatus: "refunded" } }), {}]
+      // Refunded in full here: what is left decides (PAY-090), so the refund it took is recorded too.
+      ["already_refunded", async (orderId) => {
+        const order = await prisma.order.update({ where: { id: orderId }, data: { refundStatus: "refunded" }, select: { totalAmount: true, event: { select: { organisationId: true } } } });
+        await prisma.refundRequest.create({ data: { orderId, organisationId: order.event.organisationId, amount: order.totalAmount, reason: "Refunded earlier.", operationKey: unique("refund"), status: "succeeded", resolvedAt: new Date() } });
+      }, {}]
     ];
     for (const [outcome, prepare, extra] of cases) {
       const fixture = await ticketOrder();
       await prepare(fixture.order.id);
       await warn(fixture, extra);
-      expect(await prisma.refundRequest.count({ where: { orderId: fixture.order.id } })).toBe(0);
+      expect(await prisma.refundRequest.count({ where: { orderId: fixture.order.id, NOT: { reason: "Refunded earlier." } } })).toBe(0);
       expect(alerts(error).at(-1)).toMatchObject({ orderId: fixture.order.id, outcome });
     }
   });

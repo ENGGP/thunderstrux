@@ -360,9 +360,18 @@ describe("Stripe Connect application service", () => {
     const notices = () => prisma.notificationOutbox.findMany({ where: { organisationId: organisation.id, eventKey: { startsWith: "stripe-payout-account/" } }, select: { recipient: true }, orderBy: { recipient: "asc" } });
 
     const added = { id: unique("evt"), type: "account.external_account.created", account: accountId, data: { object: bank } };
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     expect((await signedConnectEvent(added)).status).toBe(200);
+    // PAY-096: payouts wait 72 hours from here, and support hears of it once.
+    const changedAt = (await prisma.organisation.findUniqueOrThrow({ where: { id: organisation.id } })).payoutDestinationChangedAt;
+    expect(changedAt).toBeInstanceOf(Date);
     // Stripe may deliver an event twice.
     await signedConnectEvent(added);
+    expect((await prisma.organisation.findUniqueOrThrow({ where: { id: organisation.id } })).payoutDestinationChangedAt).toEqual(changedAt);
+    expect(error.mock.calls.map(([line]) => String(line)).filter((line) => line.includes('"event":"payout_destination_changed"')).map((line) => JSON.parse(line))).toEqual([
+      expect.objectContaining({ organisationId: organisation.id, stripeAccountId: accountId, last4: "6789" })
+    ]);
+    error.mockRestore();
     expect(await notices()).toEqual([user.email, treasurer.email].sort().map((recipient) => ({ recipient })));
     expect(await prisma.auditLog.count({ where: { organisationId: organisation.id, action: "stripe_connect.payout_account_changed" } })).toBe(1);
 

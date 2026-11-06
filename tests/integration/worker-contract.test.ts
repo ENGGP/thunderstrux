@@ -90,6 +90,21 @@ describe("worker contract (T42)", () => {
     }
   });
 
+  // SEC-075: a caller that hands an alert its error sends the error's name, never the message, off-host.
+  test("an error given to an alert reaches the receiver as its name only; the local log keeps the message", async () => {
+    const { error } = quiet();
+    const receiver = await alertReceiver();
+    try {
+      emitOperationalAlert("refund_failed", { orderId: "order-1", reason: "stripe_error", error: new Error("No such customer: buyer@example.com") });
+      await flushOperationalAlerts();
+      expect(receiver.received).toEqual([expect.objectContaining({ event: "refund_failed", details: expect.objectContaining({ orderId: "order-1", error: "Error" }) })]);
+      expect(JSON.stringify(receiver.received)).not.toContain("buyer@example.com");
+      expect(JSON.stringify(error.mock.calls)).toContain("buyer@example.com");
+    } finally {
+      await receiver.close();
+    }
+  });
+
   test("unsigned-webhook alerts reach the receiver once per five minutes with the held-back count; other alerts still go (SEC-020)", async () => {
     quiet();
     const receiver = await alertReceiver();

@@ -78,8 +78,9 @@ export default async function OrganisationOrderDetailPage({
   // What is still the buyer's to get back, after refunds here and in Stripe, and the tickets still valid (DEBT-002).
   const left = order.totalAmount - order.refundedAmount - order.externalRefundedAmount;
   const valid = order.tickets.filter((ticket) => ticket.validity === "active");
+  // PAY-090: a refund that cancelled every ticket for less than the total marks it Refunded; the rest can still go.
   const refundable = order.paymentKind === "stripe" && order.status === "paid" && !order.requiresCompensationReview &&
-    !order.refundStatus && order.disputeStatus !== "open" && order.disputeStatus !== "lost" && !order.isManuallyRefunded && (left > 0 || valid.length > 0);
+    order.refundStatus !== "processing" && order.disputeStatus !== "open" && order.disputeStatus !== "lost" && !order.isManuallyRefunded && (left > 0 || valid.length > 0);
   const buyer = order.user
     ? {
         email: order.user.email,
@@ -294,9 +295,10 @@ function RefundNotice({ order, timeZone }: { order: Awaited<ReturnType<typeof ge
   if (!refund) return null;
   const by = refund.actor ? [refund.actor.firstName, refund.actor.lastName].filter(Boolean).join(" ") || refund.actor.email : "a staff member";
   if (order.refundStatus === "refunded" && refund.status === "succeeded") {
+    const rest = order.totalAmount - order.refundedAmount - order.externalRefundedAmount;
     return (
-      <Notice role="status" title={`Refunded ${formatMoney(order.refundedAmount)}`} tone="success">
-        <p>Refunded {formatDateTime(refund.resolvedAt, { timeZone })} at the request of {by}: &ldquo;{refund.reason}&rdquo;. The tickets are no longer valid.</p>
+      <Notice role="status" title={rest > 0 ? `Partly refunded: ${formatMoney(order.refundedAmount)} of ${formatMoney(order.totalAmount)}` : `Refunded ${formatMoney(order.refundedAmount)}`} tone="success">
+        <p>Refunded {formatDateTime(refund.resolvedAt, { timeZone })} at the request of {by}: &ldquo;{refund.reason}&rdquo;. The tickets are no longer valid.{rest > 0 ? ` ${formatMoney(rest)} is left to refund.` : ""}</p>
       </Notice>
     );
   }

@@ -88,13 +88,16 @@ export async function recordDispute(tx: Prisma.TransactionClient, input: {
     update: fields
   });
   if (!changed) return null;
-  const rows = await tx.purchaseDispute.findMany({ where: scope, select: { stripeDisputeId: true, providerStatus: true, caseType: true, amount: true } });
+  const rows = await tx.purchaseDispute.findMany({ where: scope, select: { stripeDisputeId: true, providerStatus: true, caseType: true, amount: true, reversalStatus: true } });
   const review: DisputeReview | null = current.status === "prevented" && outcome === "open" ? "prevented_unconfirmed" : null;
   // Lost at some point, even with an appeal since: only a loss queues a reversal (PAY-081).
   const wasLost = previous === "lost" || existing?.reversalStatus != null;
+  // PAY-092: this or any other chargeback on the payment was lost at some point, so the
+  // payment's win after it sees that loss whichever dispute it was.
+  const anyLost = wasLost || rows.some((row) => row.reversalStatus != null);
   // PAY-086: another chargeback on the same payment still undecided.
   const otherOpen = rows.some((row) => row.stripeDisputeId !== current.id && !isInquiry(row.providerStatus) && outcomeOf(row.providerStatus, row.caseType) === "open");
-  return { existing, outcome, wasLost, worst: worstOutcome(rows), lostAmount: lostAmountOf(rows), otherOpen, restored: Boolean(existing?.resolvedAt), review };
+  return { existing, outcome, wasLost, anyLost, worst: worstOutcome(rows), lostAmount: lostAmountOf(rows), otherOpen, restored: Boolean(existing?.resolvedAt), review };
 }
 
 // What the bank took back: every lost chargeback's amount, for a partial loss (PAY-074).
@@ -104,8 +107,9 @@ export const lostAmountOf = (rows: Array<{ providerStatus: string; caseType: str
 // PAY-072: a dispute Stripe turned won after its loss no longer owes the society's
 // share back: a reversal never sent is cancelled. One claimed or `uncertain` may
 // exist at Stripe, so the worker settles it: it finds a reversal already made, or
-// re-reads the dispute and cancels.
-export async function cancelQueuedReversals(tx: Prisma.TransactionClient, scope: { orderId: string } | { commerceOrderId: string }) {
+// re-reads the dispute and cancels. PAY-092: one dispute's own reversal, when another on the
+// payment is still open or lost and that loss must still stand.
+export async function cancelQueuedReversals(tx: Prisma.TransactionClient, scope: { orderId: string } | { commerceOrderId: string } | { stripeDisputeId: string }) {
   await tx.purchaseDispute.updateMany({
     where: { ...scope, reversalStatus: "pending", reversalProcessingToken: null },
     data: { reversalStatus: "cancelled", reversalNextAttemptAt: null }
@@ -198,6 +202,9 @@ export async function reconcileDisputeEvent(event: Stripe.Event) {
         // the ones it covered; the payout holds the rest of the sale. Not while another
         // chargeback on it is still open (PAY-086): that one keeps them under review.
         if (!record.otherOpen) await tx.ticket.updateMany({ where: { orderId, validity: "refund_review", validityReason: "disputed" }, data: { validity: "active", validityReason: null, validityChangedAt: now } });
+        // PAY-091: what the bank returned changed, so a review already done (an outside refund's,
+        // or an earlier part loss's) opens again for staff to pick what this loss covers.
+        await tx.order.update({ where: { id: orderId }, data: { externalRefundReviewedAt: null } });
         if (!requiresCompensationReview) review = "lost_for_part";
       }
       if (record.restored) review ??= "lost_after_restore";
@@ -214,9 +221,16 @@ export async function reconcileDisputeEvent(event: Stripe.Event) {
       organisationId: owner.organisationId, actorUserId: null, action: `order.dispute_${existing ? outcome : "opened"}`, targetType: "Order", targetId: orderId,
       metadata: { disputeId: current.id, providerStatus: current.status, amount: current.amount }
     } });
+    // PAY-092: this dispute was won after its own loss, but another on the payment is still open
+    // or lost, so the payment isn't won. The bank re-billed the buyer for this one: its
+    // reversal not yet sent is cancelled, never the other's, and a person settles the rest.
+    if (outcome === "won" && record.wasLost && worst !== "won") {
+      await cancelQueuedReversals(tx, { stripeDisputeId: current.id });
+      review = "won_after_loss";
+    }
     if (worst === "won") {
       let refundReason = null as string | null;
-      if (record.wasLost) {
+      if (record.anyLost) {
         await cancelQueuedReversals(tx, { orderId });
         // PAY-073: the bank re-billed the buyer for a loss that voided their tickets. Places may be
         // resold and the event over, so the buyer is refunded, never restored. A used order, or one
@@ -396,7 +410,9 @@ export async function markExternalRefundReviewed(input: { organisationId: string
     });
     if (!order) throw new PurchaseReviewError("not_found", "Order was not found");
     if (order.externalRefundReviewedAt) return;
-    const lostForPart = order.externalRefundedAmount === 0 && order.disputeStatus === "lost";
+    // PAY-091: while a dispute is lost the review is a dispute's, whatever was also refunded outside,
+    // so a pick voids as dispute_lost: a later win counts those tickets (PAY-073).
+    const lostForPart = order.disputeStatus === "lost";
     if ((order.externalRefundedAmount === 0 && !lostForPart) || order.refundStatus === "refunded") {
       throw new PurchaseReviewError("not_allowed", "There is no partial refund to review on this order");
     }

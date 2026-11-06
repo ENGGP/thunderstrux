@@ -94,6 +94,8 @@ describe("cancelling an event (EVT-004)", () => {
     await prisma.order.update({ where: { id: disputed.id }, data: { disputeStatus: "open" } });
     const refunded = await heldOrder(society, event, { paymentKind: "stripe" });
     await prisma.order.update({ where: { id: refunded.id }, data: { refundStatus: "refunded" } });
+    // Refunded in full here: what is left decides (PAY-090), so the refund it took is recorded too.
+    await prisma.refundRequest.create({ data: { orderId: refunded.id, organisationId: society.organisation.id, amount: refunded.totalAmount, reason: "Refunded earlier.", operationKey: unique("refund"), status: "succeeded", resolvedAt: new Date() } });
     await prisma.ticket.updateMany({ where: { orderId: refunded.id }, data: { validity: "void", validityReason: "refunded", validityChangedAt: new Date() } });
     const free = await heldOrder(society, event, { paymentKind: "free", quantity: 2 });
     const pending = await createOrder({ organisationId: society.organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, quantity: 1, unitPrice: 1500 });
@@ -114,7 +116,7 @@ describe("cancelling an event (EVT-004)", () => {
     const request = await prisma.refundRequest.findFirstOrThrow({ where: { orderId: paid.id } });
     expect(request).toMatchObject({ status: "pending", amount: 3000, attempts: 0, processingToken: null, actorUserId: society.user.id });
     expect(await prisma.order.findUniqueOrThrow({ where: { id: paid.id } })).toMatchObject({ refundStatus: "processing" });
-    expect(await prisma.refundRequest.count({ where: { orderId: { in: [disputed.id, refunded.id, free.id, pending.id] } } })).toBe(0);
+    expect(await prisma.refundRequest.count({ where: { orderId: { in: [disputed.id, refunded.id, free.id, pending.id] }, NOT: { reason: "Refunded earlier." } } })).toBe(0);
     expect(await prisma.order.findUniqueOrThrow({ where: { id: disputed.id } })).toMatchObject({ refundStatus: null, disputeStatus: "open" });
 
     // The free registration is cancelled without its own "cancelled by the society" email; places aren't restored.

@@ -40,7 +40,7 @@ import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 import { calculatePlatformFee, isBelowPaidMinimum, minPaidPrice, PLATFORM_FEE_POLICY_VERSION } from "@/lib/stripe/fees";
 import { codeAppliesTo, codeRefusalMessage, normaliseTicketCode, priceWithCode, readTicketCode } from "@/lib/events/ticket-codes";
 import { PURCHASE_SNAPSHOT_VERSION } from "@/lib/purchases/projection";
-import { getReservationExpiry, runReservationTransaction } from "@/lib/tickets/reservations";
+import { getReservationExpiry, lockSellerForCheckout, runReservationTransaction } from "@/lib/tickets/reservations";
 
 export type CheckoutCreationErrorKind =
   | "event_not_found"
@@ -147,9 +147,14 @@ function emitCheckoutSessionCreationFailure(
 ) {
   logError("checkout.session.create_failed", { reason, ...context });
   emitMetric("checkout_session_create_failures_total", 1, { reason });
+  // SEC-075 (#31, SEC-060): an error's message can echo the buyer or the account, so off-host
+  // it goes as its kind only; the full error stays in the local log above.
+  const { error, ...ids } = context;
+  const kind = (error as { type?: unknown } | null)?.type;
   emitOperationalAlert("checkout_session_creation_failure", {
     reason,
-    ...context
+    ...ids,
+    ...(error === undefined ? {} : { errorName: typeof kind === "string" ? kind : error instanceof Error ? error.name : "UnknownError" })
   });
 }
 
@@ -185,9 +190,9 @@ export async function createEventCheckout({
         // A same-key request that committed while this one waited for the buyer lock.
         const raced = await findCheckoutAttempt(tx, actor, idempotencyKey);
         if (raced) return { kind: "replay" as const, attempt: raced };
-        const event = (await lockEventInventory(tx, eventId, [ticketTypeId]))
-          ? await tx.event.findUnique({ where: { id: eventId }, select: lockedEventSelect(ticketTypeId) })
-          : null;
+        const locked = await lockEventInventory(tx, eventId, [ticketTypeId]);
+        if (locked) await lockSellerForCheckout(tx, { eventId });
+        const event = locked ? await tx.event.findUnique({ where: { id: eventId }, select: lockedEventSelect(ticketTypeId) }) : null;
         // Read after the event lock: in a rush the queue for it can outlast a sales close or part of a hold.
         const reservationNow = new Date();
 

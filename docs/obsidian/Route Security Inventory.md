@@ -115,6 +115,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 | `ticket_check_in_out` | 300 / 1 min | open | society, `check-in`/`check-out` | check-in, check-out |
 | `stripe_connect_mutation` | 20 / 10 min | open | society, action | Connect onboard, continue, dashboard, disconnect |
 | `stripe_connect_status` | 30 / 10 min | open | society | Connect status read (each asks Stripe) |
+| `pending_checkout_read` | 6 / 1 min | open | `ticket` or `commerce`, order | a pending order's page asking Stripe for its Session (`overRateLimit`, no request; past it the page waits on the hold alone; PAY-097) |
 | `staff_invite_actor` | 20 / 1 h | closed | actor, society | invite create, resend, revoke |
 | `staff_invite_email` | 3 / 1 h | closed | society, address | invite create, resend |
 | `data_export` | 20 / 1 h | closed | society, user | orders and attendee CSV downloads |

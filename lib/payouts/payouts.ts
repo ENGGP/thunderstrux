@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo, logWarn } from "@/lib/ops/logger";
 import { unreversedRefundAmount } from "@/lib/payments/dispute-reversals";
-import { heldMoney, maxHoldMs, type HeldMoney } from "@/lib/payouts/release";
+import { cancelledUnrepaid, heldMoney, maxHoldMs, paidToAccount, stillOpen, undecidedChargeback, type HeldMoney } from "@/lib/payouts/release";
 import { getStripe } from "@/lib/stripe";
 
 // PAY-005: connected accounts are on manual payouts, so money stays in the
@@ -80,18 +80,23 @@ async function refreshUnreversedRefunds(stripe: Stripe, organisationId: string) 
 }
 
 // PAY-088: Stripe keeps money at most 90 days, so past maxHoldMs a sale is paid out even
-// while its dispute is open (a prevented one nobody could confirm, say). A week before,
-// a person is told and can hold the society's payouts until the dispute is settled.
+// while something still holds it: an open dispute (a prevented one nobody could confirm,
+// say), a compensation review, a cancelled event's unpaid buyer. A week before, a person is
+// told and can hold the society's payouts until it is settled. Every society the worker
+// looks at is checked, held, restricted or paused ones too (PAY-093), with the same test as heldMoney (PAY-094).
 const holdEndingNoticeMs = 7 * 86_400_000;
 async function alertDisputeHoldEnding(organisation: { id: string; stripeAccountId: string }, now: Date) {
-  const ending = { disputeStatus: "open" as const, sellerStripeAccountId: organisation.stripeAccountId, paymentKind: "stripe" as const,
-    paidAt: { gt: new Date(now.getTime() - maxHoldMs), lte: new Date(now.getTime() - maxHoldMs + holdEndingNoticeMs) } };
+  const ending = { ...paidToAccount(organisation.stripeAccountId), paidAt: { gt: new Date(now.getTime() - maxHoldMs), lte: new Date(now.getTime() - maxHoldMs + holdEndingNoticeMs) } };
+  const select = { id: true, paidAt: true, disputeStatus: true, requiresCompensationReview: true, disputes: { where: undecidedChargeback.some, select: { id: true }, take: 1 } } as const;
   const [tickets, commerce] = await Promise.all([
-    prisma.order.findMany({ where: { ...ending, event: { organisationId: organisation.id } }, select: { id: true, paidAt: true } }),
-    prisma.commerceOrder.findMany({ where: { ...ending, organisationId: organisation.id }, select: { id: true, paidAt: true } })
+    prisma.order.findMany({ where: { ...ending, event: { organisationId: organisation.id }, AND: [{ OR: [cancelledUnrepaid, ...stillOpen] }] }, select: { ...select, event: { select: { cancelledAt: true } } } }),
+    prisma.commerceOrder.findMany({ where: { ...ending, organisationId: organisation.id, AND: [{ OR: stillOpen }] }, select })
   ]);
-  const notice = (key: "orderId" | "commerceOrderId", order: { id: string; paidAt: Date | null }) => emitOperationalAlert("dispute_hold_ending", {
-    organisationId: organisation.id, [key]: order.id, releasesAt: new Date((order.paidAt as Date).getTime() + maxHoldMs).toISOString(), dedupeKey: `dispute_hold_ending:${order.id}`
+  type Ending = { id: string; paidAt: Date | null; disputeStatus: string | null; requiresCompensationReview: boolean; disputes: unknown[]; event?: { cancelledAt: Date | null } };
+  const reasonOf = (order: Ending) => order.disputeStatus === "open" || order.disputes.length ? "dispute"
+    : order.requiresCompensationReview ? "compensation_review" : order.event?.cancelledAt ? "event_cancelled" : "refund_or_reversal";
+  const notice = (key: "orderId" | "commerceOrderId", order: Ending) => emitOperationalAlert("dispute_hold_ending", {
+    organisationId: organisation.id, [key]: order.id, reason: reasonOf(order), releasesAt: new Date((order.paidAt as Date).getTime() + maxHoldMs).toISOString(), dedupeKey: `dispute_hold_ending:${order.id}`
   });
   for (const order of tickets) notice("orderId", order);
   for (const order of commerce) notice("commerceOrderId", order);
@@ -146,8 +151,15 @@ async function payOut(stripe: Stripe, organisation: { id: string; stripeAccountI
 // decides, not the state: a failed refresh (ERROR) or paused card payments
 // (RESTRICTED) don't stop money the society is owed.
 // T55: payouts wait while support has restricted a society, or held them with no end or an end still to come.
+// They also wait 72 hours after Stripe reports a new payout bank account or default (PAY-096):
+// a bank changed at Stripe, by whoever can still sign in there, isn't paid the same hour.
+export const payoutDestinationWaitMs = 72 * 60 * 60 * 1000;
 export const payoutsAllowedWhere = (now: Date): Prisma.OrganisationWhereInput => ({
-  restrictedAt: null, OR: [{ payoutsHeldAt: null }, { payoutsHeldUntil: { lte: now } }]
+  restrictedAt: null,
+  AND: [
+    { OR: [{ payoutsHeldAt: null }, { payoutsHeldUntil: { lte: now } }] },
+    { OR: [{ payoutDestinationChangedAt: null }, { payoutDestinationChangedAt: { lte: new Date(now.getTime() - payoutDestinationWaitMs) } }] }
+  ]
 });
 
 // The same hold test on a row already read (payoutsAllowedWhere's opposite, without the restriction).
@@ -157,11 +169,18 @@ export const payoutsHeld = (organisation: { payoutsHeldAt: Date | null; payoutsH
 // PAY-071: a held or restricted society sends nothing, but its account is still put
 // back on manual payouts each hour, so one left on Stripe's schedule (a failed switch,
 // a disconnect refused after the schedule changed) can't pay its held money out meanwhile.
+// The list is every linked account the pay loop skips: also those whose payouts Stripe
+// paused (PAY-093) and those waiting after a bank change (PAY-096). Each is told of sales its
+// hold or pause will let go at the cap (PAY-093).
 async function keepHeldAccountsManual(limit: number, now: Date) {
   // Spelled out rather than NOT payoutsAllowedWhere: an open-ended hold's null end compares as unknown, not false.
-  const heldOrRestricted = { OR: [{ restrictedAt: { not: null } }, { payoutsHeldAt: { not: null }, OR: [{ payoutsHeldUntil: null }, { payoutsHeldUntil: { gt: now } }] }] };
+  const skipped = { OR: [
+    { stripePayoutsEnabled: false }, { restrictedAt: { not: null } },
+    { payoutsHeldAt: { not: null }, OR: [{ payoutsHeldUntil: null }, { payoutsHeldUntil: { gt: now } }] },
+    { payoutDestinationChangedAt: { gt: new Date(now.getTime() - payoutDestinationWaitMs) } }
+  ] };
   const held = await prisma.organisation.findMany({
-    where: { stripeAccountId: { not: null }, AND: [heldOrRestricted, { OR: [{ payoutCheckedAt: null }, { payoutCheckedAt: { lt: new Date(now.getTime() - checkEveryMs) } }] }] },
+    where: { stripeAccountId: { not: null }, AND: [skipped, { OR: [{ payoutCheckedAt: null }, { payoutCheckedAt: { lt: new Date(now.getTime() - checkEveryMs) } }] }] },
     orderBy: [{ payoutCheckedAt: { sort: "asc", nulls: "first" } }, { id: "asc" }],
     take: Math.max(1, Math.min(limit, 100)),
     select: { id: true, stripeAccountId: true, payoutCheckedAt: true }
@@ -170,6 +189,8 @@ async function keepHeldAccountsManual(limit: number, now: Date) {
     const claimed = await prisma.organisation.updateMany({ where: { id: organisation.id, payoutCheckedAt: organisation.payoutCheckedAt }, data: { payoutCheckedAt: now } });
     if (claimed.count !== 1) continue;
     try {
+      // First, so a Stripe error below never skips the notice.
+      await alertDisputeHoldEnding({ id: organisation.id, stripeAccountId: organisation.stripeAccountId as string }, now);
       await ensureManualPayouts(getStripe(), organisation.stripeAccountId as string);
     } catch (error) {
       logWarn("payouts.manual_not_restored", { organisationId: organisation.id, stripeAccountId: organisation.stripeAccountId, error });

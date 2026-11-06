@@ -122,8 +122,12 @@ export async function recordReturn(actor: AccountActor, organisationId: string, 
     if (!line?.merchandiseVariantId) throw new MerchandiseCatalogueError(404, "Order not found");
     await tx.$queryRaw`SELECT "id" FROM "MerchandiseVariant" WHERE "id" = ${line.merchandiseVariantId} FOR UPDATE`;
     await tx.$queryRaw`SELECT "id" FROM "CommerceOrder" WHERE "id" = ${orderId} FOR UPDATE`;
-    const order = await tx.commerceOrder.findUniqueOrThrow({ where: { id: orderId }, select: { status: true, fulfilledAt: true } });
+    const order = await tx.commerceOrder.findUniqueOrThrow({ where: { id: orderId }, select: { status: true, fulfilledAt: true, pickupStatus: true, refundStatus: true, cancelledAt: true } });
     if (order.status !== "paid" || !order.fulfilledAt) throw new MerchandiseCatalogueError(409, "Only items from a completed order can be returned.");
+    // DEF-102: items the buyer can still collect aren't back on the shelf, so restocking them would sell them twice.
+    if (restock && order.pickupStatus !== "collected" && !order.refundStatus && !order.cancelledAt) {
+      throw new MerchandiseCatalogueError(409, "These items haven't been collected, so they can't go back into stock. Record the return without restocking, or refund the order first.");
+    }
     const returned = await tx.merchandiseReturn.aggregate({ where: { commerceOrderLineId: line.id }, _sum: { quantity: true } });
     const left = line.quantity - (returned._sum.quantity ?? 0);
     if (quantity > left) {

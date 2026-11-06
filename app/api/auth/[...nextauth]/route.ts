@@ -9,6 +9,7 @@ import { publicOriginIsHttps } from "@/lib/auth/public-origin";
 import { knownDeviceClearCookie, knownDeviceCookie, knownDeviceId, knownDeviceSetCookie } from "@/lib/auth/known-device";
 import { passwordWorkBusy } from "@/lib/auth/password-hash";
 import { endLoginMfaGrant, signInAccount } from "@/lib/auth/sign-in-records";
+import { guestClearCookie } from "@/lib/guest/guest-access";
 
 export const { GET } = handlers;
 
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
     : (rawDevice ? await ipEmail() : null) ?? await enforceRateLimit({ policy: "login_email", request, keyParts: [email] });
   if (accountLimitResponse) return accountLimitResponse;
 
-  // Password checks run on the event loop: past the gate, refuse rather than queue (SEC-019).
+  // Password checks share a small pool of worker threads: past the gate, refuse rather than queue (SEC-019).
   if (passwordWorkBusy()) return passwordBusyResponse();
   const response = await nextAuthPost(request);
   if (!account || !response.headers.getSetCookie().some((cookie) => sessionCookie.test(cookie))) return response;
@@ -77,7 +78,8 @@ export async function POST(request: NextRequest) {
 
 // Signing out ends this login's staff MFA grant too, so a copied session token
 // can't keep using it until it expires (#49). Only once Auth.js accepted the
-// sign-out (its CSRF check passed and it cleared the session cookie).
+// sign-out (its CSRF check passed and it cleared the session cookie). It also ends a guest
+// session in this browser, so the next person on a shared one doesn't keep it (SEC-083).
 async function signOut(request: NextRequest) {
   const token = await getToken({ req: request, secret: authSecret, secureCookie: publicOriginIsHttps(request.url) }).catch(() => null);
   const response = await nextAuthPost(request);
@@ -85,5 +87,6 @@ async function signOut(request: NextRequest) {
   await endLoginMfaGrant(typeof token?.staffMfaSessionId === "string" ? token.staffMfaSessionId : undefined);
   const headers = new Headers(response.headers);
   headers.append("Set-Cookie", knownDeviceClearCookie());
+  headers.append("Set-Cookie", guestClearCookie());
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }

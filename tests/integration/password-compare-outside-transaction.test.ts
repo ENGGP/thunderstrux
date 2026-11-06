@@ -1,16 +1,16 @@
 import { randomBytes } from "node:crypto";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { prisma } from "@/lib/db";
-import { accountTokenDigest, changePassword, consumeVerification, lockAccount, AccountTokenError } from "@/lib/auth/account-lifecycle";
+import { accountTokenDigest, changePassword, consumePasswordReset, consumeVerification, lockAccount, AccountTokenError } from "@/lib/auth/account-lifecycle";
 import { createUser } from "@/tests/helpers/test-data";
 
 // SEC-077: a password compare waits on a small worker pool, so it must never run while a
 // transaction holds a pooled connection and the account's row lock. While the compare is
 // paused here, an independent transaction must lock the same account at once.
-const gate = vi.hoisted(() => ({ paused: null as null | { started: () => void; release: Promise<void> } }));
+const gate = vi.hoisted(() => ({ paused: null as null | { started: () => void; release: Promise<void> }, hashes: 0 }));
 vi.mock("@/lib/auth/password-hash", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/auth/password-hash")>();
-  return { ...actual, comparePassword: async (password: string, digest: string) => {
+  return { ...actual, hashPassword: (password: string) => { gate.hashes += 1; return actual.hashPassword(password); }, comparePassword: async (password: string, digest: string) => {
     const paused = gate.paused;
     if (paused) { paused.started(); await paused.release; }
     return actual.comparePassword(password, digest);
@@ -36,6 +36,19 @@ async function unverifiedWithToken() {
     authVersion: user.authVersion, expiresAt: new Date(Date.now() + 3_600_000) } });
   return { user, raw };
 }
+
+// SEC-083: a used, expired, superseded or wrong-purpose reset link is refused before the hash.
+test("a dead reset link costs no password hash", async () => {
+  const user = await createUser();
+  for (const dead of [{ consumedAt: new Date() }, { invalidatedAt: new Date() }, { expiresAt: new Date(Date.now() - 1_000) }, { purpose: "verify_account" }]) {
+    const raw = randomBytes(32).toString("base64url");
+    await prisma.authToken.create({ data: { userId: user.id, tokenHash: accountTokenDigest(raw), purpose: "reset_password", email: user.email,
+      authVersion: user.authVersion, expiresAt: new Date(Date.now() + 1_800_000), ...dead } });
+    gate.hashes = 0;
+    await expect(consumePasswordReset(raw, "replacement123")).rejects.toBeInstanceOf(AccountTokenError);
+    expect(gate.hashes, JSON.stringify(dead)).toBe(0);
+  }
+});
 
 describe("password compares run outside transactions (SEC-077)", () => {
   test("verifying an email holds no row lock while its password is checked", async () => {

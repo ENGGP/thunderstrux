@@ -10,6 +10,7 @@ import { jsonRequest } from "@/tests/helpers/http";
 import { createMember, createOrganisationAccount } from "@/tests/helpers/test-data";
 import { setMockSession } from "@/tests/helpers/auth";
 import { GET } from "@/app/api/notifications/route";
+import { createTestRateLimitBackend, setRateLimitTestBackend, setRateLimitTestEnabled } from "@/lib/security/rate-limit";
 
 describe("general notification outbox", () => {
   const saved = { key: process.env.NOTIFICATION_ENCRYPTION_KEY, from: process.env.EMAIL_FROM, origin: process.env.NEXT_PUBLIC_APP_URL, api: process.env.RESEND_API_KEY };
@@ -303,5 +304,33 @@ describe("general notification outbox", () => {
     const audit = await prisma.auditLog.findMany({ where: { organisationId: owner.organisation.id, action: "notification.requeued" } });
     expect(audit.map((row) => row.targetId).sort()).toEqual([first, second].sort());
     expect(audit.every((row) => (row.metadata as { reason: string }).reason === "Provider issue fixed")).toBe(true);
+  });
+
+  // SEC-084: a batch spends the society's resend budget once per email, and stops when it runs out.
+  test("Send several again spends one unit of the society's resend budget per email", async () => {
+    const owner = await createOrganisationAccount();
+    setMockSession({ userId: owner.user.id, email: owner.user.email, accountRole: "organisation" });
+    const ids: string[] = [];
+    for (let index = 0; index < 3; index += 1) {
+      const job = await prisma.$transaction(tx => enqueueNotification(tx, { ...input(), eventKey: `budget/${index}`, template: "business_notice", organisationId: owner.organisation.id }));
+      await prisma.notificationOutbox.update({ where: { id: job.id! }, data: { status: "failed", lastError: "provider_unavailable" } });
+      ids.push(job.id!);
+    }
+    // The society has room for two more resends this hour.
+    const base = createTestRateLimitBackend();
+    let society = 0;
+    setRateLimitTestBackend({ async increment(key, windowSeconds) {
+      if (key.includes(":order_resend_society:")) { society += 1; return { count: 198 + society, retryAfterSeconds: 60 }; }
+      return base.increment(key, windowSeconds);
+    } });
+    setRateLimitTestEnabled(true);
+    try {
+      const response = await requeueBatchRoute(jsonRequest("http://localhost:3000/api/notifications/requeue", { jobIds: ids, reason: "Provider issue fixed" }));
+      const body = await response.json() as { queued: string[]; skipped: Array<{ id: string }> };
+      expect(body.queued).toEqual(ids.slice(0, 2));
+      expect(body.skipped.map((entry) => entry.id)).toEqual([ids[2]]);
+      expect(society).toBe(3);
+      expect((await prisma.notificationOutbox.findUniqueOrThrow({ where: { id: ids[2] } })).status).toBe("failed");
+    } finally { setRateLimitTestEnabled(null); setRateLimitTestBackend(null); }
   });
 });

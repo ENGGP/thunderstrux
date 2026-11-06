@@ -28,12 +28,17 @@ describe("order exports", () => {
       "﻿Name,Note\r\n\"'=HYPERLINK(\"\"x\"\")\",\"Said \"\"hi\"\", left\"\r\n'-2+3,\r\n12,'@sum\r\n"
     );
     // SEC-056: a leading space, a full-width sign, or a formula after a semicolon or tab is defused and quoted.
+    // SEC-084: the apostrophe sits right before the inner sign, so a reader that splits the cell gets text.
     expect(toCsv(["A"], [[" =1+1"], ["＝SUM(A1)"], ["Ann;=cmd()"], ["Bo\t+1"], ["plain; text"]])).toBe(
-      "﻿A\r\n'\u0020=1+1\r\n'＝SUM(A1)\r\n\"'Ann;=cmd()\"\r\n\"'Bo\t+1\"\r\n\"plain; text\"\r\n"
+      "﻿A\r\n'\u0020=1+1\r\n'＝SUM(A1)\r\n\"Ann;'=cmd()\"\r\n\"Bo\t'+1\"\r\n\"plain; text\"\r\n"
     );
     // SEC-067: a formula on a later line of the cell, or behind zero-width characters, is defused too.
     expect(toCsv(["A"], [["Ann\n=cmd()"], ["Bo\r\n+1"], ["​=1+1"], ["⁠‍@SUM(A1)"], ["line one\nline two"]]).slice(1)).toBe(
-      "A\r\n\"'Ann\n=cmd()\"\r\n\"'Bo\r\n+1\"\r\n'​=1+1\r\n'⁠‍@SUM(A1)\r\n\"line one\nline two\"\r\n"
+      "A\r\n\"Ann\n'=cmd()\"\r\n\"Bo\r\n'+1\"\r\n'​=1+1\r\n'⁠‍@SUM(A1)\r\n\"line one\nline two\"\r\n"
+    );
+    // SEC-084: after a comma too, and behind any invisible format character.
+    expect(toCsv(["A"], [['a,=1+1&"'], ["\u200E=1+1"], ["x, \u202E-2"], ["Smith, Jo"]]).slice(1)).toBe(
+      "A\r\n\"a,'=1+1&\"\"\"\r\n'\u200E=1+1\r\n\"x, \u202E'-2\"\r\n\"Smith, Jo\"\r\n"
     );
   });
 

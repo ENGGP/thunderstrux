@@ -6,12 +6,15 @@
 // and a reader that splits on semicolons or tabs can start one inside a cell, so those are
 // defused and quoted too. SEC-067: so is a formula on a later line of the cell (a reader that
 // ignores RFC 4180 quoting starts a row there), and one behind zero-width characters.
-const formulaStart = /^[\s\u200B-\u200D\u2060]*[=+\-@\uFF1D\uFF0B\uFF0D\uFF20]|^[\t\r]/;
-const formulaInside = /[;\t\r\n][\s\u200B-\u200D\u2060]*[=+\-@\uFF1D\uFF0B\uFF0D\uFF20]/;
+// SEC-084: a reader that splits a cell starts a new one after the separator, so the apostrophe
+// goes right before each formula sign that follows a comma, semicolon, tab or line break, and
+// any invisible format character (\p{Cf}) before a sign is skipped like a space.
+const formulaStart = /^[\s\p{Cf}]*[=+\-@\uFF1D\uFF0B\uFF0D\uFF20]|^[\t\r]/u;
+const formulaInside = /([,;\t\r\n][\s\p{Cf}]*)(?=[=+\-@\uFF1D\uFF0B\uFF0D\uFF20])/gu;
 
 function cell(value: string | number | null | undefined) {
   if (value === null || value === undefined) return "";
-  const text = typeof value === "number" ? String(value) : formulaStart.test(value) || formulaInside.test(value) ? `'${value}` : value;
+  const text = typeof value === "number" ? String(value) : (formulaStart.test(value) ? `'${value}` : value).replace(formulaInside, "$1'");
   return /[",;\t\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 

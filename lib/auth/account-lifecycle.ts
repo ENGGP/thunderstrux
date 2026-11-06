@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { enqueueNotification } from "@/lib/email/notification-outbox";
 import { assertNotificationConfiguration } from "@/lib/email/notification-crypto";
 import { renderNotification, renderedNotificationSchema } from "@/lib/email/templates";
-import { safeReturnPath } from "@/lib/security/safe-return-path";
+import { safeReturnPath, storedReturnPath } from "@/lib/security/safe-return-path";
 import { mfaGrantDigest } from "@/lib/security/csrf";
 import { newPasswordSchema } from "@/lib/validators/auth";
 import { lockAccount } from "./account-lock";
@@ -41,7 +41,7 @@ async function issueAccountToken(tx: Prisma.TransactionClient, user: User, purpo
   await invalidateAccountTokens(tx, user.id, purpose, now);
   const raw = randomBytes(32).toString("base64url");
   const token = await tx.authToken.create({ data: { userId: user.id, tokenHash: accountTokenDigest(raw), purpose,
-    email: user.email, authVersion: user.authVersion, expiresAt: new Date(now.getTime() + (purpose === "verify_account" ? 86400000 : 1800000)), callbackPath: safeReturnPath(callbackUrl) } });
+    email: user.email, authVersion: user.authVersion, expiresAt: new Date(now.getTime() + (purpose === "verify_account" ? 86400000 : 1800000)), callbackPath: storedReturnPath(callbackUrl) } });
   const link = new URL(purpose === "verify_account" ? "/verify-email" : "/reset-password", appUrl());
   link.hash = new URLSearchParams({ token: raw }).toString();
   await enqueueNotification(tx, { eventKey: `auth/${token.id}`, authTokenId: token.id, userId: user.id, recipient: user.email,
@@ -165,8 +165,9 @@ export async function requestPasswordReset(email: string, callbackUrl?: string) 
 }
 export async function consumePasswordReset(raw: string, newPassword: string, now = new Date()) {
   if (!/^[A-Za-z0-9_-]{43}$/.test(raw)) throw new AccountTokenError();
-  // An unknown token costs no hash (SEC-019); the transaction re-checks it under the lock.
-  if (!await prisma.authToken.findUnique({ where: { tokenHash: accountTokenDigest(raw) }, select: { id: true } })) throw new AccountTokenError();
+  // An unknown, used or expired token costs no hash (SEC-019); the transaction re-checks it under the lock.
+  const live = await prisma.authToken.findUnique({ where: { tokenHash: accountTokenDigest(raw) }, select: { purpose: true, consumedAt: true, invalidatedAt: true, expiresAt: true } });
+  if (!live || live.purpose !== "reset_password" || live.consumedAt || live.invalidatedAt || live.expiresAt <= now) throw new AccountTokenError();
   const password = await hashPassword(newPasswordSchema.parse(newPassword));
   return prisma.$transaction(async tx => {
     const candidate = await tx.authToken.findUnique({ where: { tokenHash: accountTokenDigest(raw) }, select: { userId: true } });

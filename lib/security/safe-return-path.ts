@@ -13,3 +13,9 @@ export function safeReturnPath(value: string | undefined, fallback = "/dashboard
     return fallback;
   }
 }
+// A return path stored for an emailed link drops its #fragment: anyone can ask for a link to
+// another person's address, and a fragment there could carry a token into the pages that
+// capture one from the address bar (SEC-083).
+export function storedReturnPath(value: string | undefined, fallback = "/dashboard") {
+  return safeReturnPath(value, fallback).split("#")[0];
+}

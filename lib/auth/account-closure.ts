@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { enqueueNotification } from "@/lib/email/notification-outbox";
 import { AccountSecurityError, invalidateAccountTokens, lockAccount, requireSecurityActor, verifySecurityPassword, type AccountActor } from "./account-lifecycle";
 import { appUrl } from "@/lib/app-url";
+import { emitOperationalAlert } from "@/lib/ops/alerts";
 
 export const closureAcknowledgement = "CLOSE MY ACCOUNT";
 export class AccountClosureError extends Error {
@@ -31,7 +32,7 @@ export async function readAccountClosureEligibility(actor: AccountActor, now = n
 export async function closeAccount(actor: AccountActor, currentPassword: string, acknowledgement: string, now = new Date()) {
   if (acknowledgement !== closureAcknowledgement) throw new AccountClosureError("acknowledgement", "Enter CLOSE MY ACCOUNT to acknowledge permanent closure.");
   const verified = await verifySecurityPassword(actor, currentPassword);
-  await prisma.$transaction(async tx => {
+  const operatorRole = await prisma.$transaction(async tx => {
     const user = await requireSecurityActor(tx, actor, verified, now);
     // Purchases/joins/organisation creation/invite acceptance lock this User.
     // Lock retained orders too, so workers/staff cannot change blockers during
@@ -51,6 +52,14 @@ export async function closeAccount(actor: AccountActor, currentPassword: string,
     await tx.organisationStaff.updateMany({ where: { userId: user.id, status: "active" }, data: { status: "revoked", revokedAt: now, revokedById: user.id } });
     await tx.organisationMember.deleteMany({ where: { userId: user.id } });
     await cancelAccountStaffInvites(tx, user, true, now);
+    // An operator's role ends with the account, so the operator list and the one-admin rule
+    // don't count a closed account (SEC-083). Its trail row and alert match a CLI revocation.
+    const operator = await tx.platformOperator.findUnique({ where: { userId: user.id }, select: { role: true, status: true } });
+    if (operator?.status === "active") {
+      await tx.platformOperator.update({ where: { userId: user.id }, data: { status: "revoked", revokedAt: now } });
+      await tx.platformAuditLog.create({ data: { action: "platform.operator_revoked", targetType: "User", targetId: user.id, operatorRole: operator.role,
+        reason: "The account was closed", metadata: { via: "account_closure" } } });
+    }
     const closed = await tx.user.update({ where: { id: user.id }, data: {
       closedAt: now, disabledAt: now, authVersion: { increment: 1 }, email: `${randomUUID()}@closed.invalid`, password: `!closed:${randomBytes(32).toString("base64url")}`,
       emailVerifiedAt: null, firstName: null, lastName: null, displayName: null, phone: null, studentNumber: null, onboardingCompletedAt: null
@@ -58,5 +67,7 @@ export async function closeAccount(actor: AccountActor, currentPassword: string,
     const event = await tx.accountSecurityEvent.create({ data: { userId: user.id, type: "account_closed", authVersion: closed.authVersion, createdAt: now } });
     await enqueueNotification(tx, { eventKey: `account-security/${event.id}`, userId: user.id, recipient: user.email, template: "account_closed",
       payload: { message: "Your Thunderstrux account is permanently closed and all devices are signed out. Your editable profile and login credentials have been anonymised. Purchases, tickets, attendance, buyer contact details needed for those records, and audit/security records are retained. A new signup does not regain access to these records.", link: new URL("/login", appUrl()).toString() } });
+    return operator?.status === "active" ? operator.role : null;
   }, { timeout: 15000 });
+  if (operatorRole) emitOperationalAlert("platform_operator_changed", { action: "platform.operator_revoked", userId: actor.id, role: operatorRole, via: "account_closure" });
 }

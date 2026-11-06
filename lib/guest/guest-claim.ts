@@ -14,6 +14,8 @@ export class GuestClaimError extends Error {
 export async function claimGuestOrder(input: { userId: string; guestSessionId: string | undefined; orderId: string }, now = new Date()) {
   return prisma.$transaction(async (tx) => {
     const user = await lockVerifiedAccount(tx, input.userId);
+    // Society accounts don't hold tickets; the page offers this to member accounts only (SEC-083).
+    if (user.accountRole !== "member") throw new GuestClaimError("unavailable", "Sign in with a member account to add this order.");
     const session = await readGuestSession(input.guestSessionId, now);
     if (!session || !(await canOpenGuestOrder(session, input.orderId))) {
       throw new GuestClaimError("unavailable", "Open this order from your email link, then add it to your account.");

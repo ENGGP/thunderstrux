@@ -78,6 +78,11 @@ test("the browser that completes a reset is remembered as a known device, and th
   expect(knownDeviceId(value, updated)).not.toBeNull();
 });
 
+test("a stored return path drops its fragment, so the email can't deliver a token in it (SEC-083)", async () => {
+  const user = await createMember();
+  await requestPasswordReset(user.email, "/guest/access#token=planted");
+  expect((await prisma.authToken.findFirstOrThrow({ where: { userId: user.id } })).callbackPath).toBe("/guest/access");
+});
 test("latest reset wins and verification links cannot reset passwords", async () => {
   const user = await createMember(); await requestPasswordReset(user.email); const old = await rawToken(user.id);
   const [claim] = await notifications.claimNotificationJobs(new Date(Date.now() + 1000));

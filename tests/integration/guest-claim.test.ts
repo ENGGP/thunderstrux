@@ -10,7 +10,7 @@ import { createEventCheckout } from "@/lib/payments/checkout-creation";
 import { setMockSession } from "@/tests/helpers/auth";
 import { jsonRequest, parseJsonResponse, routeContext } from "@/tests/helpers/http";
 import { renderPage } from "@/tests/helpers/render";
-import { createEvent, createMember, createOrganisationAccount, unique } from "@/tests/helpers/test-data";
+import { createEvent, createMember, createOrganisationAccount, unique, createUser } from "@/tests/helpers/test-data";
 
 vi.mock("next/navigation", () => ({
   notFound: () => { throw new Error("NOT_FOUND"); },
@@ -77,6 +77,14 @@ describe("adding a guest order to an account", () => {
 
     expect((await prisma.order.findUniqueOrThrow({ where: { id: purchase.orderId } })).userId).toBeNull();
     expect(await prisma.auditLog.count({ where: { action: "order.guest_claimed" } })).toBe(0);
+  });
+
+  // SEC-083: society accounts don't hold tickets, even with the guest's verified email.
+  test("a society account with the guest's email cannot add it", async () => {
+    const purchase = await guestPurchase();
+    const society = await createUser({ email: purchase.email, accountRole: "organisation" });
+    await expect(claimGuestOrder({ userId: society.id, guestSessionId: purchase.sessionId, orderId: purchase.orderId })).rejects.toThrow("member account");
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: purchase.orderId } })).userId).toBeNull();
   });
 
   test("signing up with the guest's email never claims anything", async () => {

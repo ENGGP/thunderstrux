@@ -18,6 +18,7 @@ import { loadTicketDeliveryOrder, renderTicketEmail } from "@/lib/email/ticket-d
 import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-reconciliation";
 import { checkoutSession } from "@/tests/helpers/stripe-mocks";
 import { mfaGrantDigest } from "@/lib/security/csrf";
+import { grantPlatformOperator } from "@/lib/platform/operators";
 import { beginStaffMfaEnrollment, confirmStaffMfaEnrollment, verifyStaffMfa, totpCode } from "@/lib/security/staff-mfa";
 import * as notifications from "@/lib/email/notification-outbox";
 import { decryptNotification } from "@/lib/email/notification-crypto";
@@ -106,6 +107,15 @@ test("closure anonymises profile, revokes credentials/staff/joins and tokens, re
   expect(notice.recipient).toBe(user.email); expect(notice.organisationId).toBeNull(); expect(notice.privacy).toBe("security");
   expect(JSON.stringify(decryptNotification(notice.encryptedPayload, notice.id))).toContain("retained");
 });
+// SEC-083: an operator's role ends with the account, with the same trail row as a CLI revocation.
+test("closing an operator's account revokes its operator role", async () => {
+  const user = await createMember();
+  await grantPlatformOperator({ email: user.email, role: "support", note: "Integration test operator", by: "cli:test" });
+  await close(user);
+  expect(await prisma.platformOperator.findUniqueOrThrow({ where: { userId: user.id } })).toMatchObject({ status: "revoked" });
+  expect(await prisma.platformAuditLog.findFirstOrThrow({ where: { action: "platform.operator_revoked", targetId: user.id } })).toMatchObject({ operatorRole: "support", reason: "The account was closed" });
+});
+
 test("parallel closure commits once and database constraints prevent reopening or rewriting buyer identity", async () => {
   const user = await createMember(); const { order } = await purchase(user.id, "expired");
   const outcomes = await Promise.allSettled([close(user), close(user)]); expect(outcomes.filter(result => result.status === "fulfilled")).toHaveLength(1);

@@ -595,4 +595,16 @@ describe("ticket-by-ticket refunds", () => {
     await expect(prisma.$transaction((tx) => openOrderRefund(tx, { organisationId: kept.owner.organisation.id, orderId: kept.order.id, actor: null, reason: "The event was cancelled." })))
       .rejects.toMatchObject({ kind: "already_refunded" });
   });
+
+  // PAY-090: Refunded says no ticket stands, not that the money went back.
+  test("a refund that cancelled every ticket for less than the total leaves the rest, which Refund the rest and event cancellation still send (PAY-090)", async () => {
+    const fixture = await paidOrder();
+    stripeRefunds(fixture);
+    const all = await tickets(fixture.order.id);
+    await requestOrderRefund({ ...refundInput(fixture), selection: { ticketIds: all.map((ticket) => ticket.id), amount: 1, cancelTickets: true, notifyBuyer: false } });
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).toMatchObject({ refundStatus: "refunded" });
+
+    const request = await prisma.$transaction((tx) => openOrderRefund(tx, { organisationId: fixture.owner.organisation.id, orderId: fixture.order.id, actor: null, reason: "The event was cancelled." }));
+    expect(request.amount).toBe(fixture.order.totalAmount - 1);
+  });
 });

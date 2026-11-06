@@ -46,7 +46,8 @@ export type RateLimitPolicy =
   | "ticket_code_check"
   | "platform_read"
   | "platform_write"
-  | "platform_integrity_audit";
+  | "platform_integrity_audit"
+  | "pending_checkout_read";
 
 type RateLimitPolicyConfig = {
   limit: number;
@@ -136,7 +137,10 @@ export const policies: Record<RateLimitPolicy, RateLimitPolicyConfig> = {
   platform_read: { limit: 600, windowSeconds: 60 * 60, failureMode: "open" },
   // T55: changes an operator makes, wrong codes included; closed, so a guessed code can't be retried freely.
   platform_write: { limit: 30, windowSeconds: 60 * 60, failureMode: "closed" },
-  platform_integrity_audit: { limit: 5, windowSeconds: 60 * 60, failureMode: "closed" }
+  platform_integrity_audit: { limit: 5, windowSeconds: 60 * 60, failureMode: "closed" },
+  // PAY-097: each render of a pending order's page asks Stripe for its Session, against the read
+  // limit every society shares (as SEC-037). Per order; over it, the page waits on the hold alone.
+  pending_checkout_read: { limit: 6, windowSeconds: 60, failureMode: "open" }
 };
 
 const REDIS_CONNECT_TIMEOUT_MS = 1_500;
@@ -331,6 +335,22 @@ export async function enforceRateLimit({
       error
     });
     return serviceUnavailable(PROTECTION_UNAVAILABLE_MESSAGE);
+  }
+}
+
+// For a server render, which has no Request to answer (PAY-097): true when over an open policy's
+// limit. A backend failure, or rate limiting off, never refuses.
+export async function overRateLimit(policy: RateLimitPolicy, keyParts: EnforceRateLimitInput["keyParts"]) {
+  if (!isRateLimitEnabled()) return false;
+  const config = policies[policy];
+  try {
+    const result = await getBackend().increment(storageKey(policy, keyParts), config.windowSeconds);
+    if (result.count <= config.limit) return false;
+    logWarn("rate_limit.rejected", { policy, reason: "rate_limited" });
+    return true;
+  } catch (error) {
+    logWarn("rate_limit.backend_unavailable", { policy, reason: "backend_unavailable_fail_open", error });
+    return false;
   }
 }
 

@@ -16,7 +16,7 @@ import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 import { calculatePlatformFee, isBelowPaidMinimum, minPaidPrice, PLATFORM_FEE_POLICY_VERSION } from "@/lib/stripe/fees";
 import { commerceHoldMinutes, holdEndsAt } from "@/lib/checkout-hold";
 import { formatClock, formatMoney } from "@/lib/format";
-import { runReservationTransaction } from "@/lib/tickets/reservations";
+import { lockSellerForCheckout, runReservationTransaction } from "@/lib/tickets/reservations";
 import { zoneCity } from "@/lib/zoned-time";
 
 // Membership and merchandise checkout (T21), the commerce twin of ticket
@@ -137,6 +137,8 @@ export async function createCommerceCheckout(input: {
       const attempt = { family: input.family, actorKind: actor.kind, actorId: actor.id, operationType: commerceCheckoutOperation, clientIdempotencyKey: input.idempotencyKey, requestHash, providerOperationKey: newProviderOperationKey() };
       const common = { organisationId: input.organisationId, kind: input.family, buyer, buyerEmail: account.email, buyerName: [account.firstName, account.lastName].filter(Boolean).join(" ") || null, lines, source: "checkout" as const, actorUserId: guest ? null : actor.id };
 
+      // PAY-095: the seller's account is read under the lock a disconnect waits for.
+      await lockSellerForCheckout(tx, { organisationId: input.organisationId });
       // A society support restricted (T55) sells nothing, free memberships included.
       if ((await tx.organisation.findUnique({ where: { id: input.organisationId }, select: { restrictedAt: true } }))?.restrictedAt) {
         throw new CommerceCheckoutError("unavailable", "This purchase is no longer available", [{ path: ["selection"], message: "This society isn't selling right now" }]);

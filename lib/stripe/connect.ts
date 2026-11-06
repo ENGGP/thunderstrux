@@ -8,7 +8,7 @@ import { formatDate } from "@/lib/format";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { organisationRolesWithPermission } from "@/lib/permissions";
 import { keepStripePayoutsManual, payoutSummary, payoutsHeld, restoreStripePayoutSchedule, type PayoutSummary } from "@/lib/payouts/payouts";
-import { heldMoney } from "@/lib/payouts/release";
+import { heldMoney, undecidedChargeback } from "@/lib/payouts/release";
 import { logWarn } from "@/lib/ops/logger";
 import { getAppUrl, getStripe, StripeConfigurationError } from "@/lib/stripe";
 
@@ -122,7 +122,9 @@ function openObligationsWhere(organisationId: string, accountId: string): Prisma
           { requiresCompensationReview: true },
           { compensationRefundJob: { is: { state: { in: ["review_required", "auto_queued", "auto_processing", "refund_pending", "refund_failed"] } } } },
           { refundStatus: "processing" },
+          // PAY-094: a chargeback still undecided beside a lost one, which makes the order `lost`.
           { disputeStatus: "open" },
+          { disputes: undecidedChargeback },
           { refundRequests: openRefundRequest }
         ]
       }
@@ -143,6 +145,7 @@ function openCommerceObligationsWhere(organisationId: string, accountId: string)
           { requiresCompensationReview: true },
           { refundStatus: "processing" },
           { disputeStatus: "open" },
+          { disputes: undecidedChargeback },
           { refundRequests: openRefundRequest }
         ]
       }
@@ -468,7 +471,9 @@ async function markAccountOutOfReach(accountId: string) {
 
 // SEC-033: where a society's payouts go changed: Stripe added a bank account (or
 // debit card), or made another one the default. Its Stripe managers hear of it
-// whoever made the change, so a committee notices one it didn't make.
+// whoever made the change, so a committee notices one it didn't make. PAY-096: payouts
+// then wait 72 hours (payoutsAllowedWhere) and support is told, because the change
+// was made at Stripe, possibly by someone this platform no longer trusts.
 export async function notifyPayoutAccountChanged(event: Stripe.Event) {
   const external = event.data.object as (Stripe.BankAccount | Stripe.Card) & { default_for_currency?: boolean | null };
   const previous = event.data.previous_attributes as { default_for_currency?: boolean | null } | undefined;
@@ -476,8 +481,10 @@ export async function notifyPayoutAccountChanged(event: Stripe.Event) {
   const accountId = event.account;
   if (!accountId) return { count: 0 };
   const where = external.object === "bank_account" ? `${external.bank_name ?? "a bank account"} ending ${external.last4}` : `a card ending ${external.last4}`;
-  return prisma.$transaction(async (tx) => {
-    const organisations = await tx.organisation.findMany({ where: { stripeAccountId: accountId }, select: { id: true, slug: true, name: true } });
+  const now = new Date();
+  const { recorded, alert } = await prisma.$transaction(async (tx) => {
+    const organisations = await tx.organisation.findMany({ where: { stripeAccountId: accountId }, select: { id: true, slug: true, name: true, stripePayoutsEnabled: true } });
+    const result = { recorded: 0, alert: [] as string[] };
     for (const organisation of organisations) {
       // Stripe may deliver an event twice; the email is keyed to it, and so is this row.
       const recorded = await tx.auditLog.findFirst({
@@ -485,17 +492,25 @@ export async function notifyPayoutAccountChanged(event: Stripe.Event) {
         select: { id: true }
       });
       if (recorded) continue;
+      await tx.organisation.update({ where: { id: organisation.id }, data: { payoutDestinationChangedAt: now } });
       await notifyStripeManagers(tx, organisation, `stripe-payout-account/${organisation.id}/${event.id}`, {
         subject: `Payout details changed for ${organisation.name}`,
-        message: `Payouts for ${organisation.name} can now go to ${where}. If nobody on your committee made this change, contact Thunderstrux straight away.`
+        message: `Payouts for ${organisation.name} can now go to ${where}. For your safety, payouts wait 72 hours after a change. If nobody on your committee made this change, contact Thunderstrux straight away.`
       });
       await tx.auditLog.create({ data: {
         organisationId: organisation.id, actorUserId: null, action: "stripe_connect.payout_account_changed", targetType: "Organisation", targetId: organisation.id,
         metadata: { stripeAccountId: accountId, stripeEventId: event.id, last4: external.last4 }
       } });
+      result.recorded += 1;
+      // A first bank account, added while onboarding, starts the wait but tells support nothing new.
+      if (organisation.stripePayoutsEnabled) result.alert.push(organisation.id);
     }
-    return { count: organisations.length };
+    return result;
   });
+  for (const organisationId of alert) {
+    emitOperationalAlert("payout_destination_changed", { organisationId, stripeAccountId: accountId, last4: external.last4, dedupeKey: `payout_destination_changed:${event.id}:${organisationId}` });
+  }
+  return { count: recorded };
 }
 
 // The webhook and a Settings refresh both save through here, so a transition

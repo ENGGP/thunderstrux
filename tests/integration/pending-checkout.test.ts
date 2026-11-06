@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { cancelledByBuyer, pendingCheckoutState } from "@/lib/purchases/pending-checkout";
 import { guestCookieName } from "@/lib/guest/guest-access";
 import { guestCsrfToken } from "@/lib/guest/guest-csrf";
+import { createTestRateLimitBackend, setRateLimitTestBackend } from "@/lib/security/rate-limit";
 import { clearMockSession, setMockSession } from "@/tests/helpers/auth";
 import { guestSession } from "@/tests/helpers/guest";
 import { jsonRequest, parseJsonResponse, routeContext } from "@/tests/helpers/http";
@@ -66,6 +67,24 @@ describe("unpaid orders", () => {
     await prisma.ticketReservation.update({ where: { orderId: fixture.order.id }, data: { expiresAt: new Date(Date.now() + 2 * minute) } });
     stripe.retrieve.mockResolvedValue(fixture.session("open"));
     expect(await state()).toEqual({ state: "ended" });
+  });
+
+  // PAY-097: each render asked Stripe, against the read limit every society shares.
+  test("one order's page asks Stripe at most 6 times a minute, without retries; past that it waits on the hold alone", async () => {
+    vi.stubEnv("RATE_LIMIT_ENABLED", "true");
+    setRateLimitTestBackend(createTestRateLimitBackend());
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const fixture = await unpaidTicketOrder();
+      stripe.retrieve.mockResolvedValue(fixture.session("open"));
+      const state = () => pendingCheckoutState({ kind: "ticket", id: fixture.order.id });
+      for (let render = 0; render < 6; render += 1) expect(await state()).toMatchObject({ state: "waiting", paymentUrl: "https://checkout.stripe.com/c/pay/test" });
+      expect(await state()).toEqual({ state: "waiting", holdEndsAt: fixture.holdEndsAt, paymentUrl: null });
+      expect(stripe.retrieve).toHaveBeenCalledTimes(6);
+      expect(stripe.retrieve).toHaveBeenLastCalledWith(fixture.order.stripeSessionId, {}, { maxNetworkRetries: 0 });
+    } finally {
+      setRateLimitTestBackend(null);
+    }
   });
 
   test("the buyer cancels: Stripe closes the payment page first, then the tickets go back on sale, once", async () => {

@@ -331,6 +331,68 @@ describe("payouts worker", () => {
     expect(alerts).toEqual([expect.objectContaining({ orderId: ending.id, organisationId: fixture.organisationId, dedupeKey: `dispute_hold_ending:${ending.id}` })]);
   });
 
+  const holdEndingAlerts = (error: { mock: { calls: unknown[][] } }) =>
+    error.mock.calls.map(([line]) => String(line)).filter((line) => line.includes('"event":"dispute_hold_ending"')).map((line) => JSON.parse(line));
+
+  // PAY-093: the notice ran only for societies the worker paid.
+  test("held, restricted and Stripe-paused societies are warned before the cap too, and a paused account goes back to manual payouts (PAY-093)", async () => {
+    const held = await society();
+    const restricted = await society();
+    const paused = await society();
+    await prisma.organisation.update({ where: { id: held.organisationId }, data: { payoutsHeldAt: now, payoutsHeldUntil: new Date(now.getTime() + 20 * day) } });
+    await prisma.organisation.update({ where: { id: restricted.organisationId }, data: { restrictedAt: now } });
+    await prisma.organisation.update({ where: { id: paused.organisationId }, data: { stripePayoutsEnabled: false } });
+    const orders = await Promise.all([held, restricted, paused].map((fixture) => ticketSale(fixture, -10 * day, { paidAgo: 75 * day, disputeStatus: "open" })));
+    stripe.account.mockResolvedValue({ payments: { payouts: { schedule: { interval: "daily" } }, debit_negative_balances: true } });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await processPayoutBatch(100, now);
+    expect(holdEndingAlerts(error).filter((alert) => orders.some((order) => order.id === alert.orderId))).toEqual(
+      expect.arrayContaining(orders.map((order) => expect.objectContaining({ orderId: order.id, reason: "dispute" })))
+    );
+    expect(stripe.update).toHaveBeenCalledWith(manualPayoutSettings, { stripeAccount: paused.accountId });
+    expect(stripe.create).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ stripeAccount: held.accountId }));
+  });
+
+  // PAY-094: the order's worst status was the only test, so a lost chargeback hid an open one.
+  test("an open chargeback beside a lost one keeps its sale held and announced, and so does any other hold near the cap (PAY-094)", async () => {
+    const fixture = await society();
+    const masked = await ticketSale(fixture, -10 * day, { paidAgo: 75 * day, disputeStatus: "lost" });
+    const dispute = { organisationId: fixture.organisationId, orderId: masked.id, stripeChargeId: unique("ch"), currency: "aud" };
+    await prisma.purchaseDispute.createMany({ data: [
+      { ...dispute, stripeDisputeId: unique("dp"), amount: 1000, providerStatus: "lost", closedAt: now, reversalStatus: "succeeded", reversalAmount: 1000 },
+      { ...dispute, stripeDisputeId: unique("dp"), amount: 1000, providerStatus: "needs_response" }
+    ] });
+    const review = await ticketSale(fixture, -10 * day, { paidAgo: 75 * day, requiresCompensationReview: true });
+    // The lost one took $10.00 back; the rest of the society's $18.36 stays held for the open one.
+    expect((await heldMoney(fixture.organisationId, fixture.accountId, now)).total).toBe(1836 + 836);
+
+    stripe.balance.mockResolvedValue(balance(0));
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await processPayoutBatch(100, now);
+    expect(holdEndingAlerts(error).filter((alert) => alert.organisationId === fixture.organisationId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ orderId: masked.id, reason: "dispute" }),
+      expect.objectContaining({ orderId: review.id, reason: "compensation_review" })
+    ]));
+  });
+
+  // PAY-096: a bank changed at Stripe isn't paid the same hour.
+  test("payouts wait 72 hours after Stripe reports a new payout bank account, and the account stays on manual payouts meanwhile", async () => {
+    const fixture = await society();
+    await prisma.organisation.update({ where: { id: fixture.organisationId }, data: { payoutDestinationChangedAt: new Date(now.getTime() - 3600_000) } });
+    stripe.balance.mockResolvedValue(balance(5000));
+    stripe.create.mockImplementation(async (params: { amount: number }) => ({ id: unique("po"), amount: params.amount, currency: "aud", status: "pending", arrival_date: null }));
+    stripe.account.mockResolvedValue({ payments: { payouts: { schedule: { interval: "daily" } }, debit_negative_balances: true } });
+
+    await processPayoutBatch(100, now);
+    expect(stripe.create).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ stripeAccount: fixture.accountId }));
+    expect(stripe.update).toHaveBeenCalledWith(manualPayoutSettings, { stripeAccount: fixture.accountId });
+
+    await processPayoutBatch(100, new Date(now.getTime() + 72 * 3600_000));
+    expect(stripe.create).toHaveBeenCalledWith(expect.objectContaining({ amount: 5000 }), expect.objectContaining({ stripeAccount: fixture.accountId }));
+  });
+
   test("a society still on Stripe's schedule is moved to manual payouts; less than $1.00 free waits", async () => {
     const fixture = await society();
     await ticketSale(fixture, 10 * day);

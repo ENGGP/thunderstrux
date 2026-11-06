@@ -133,6 +133,8 @@ model Organisation {
   payoutsHeldAt       DateTime?
   payoutsHeldUntil    DateTime?
   payoutsHeldReason   String?
+  // When Stripe last reported a new payout bank account or default; payouts wait 72 hours after it.
+  payoutDestinationChangedAt DateTime?
   createdAt           DateTime             @default(now())
   accountUser         User?                @relation("OrganisationAccount", fields: [accountUserId], references: [id], onDelete: SetNull)
   notificationJobs    NotificationOutbox[]

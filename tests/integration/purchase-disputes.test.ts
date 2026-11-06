@@ -333,10 +333,15 @@ describe("disputes", () => {
       await win(refused);
       expect(alerted(error, "refund_failed")).toEqual([expect.objectContaining({ orderId: refused.order.id, reason: "not_refundable" })]);
 
+      // Refunded in full here: what is left decides (PAY-090), so the refund it took is recorded too.
       const refunded = await disputedThenCancelled();
       await prisma.order.update({ where: { id: refunded.order.id }, data: { refundStatus: "refunded" } });
+      await prisma.refundRequest.create({ data: {
+        orderId: refunded.order.id, organisationId: refunded.owner.organisation.id, amount: refunded.order.totalAmount, reason: "Refunded earlier.", operationKey: unique("refund"), status: "succeeded", resolvedAt: new Date()
+      } });
       await win(refunded);
       expect(alerted(error, "refund_failed")).toHaveLength(1);
+      expect(await prisma.refundRequest.count({ where: { orderId: refunded.order.id } })).toBe(1);
     });
 
     test("names money already released for payout, as cancelling does (PAY-022)", async () => {
@@ -1026,6 +1031,59 @@ describe("dispute transitions", () => {
     // The other one won: the tickets the part loss left standing come back for staff to pick.
     await send("dp_b", "won", "charge.dispute.closed");
     expect((await orderState(fixture.order.id)).tickets.every((ticket) => ticket.validity === "active")).toBe(true);
+  });
+
+  // PAY-092: the win-after-loss handling needed the payment's worst outcome to be won.
+  test("a chargeback won after its loss beside another still open or lost cancels only its own reversal and tells a person (PAY-092)", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const twoChargebacks = async () => {
+      const fixture = await paidOrder();
+      const now: Record<string, string> = {};
+      stripe.dispute.mockImplementation(async (id: string) => disputeObject(fixture, now[id], { id, amount: 1500 }));
+      const send = async (name: string, status: string, type = "charge.dispute.updated") => {
+        const id = `${name}_${fixture.order.id}`;
+        now[id] = status;
+        await reconcileDisputeEvent(signedEvent(type, disputeObject(fixture, status, { id, amount: 1500 })));
+      };
+      const row = (name: string) => prisma.purchaseDispute.findUniqueOrThrow({ where: { stripeDisputeId: `${name}_${fixture.order.id}` } });
+      return { fixture, send, row };
+    };
+    const reviewsOf = (orderId: string) => alertsOf(error, "purchase_dispute_needs_review").filter((alert) => alert.orderId === orderId).map((alert) => alert.reason);
+
+    // The other chargeback still open.
+    const open = await twoChargebacks();
+    await open.send("dp_a", "needs_response", "charge.dispute.created");
+    await open.send("dp_b", "needs_response", "charge.dispute.created");
+    await open.send("dp_a", "lost", "charge.dispute.closed");
+    expect((await open.row("dp_a")).reversalStatus).toBe("pending");
+    await open.send("dp_a", "won");
+    expect((await open.row("dp_a")).reversalStatus).toBe("cancelled");
+    expect(reviewsOf(open.fixture.order.id)).toEqual(["lost_for_part", "won_after_loss"]);
+
+    // Both lost, then one won: the other loss still stands and its reversal still goes.
+    const lost = await twoChargebacks();
+    await lost.send("dp_a", "lost", "charge.dispute.closed");
+    await lost.send("dp_b", "lost", "charge.dispute.closed");
+    await lost.send("dp_a", "won");
+    expect((await lost.row("dp_a")).reversalStatus).toBe("cancelled");
+    expect((await lost.row("dp_b")).reversalStatus).toBe("pending");
+    expect(reviewsOf(lost.fixture.order.id)).toContain("won_after_loss");
+  });
+
+  // PAY-091: a review already done stayed done, so a later part loss's tickets couldn't be picked.
+  test("a part loss after staff reviewed a refund made in Stripe opens the review again, and a pick voids as a dispute loss (PAY-091)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const fixture = await paidOrder();
+    const outside = { id: unique("re_dash"), object: "refund", payment_intent: fixture.intentId, amount: 500, currency: "aud", status: "succeeded", metadata: {} };
+    stripe.refunds.mockResolvedValue({ data: [outside] });
+    await reconcileExternalRefundEvent(signedEvent("refund.updated", outside));
+    expect((await reviewAs(fixture, { action: "mark_reviewed" })).status).toBe(200);
+
+    await deliver(fixture, "lost", { amount: 1500 }, "charge.dispute.closed");
+    expect((await orderState(fixture.order.id)).externalRefundReviewedAt).toBeNull();
+    const [first] = await prisma.ticket.findMany({ where: { orderId: fixture.order.id }, orderBy: { issueSequence: "asc" }, select: { id: true } });
+    expect((await reviewAs(fixture, { action: "mark_reviewed", ticketIds: [first.id] })).status).toBe(200);
+    expect((await orderState(fixture.order.id)).tickets).toEqual([{ validity: "void", validityReason: "dispute_lost" }, { validity: "active", validityReason: null }]);
   });
 
   test("under staff MFA, a verified sign-in voids the tickets a part loss covered with no further code (PAY-084 superseded)", async () => {

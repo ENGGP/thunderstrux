@@ -59,7 +59,9 @@ test("finance staff pick tickets to refund or cancel, a wrong reference changes 
   await expect(dialog).toBeHidden();
 
   // A refund Stripe confirmed (recorded here directly: the browser campaign has no Stripe).
+  // It voided every ticket still valid, as a full refund does, so nothing is left to refund (PAY-090).
   await prisma.order.update({ where: { id: order.id }, data: { refundStatus: "refunded" } });
+  await prisma.ticket.updateMany({ where: { orderId: order.id, validity: "active" }, data: { validity: "void", validityReason: "refunded", validityChangedAt: new Date() } });
   await prisma.refundRequest.create({ data: {
     orderId: order.id, organisationId: data.organisation.id, amount: 3000, reason: "Buyer asked for a refund.", actorUserId: data.manager.id,
     operationKey: `order-refund:e2e-${order.id}`, status: "succeeded", resolvedAt: new Date()

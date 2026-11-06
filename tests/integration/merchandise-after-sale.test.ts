@@ -147,4 +147,22 @@ describe("merchandise after the sale", () => {
     expect((await call(refundRoute, organisation.slug, bought.id, { reason, confirmation: orderReference(bought.id) })).status).toBe(403);
     expect(await prisma.merchandiseReturn.count({ where: { commerceOrderId: bought.id } })).toBe(2);
   });
+
+  // DEF-102: stock went up while the buyer could still collect the same items, so they sold twice.
+  test("items not yet collected can't go back into stock unless the order was refunded; a return without restocking is still recorded", async () => {
+    const { organisation, variant, order } = await society();
+    const waiting = await order({ quantity: 1 });
+    const body = (restock: boolean) => ({ lineId: waiting.lines[0].id, quantity: 1, restock, reason: "Handed back at the stall.", operationKey: unique("return-key-0000") });
+
+    const refused = await call(returnRoute, organisation.slug, waiting.id, body(true));
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.message).toContain("haven't been collected");
+    expect(await stock(variant.id)).toBe(3);
+    expect((await call(returnRoute, organisation.slug, waiting.id, body(false))).status).toBe(201);
+
+    const refunded = await order({ quantity: 1 });
+    await prisma.commerceOrder.update({ where: { id: refunded.id }, data: { refundStatus: "refunded" } });
+    expect((await call(returnRoute, organisation.slug, refunded.id, { ...body(true), lineId: refunded.lines[0].id })).status).toBe(201);
+    expect(await stock(variant.id)).toBe(4);
+  });
 });

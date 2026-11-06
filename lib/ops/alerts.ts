@@ -39,8 +39,10 @@ export type OperationalAlertName =
   // A card issuer's early fraud warning: refunded automatically, or why not.
   | "early_fraud_warning"
   | "dispute_reversal_unresolved"
-  // PAY-088: a sale whose dispute is still open reaches Stripe's hold limit within a week.
+  // PAY-088: a sale still held (an open dispute, a review, a cancelled event's buyer) reaches Stripe's hold limit within a week.
   | "dispute_hold_ending"
+  // PAY-096: Stripe reported a new payout bank account or default; payouts wait 72 hours.
+  | "payout_destination_changed"
   | "society_payout_failed"
   // PAY-028: a payout the payout worker didn't make (an instant payout, or a changed schedule).
   | "society_payout_unexpected"
@@ -110,7 +112,9 @@ function deliverAlert(event: OperationalAlertName, payload: OperationalAlertPayl
     suppressed = state?.suppressed ?? 0;
     cooldowns.set(event, { until: now + ALERT_COOLDOWN_MS, suppressed: 0 });
   }
-  const details: Record<string, unknown> = { ...redactLogContext(payload), ...(suppressed ? { suppressed } : {}) };
+  // #31, SEC-060: an error's message can carry buyer data, so a top-level Error leaves as its name only.
+  const named = Object.fromEntries(Object.entries(payload).map(([key, value]) => [key, value instanceof Error ? value.name : value]));
+  const details: Record<string, unknown> = { ...redactLogContext(named), ...(suppressed ? { suppressed } : {}) };
   const adminPath = adminPathFor(details);
   const body = JSON.stringify({
     event,

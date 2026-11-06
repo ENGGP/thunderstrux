@@ -104,8 +104,12 @@ export async function reconcileCommerceDisputeEvent(event: Stripe.Event) {
       organisationId, actorUserId: null, action: `commerce_order.dispute_${existing ? outcome : "opened"}`, targetType: "CommerceOrder", targetId: commerceOrderId,
       metadata: { disputeId: current.id, providerStatus: current.status, amount: current.amount }
     } });
-    if (worst === "won" && record.wasLost) {
+    if (worst === "won" && record.anyLost) {
       await cancelQueuedReversals(tx, { commerceOrderId });
+      review = "won_after_loss";
+    } else if (outcome === "won" && record.wasLost && worst !== "won") {
+      // PAY-092: won after its own loss while another chargeback is open or lost; only its own reversal is cancelled.
+      await cancelQueuedReversals(tx, { stripeDisputeId: current.id });
       review = "won_after_loss";
     }
     // PAY-056: the last dispute holding this order's compensation refund went the society's way.

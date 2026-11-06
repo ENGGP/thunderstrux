@@ -3,14 +3,15 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { enqueueNotification } from "@/lib/email/notification-outbox";
-import { AccountTokenError, accountTokenDigest, invalidateAccountTokens, requireSecurityActor, type AccountActor } from "./account-lifecycle";
+import { AccountTokenError, accountTokenDigest, invalidateAccountTokens, requireSecurityActor, verifySecurityPassword, type AccountActor } from "./account-lifecycle";
 import { appUrl } from "@/lib/app-url";
 export const accountEmailSchema = z.string().trim().toLowerCase().email().max(320);
 export class EmailChangeError extends Error {}
 export async function requestEmailChange(actor: AccountActor, currentPassword: string, address: string, now = new Date()) {
   const newEmail = accountEmailSchema.parse(address);
+  const verified = await verifySecurityPassword(actor, currentPassword);
   await prisma.$transaction(async tx => {
-    const user = await requireSecurityActor(tx, actor, currentPassword, now);
+    const user = await requireSecurityActor(tx, actor, verified, now);
     if (newEmail === user.email) throw new EmailChangeError("Choose a different email address");
     await invalidateAccountTokens(tx, user.id, "email_change", now);
     const event = await tx.accountSecurityEvent.create({ data: { userId: user.id, type: "email_change_requested", authVersion: user.authVersion, createdAt: now } });
@@ -28,9 +29,10 @@ export async function requestEmailChange(actor: AccountActor, currentPassword: s
 }
 export async function confirmEmailChange(actor: AccountActor, currentPassword: string, raw: string, now = new Date()) {
   if (!/^[A-Za-z0-9_-]{43}$/.test(raw)) throw new AccountTokenError();
+  const verified = await verifySecurityPassword(actor, currentPassword);
   try {
     await prisma.$transaction(async tx => {
-      const user = await requireSecurityActor(tx, actor, currentPassword, now);
+      const user = await requireSecurityActor(tx, actor, verified, now);
       const token = await tx.authToken.findUnique({ where: { tokenHash: accountTokenDigest(raw) } });
       if (!token || token.userId !== user.id || token.purpose !== "email_change" || !token.newEmail || token.newEmail === user.email ||
           token.email !== user.email || token.authVersion !== user.authVersion || token.expiresAt <= now || token.consumedAt || token.invalidatedAt) throw new AccountTokenError();
@@ -53,8 +55,9 @@ export async function confirmEmailChange(actor: AccountActor, currentPassword: s
   }
 }
 export async function cancelEmailChange(actor: AccountActor, currentPassword: string, now = new Date()) {
+  const verified = await verifySecurityPassword(actor, currentPassword);
   await prisma.$transaction(async tx => {
-    const user = await requireSecurityActor(tx, actor, currentPassword, now);
+    const user = await requireSecurityActor(tx, actor, verified, now);
     const pending = await tx.authToken.count({ where: { userId: user.id, purpose: "email_change", consumedAt: null, invalidatedAt: null } });
     await invalidateAccountTokens(tx, user.id, "email_change", now);
     if (pending) await tx.accountSecurityEvent.create({ data: { userId: user.id, type: "email_change_cancelled", authVersion: user.authVersion, createdAt: now } });

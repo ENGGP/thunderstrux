@@ -38,14 +38,22 @@ export async function updateOrganisationStaff(actor: AccountActor, organisationI
     // SEC-048 (T54 Q1): an operator login stays dedicated, so a revoked row can't come back on it.
     if (nextStatus === "active" && await livePlatformRole(tx, { id: existing.userId })) throw new StaffUpdateError("conflict", "Thunderstrux operator accounts can't hold society roles");
     if (existing.role === "owner" && existing.status === "active" && (nextRole !== "owner" || nextStatus !== "active") &&
-        await tx.organisationStaff.count({ where: { organisationId, role: "owner", status: "active" } }) <= 1) throw new StaffUpdateError("conflict", "At least one active owner is required");
+        await tx.organisationStaff.count({ where: { organisationId, role: "owner", status: "active", user: { disabledAt: null } } }) <= 1) throw new StaffUpdateError("conflict", "At least one active owner is required");
     const staff = await tx.organisationStaff.update({ where: { id: staffId }, data: { role: nextRole, status: nextStatus, revokedAt: nextStatus === "revoked" ? now : null, revokedById: nextStatus === "revoked" ? actor.id : null },
       select: { id: true, role: true, status: true, acceptedAt: true, revokedAt: true, user: { select: { id: true, email: true } } } });
     if (nextStatus === "revoked") await revokeOrganisationStaffInvites(tx, organisationId, staff.user.email, now);
+    // SEC-080: the legacy creator pointer is ownership only while its holder owns, so it
+    // retires with that ownership, as a handover retires it.
+    const legacyOwnershipRetired = (nextRole !== "owner" || nextStatus !== "active") &&
+      (await tx.organisation.updateMany({ where: { id: organisationId, accountUserId: existing.userId }, data: { accountUserId: null } })).count === 1;
     const audit = await tx.auditLog.create({ data: { organisationId, actorUserId: actor.id, action: "staff.updated", targetType: "OrganisationStaff", targetId: staff.id,
-      metadata: { previousRole: existing.role, previousStatus: existing.status, nextRole, nextStatus } } });
+      metadata: { previousRole: existing.role, previousStatus: existing.status, nextRole, nextStatus, ...(legacyOwnershipRetired ? { legacyOwnershipRetired } : {}) } } });
     if (nextStatus === "active" && (existing.status !== "active" || existing.role !== nextRole))
       await notifyOwnersOfStaffGrant(tx, { organisationId, eventKey: `staff-access/${staff.id}/${audit.id}`, email: staff.user.email, role: nextRole });
+    // SEC-081: owners hear of a revocation too, so the email provider's send log keeps a record
+    // a restore can re-apply.
+    if (nextStatus === "revoked" && existing.status !== "revoked")
+      await notifyOwnersOfStaffGrant(tx, { organisationId, eventKey: `staff-access/${staff.id}/${audit.id}`, email: staff.user.email, role: existing.role, revoked: true });
     return staff;
   }, { timeout: 15000 });
 }

@@ -3,7 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { enqueueNotification } from "@/lib/email/notification-outbox";
-import { AccountSecurityError, invalidateAccountTokens, lockAccount, requireSecurityActor, type AccountActor } from "./account-lifecycle";
+import { AccountSecurityError, invalidateAccountTokens, lockAccount, requireSecurityActor, verifySecurityPassword, type AccountActor } from "./account-lifecycle";
 import { appUrl } from "@/lib/app-url";
 
 export const closureAcknowledgement = "CLOSE MY ACCOUNT";
@@ -30,8 +30,9 @@ export async function readAccountClosureEligibility(actor: AccountActor, now = n
 }
 export async function closeAccount(actor: AccountActor, currentPassword: string, acknowledgement: string, now = new Date()) {
   if (acknowledgement !== closureAcknowledgement) throw new AccountClosureError("acknowledgement", "Enter CLOSE MY ACCOUNT to acknowledge permanent closure.");
+  const verified = await verifySecurityPassword(actor, currentPassword);
   await prisma.$transaction(async tx => {
-    const user = await requireSecurityActor(tx, actor, currentPassword, now);
+    const user = await requireSecurityActor(tx, actor, verified, now);
     // Purchases/joins/organisation creation/invite acceptance lock this User.
     // Lock retained orders too, so workers/staff cannot change blockers during
     // the final decision. Later provider events still retain provider truth.

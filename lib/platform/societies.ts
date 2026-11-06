@@ -21,7 +21,7 @@ export async function lockSociety(tx: Prisma.TransactionClient, organisationId: 
 }
 
 export const societySelect = {
-  id: true, name: true, supportEmail: true, restrictedAt: true, payoutsHeldAt: true, payoutsHeldUntil: true,
+  id: true, name: true, supportEmail: true, restrictedAt: true, payoutsHeldAt: true, payoutsHeldUntil: true, payoutsHeldReason: true,
   staff: { where: { status: "active" }, select: { role: true, user: { select: { id: true, email: true, firstName: true, lastName: true, displayName: true, disabledAt: true } } } }
 } satisfies Prisma.OrganisationSelect;
 

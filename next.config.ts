@@ -41,7 +41,10 @@ const nextConfig: NextConfig = {
   // the production build, SEC-014).
   allowedDevOrigins: ["127.0.0.1", "localhost"],
   // next dev's MCP endpoint reports open browser sessions' pages; nothing here uses it.
-  experimental: { mcpServer: false },
+  experimental: { mcpServer: false,
+    // SEC-078: the only server actions are the two admin actions, which carry short strings. Next
+    // parses a multipart body before it checks the action, so cap it well below the 1 MB default.
+    serverActions: { bodySizeLimit: "64kb" } },
   // SEC-019: password hashing loads bcryptjs inside worker threads, so it must stay a
   // real package in node_modules (and the standalone image), not bundled away.
   serverExternalPackages: ["bcryptjs"],

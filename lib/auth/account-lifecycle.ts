@@ -93,16 +93,24 @@ export async function requestVerification(email: string, callbackUrl?: string) {
 }
 export async function consumeVerification(raw: string, password: string, now = new Date()) {
   if (!/^[A-Za-z0-9_-]{43}$/.test(raw)) throw new AccountTokenError();
+  const tokenHash = accountTokenDigest(raw);
+  // The mailbox proof must come from whoever set the password (SEC-008); otherwise a mailbox
+  // owner verifies an account someone else pre-registered. A mismatch leaves the token unused.
+  // The compare runs before the transaction, so no pooled connection or row lock waits on the
+  // password workers (SEC-077); the locked re-read below requires the same password digest.
+  const candidate = await prisma.authToken.findUnique({ where: { tokenHash }, select: { purpose: true, consumedAt: true, invalidatedAt: true, expiresAt: true,
+    user: { select: { password: true, disabledAt: true, emailVerifiedAt: true } } } });
+  if (!candidate || candidate.purpose !== "verify_account" || candidate.consumedAt || candidate.invalidatedAt || candidate.expiresAt <= now ||
+      candidate.user.disabledAt || candidate.user.emailVerifiedAt) throw new AccountTokenError();
+  const digest = candidate.user.password;
+  if (!await comparePassword(password, digest)) throw new AccountTokenError();
   return prisma.$transaction(async tx => {
-    const candidate = await tx.authToken.findUnique({ where: { tokenHash: accountTokenDigest(raw) }, select: { userId: true } });
-    if (!candidate) throw new AccountTokenError();
-    const user = await lockAccount(tx, candidate.userId);
-    const token = await tx.authToken.findUnique({ where: { tokenHash: accountTokenDigest(raw) } });
+    const found = await tx.authToken.findUnique({ where: { tokenHash }, select: { userId: true } });
+    if (!found) throw new AccountTokenError();
+    const user = await lockAccount(tx, found.userId);
+    const token = await tx.authToken.findUnique({ where: { tokenHash } });
     if (!user || user.disabledAt || !token || token.purpose !== "verify_account" || token.consumedAt || token.invalidatedAt || token.expiresAt <= now ||
-        token.email !== user.email || token.authVersion !== user.authVersion || user.emailVerifiedAt) throw new AccountTokenError();
-    // The mailbox proof must come from whoever set the password (SEC-008); otherwise a mailbox
-    // owner verifies an account someone else pre-registered. A mismatch leaves the token unused.
-    if (!await comparePassword(password, user.password)) throw new AccountTokenError();
+        token.email !== user.email || token.authVersion !== user.authVersion || user.emailVerifiedAt || user.password !== digest) throw new AccountTokenError();
     const consumed = await tx.authToken.updateMany({ where: { id: token.id, consumedAt: null, invalidatedAt: null }, data: { consumedAt: now } });
     if (consumed.count !== 1) throw new AccountTokenError();
     await tx.user.update({ where: { id: user.id }, data: { emailVerifiedAt: now } });
@@ -118,10 +126,20 @@ export type AccountActor = { id: string; authVersion: number; mfaSessionId?: str
 export class AccountSecurityError extends Error {
   constructor(readonly kind: "stale_session" | "invalid_password" | "mfa_required" | "role_required", message: string) { super(message); }
 }
-export async function requireSecurityActor(tx: Prisma.TransactionClient, actor: AccountActor, password: string, now = new Date()) {
-  const user = await lockAccount(tx, actor.id);
+// SEC-077: the password compare waits on a small worker pool, so it runs before any
+// transaction. Callers verify first, then pass the result to requireSecurityActor, which
+// re-reads the locked row and requires the same password digest.
+export type VerifiedPassword = { readonly userId: string; readonly digest: string };
+export async function verifySecurityPassword(actor: AccountActor, password: string): Promise<VerifiedPassword> {
+  const user = await prisma.user.findUnique({ where: { id: actor.id }, select: { password: true, disabledAt: true, authVersion: true } });
   if (!user || user.disabledAt || user.authVersion !== actor.authVersion) throw new AccountSecurityError("stale_session", "Sign in again to continue");
   if (!await comparePassword(password, user.password)) throw new AccountSecurityError("invalid_password", "Current password is incorrect");
+  return { userId: actor.id, digest: user.password };
+}
+export async function requireSecurityActor(tx: Prisma.TransactionClient, actor: AccountActor, verified: VerifiedPassword, now = new Date()) {
+  const user = await lockAccount(tx, actor.id);
+  if (!user || user.disabledAt || user.authVersion !== actor.authVersion) throw new AccountSecurityError("stale_session", "Sign in again to continue");
+  if (verified.userId !== user.id || verified.digest !== user.password) throw new AccountSecurityError("invalid_password", "Current password is incorrect");
   const mfa = await tx.userMfa.findUnique({ where: { userId: user.id }, select: { enabledAt: true } });
   if (mfa?.enabledAt) {
     const digest = mfaGrantDigest(actor.mfaSessionId);
@@ -172,8 +190,9 @@ export async function consumePasswordReset(raw: string, newPassword: string, now
 }
 export async function changePassword(actor: AccountActor, currentPassword: string, newPassword: string, now = new Date()) {
   const password = await hashPassword(newPasswordSchema.parse(newPassword));
+  const verified = await verifySecurityPassword(actor, currentPassword);
   await prisma.$transaction(async tx => {
-    const user = await requireSecurityActor(tx, actor, currentPassword, now);
+    const user = await requireSecurityActor(tx, actor, verified, now);
     const updated = await tx.user.update({ where: { id: user.id }, data: { password, authVersion: { increment: 1 } } });
     await tx.mfaGrant.deleteMany({ where: { userId: user.id } });
     await invalidateAccountTokens(tx, user.id, undefined, now);

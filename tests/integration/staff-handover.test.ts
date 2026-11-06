@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { prisma } from "@/lib/db";
 import { handOverOrganisationOwnership } from "@/lib/staff/handover";
@@ -58,6 +59,40 @@ test("revocation removes old-session authority in legacy allow mode and releases
   expect((await readAccountClosureEligibility(actor(data.user))).eligible).toBe(true);
   await closeAccount(actor(data.user), "password123", closureAcknowledgement);
   expect(await prisma.organisationStaff.count({ where: { organisationId: data.organisation.id, role: "owner", status: "active" } })).toBe(1);
+});
+
+// SEC-080: a co-owner who demotes or revokes the creator retires the legacy pointer too, so the
+// creator can close their account. SEC-081: owners hear of the revocation. A disabled owner
+// can't act, so it doesn't count toward the one active owner a society needs.
+test("demoting or revoking the creator retires the legacy pointer, owners hear of it, and a disabled owner is not counted", async () => {
+  const data = await fixture(); const coOwner = await createMember();
+  await createOrganisationStaff({ organisationId: data.organisation.id, userId: coOwner.id, role: "owner" });
+  const creatorRow = await prisma.organisationStaff.findUniqueOrThrow({ where: { organisationId_userId: { organisationId: data.organisation.id, userId: data.user.id } } });
+  await updateOrganisationStaff(actor(coOwner), data.organisation.id, creatorRow.id, { role: "admin" });
+  expect((await prisma.organisation.findUniqueOrThrow({ where: { id: data.organisation.id } })).accountUserId).toBeNull();
+  expect((await prisma.auditLog.findFirstOrThrow({ where: { action: "staff.updated", targetId: creatorRow.id } })).metadata).toMatchObject({ legacyOwnershipRetired: true });
+  await updateOrganisationStaff(actor(coOwner), data.organisation.id, creatorRow.id, { status: "revoked" });
+  const notices = await prisma.notificationOutbox.findMany({ where: { template: "business_notice", recipient: coOwner.email } });
+  expect(notices).toHaveLength(2);
+  expect((await readAccountClosureEligibility(actor(data.user))).eligible).toBe(true);
+
+  const other = await fixture(); const disabledOwner = await createMember();
+  await createOrganisationStaff({ organisationId: other.organisation.id, userId: disabledOwner.id, role: "owner" });
+  await prisma.user.update({ where: { id: disabledOwner.id }, data: { disabledAt: new Date() } });
+  const ownRow = await prisma.organisationStaff.findUniqueOrThrow({ where: { organisationId_userId: { organisationId: other.organisation.id, userId: other.user.id } } });
+  await expect(updateOrganisationStaff(actor(other.user), other.organisation.id, ownRow.id, { role: "admin" })).rejects.toThrow("At least one active owner is required");
+});
+
+test("the migration clears only pointers a staff row already supersedes (SEC-080)", async () => {
+  const demoted = await fixture(); const owning = await fixture(); const legacyOnly = await fixture();
+  await prisma.organisationStaff.updateMany({ where: { organisationId: demoted.organisation.id, userId: demoted.user.id }, data: { role: "admin" } });
+  await prisma.organisationStaff.deleteMany({ where: { organisationId: legacyOnly.organisation.id, userId: legacyOnly.user.id } });
+  const sql = readFileSync("prisma/migrations/20261130010000_retire_superseded_owner_pointers/migration.sql", "utf8").replace(/^--.*$/gm, "");
+  await prisma.$executeRawUnsafe(sql);
+  const pointer = async (id: string) => (await prisma.organisation.findUniqueOrThrow({ where: { id } })).accountUserId;
+  expect(await pointer(demoted.organisation.id)).toBeNull();
+  expect(await pointer(owning.organisation.id)).toBe(owning.user.id);
+  expect(await pointer(legacyOnly.organisation.id)).toBe(legacyOnly.user.id);
 });
 
 test("admins cannot hand over or change owners; ordinary final-owner demotion remains blocked", async () => {

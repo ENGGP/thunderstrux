@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { lockAccount, requireSecurityActor, type AccountActor } from "@/lib/auth/account-lifecycle";
+import { lockAccount, requireSecurityActor, verifySecurityPassword, type AccountActor } from "@/lib/auth/account-lifecycle";
 import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
 import { staffHandoverSchema } from "@/lib/validators/staff";
 import { revokeOrganisationStaffInvites } from "@/lib/staff/invite-cancellation";
@@ -17,12 +17,13 @@ export async function handOverOrganisationOwnership(actor: AccountActor, organis
   ]);
   if (!organisationSnapshot || !targetSnapshot || targetSnapshot.userId === actor.id)
     throw new StaffHandoverError("conflict", "Choose another eligible staff member in this organisation");
+  const verified = await verifySecurityPassword(actor, request.currentPassword);
   return prisma.$transaction(async tx => {
     // Same sorted User -> Organisation order as staff changes, invitations and
     // account lifecycle. The legacy user lock also fences account closure.
     const ids = [actor.id, targetSnapshot.userId, ...(organisationSnapshot.accountUserId ? [organisationSnapshot.accountUserId] : [])];
     for (const id of [...new Set(ids)].sort()) await lockAccount(tx, id);
-    const user = await requireSecurityActor(tx, actor, request.currentPassword, now);
+    const user = await requireSecurityActor(tx, actor, verified, now);
     if (!user.emailVerifiedAt) throw new StaffHandoverError("authority", "Verify your email before handing over ownership");
     await tx.$queryRaw`SELECT "id" FROM "Organisation" WHERE "id" = ${organisationId} FOR UPDATE`;
     const organisation = await tx.organisation.findUnique({ where: { id: organisationId }, select: { accountUserId: true } });
@@ -50,11 +51,12 @@ export async function handOverOrganisationOwnership(actor: AccountActor, organis
       revokedAt: revoked ? now : null, revokedById: revoked ? actor.id : null
     } });
     if (revoked) await revokeOrganisationStaffInvites(tx, organisationId, (await tx.user.findUniqueOrThrow({ where: { id: actor.id }, select: { email: true } })).email, now);
-    if (await tx.organisationStaff.count({ where: { organisationId, role: "owner", status: "active" } }) < 1)
+    if (await tx.organisationStaff.count({ where: { organisationId, role: "owner", status: "active", user: { disabledAt: null } } }) < 1)
       throw new StaffHandoverError("conflict", "At least one active owner is required");
     await tx.organisation.update({ where: { id: organisationId }, data: { accountUserId: null } });
     // SEC-061: every owner, the new one included, hears that someone became an owner.
     await notifyOwnersOfStaffGrant(tx, { organisationId, eventKey: `staff/handover/${incoming.id}/${now.getTime()}`, email: incoming.user.email, role: "owner" });
+    if (revoked) await notifyOwnersOfStaffGrant(tx, { organisationId, eventKey: `staff/handover/${outgoing.id}/${now.getTime()}/revoked`, email: user.email, role: "owner", revoked: true });
     await tx.auditLog.create({ data: { organisationId, actorUserId: actor.id, action: "staff.ownership.handed_over", targetType: "OrganisationStaff", targetId: incoming.id,
       metadata: { incomingUserId: incoming.userId, incomingStaffId: incoming.id, incomingPreviousRole: incoming.role, incomingRole: "owner", incomingStatus: "active",
         outgoingUserId: actor.id, outgoingStaffId: outgoing.id, outgoingPreviousRole: outgoing.role, outgoingPreviousStatus: outgoing.status,

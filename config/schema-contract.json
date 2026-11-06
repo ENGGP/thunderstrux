@@ -1,3 +1,3 @@
 {
-  "requiredMigration": "20261129010000_payout_destination_wait"
+  "requiredMigration": "20261130010000_retire_superseded_owner_pointers"
 }

@@ -71,7 +71,10 @@ describe("shared formatters", () => {
 
 describe("auth secret resolution", () => {
   test("only tests and builds fall back; development refuses placeholders (SEC-016)", () => {
-    const unsafe = ["", "  ", "dev-secret", "replace-with-a-non-empty-secret", "build-time-only-auth-secret-change-at-runtime"];
+    const unsafe = ["", "  ", "dev-secret", "replace-with-a-non-empty-secret",
+      "build-time-only-auth-secret-change-at-runtime",
+      // SEC-086: the release smoke test's old value is public in the workflow history.
+      "release-smoke-only-0123456789abcdef"];
     for (const AUTH_SECRET of unsafe) {
       expect(resolveAuthSecret({ NODE_ENV: "test", AUTH_SECRET })).toBe("dev-only-auth-secret");
       expect(() => resolveAuthSecret({ NODE_ENV: "development", AUTH_SECRET })).toThrow("openssl rand -base64 32");

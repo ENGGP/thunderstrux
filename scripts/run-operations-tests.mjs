@@ -205,8 +205,8 @@ const runtime = [
   "RATE_LIMIT_ENABLED=true",
   "RATE_LIMIT_REDIS_URL=redis://redis:6379",
   "RATE_LIMIT_KEY_PREFIX=ops",
-  // ops:deploy refuses the forgeable default (SEC-053).
-  "RATE_LIMIT_TRUSTED_PROXY_HEADER=x-thunderstrux-client-ip",
+  // ops:deploy refuses the forgeable default (SEC-053) and any header but its tunnel's (SEC-085).
+  "RATE_LIMIT_TRUSTED_PROXY_HEADER=cf-connecting-ip",
   "STRIPE_SECRET_KEY=",
   "STRIPE_WEBHOOK_SECRET=",
   "STRIPE_CONNECT_WEBHOOK_SECRET=",
@@ -310,6 +310,11 @@ try {
   await compose(["run", "--rm", "-e", "NOTIFICATION_ENCRYPTION_KEY", "migration", "node", "scripts/seed-operations-verification.mjs"], {
     env: { ...process.env, OPS_IMAGE: release.opsImageId, NOTIFICATION_ENCRYPTION_KEY: notificationKey }
   });
+  // SEC-086: the operations seed refuses any database that is not a disposable _test one.
+  const unsafeSeed = await compose(["run", "--rm", "-e", "DATABASE_URL=postgresql://ops:ops-disposable-only@db:5432/production", "migration", "node", "scripts/seed-operations-verification.mjs"], {
+    env: { ...process.env, OPS_IMAGE: release.opsImageId }, capture: true, expectFailure: true
+  });
+  if (!unsafeSeed.includes("Refusing integration database access")) throw new Error("Operations seed database refusal missing");
   await assetRehearsal("seed");
   // T41: the seeded release passes every integrity check (explained legacy rows excepted).
   await compose(["run", "--rm", "migration", "node", "scripts/audit-db-integrity.mjs"], {

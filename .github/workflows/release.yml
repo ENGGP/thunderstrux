@@ -182,7 +182,7 @@ jobs:
           OPS_REF: ${{ needs.release-pair.outputs.ops-ref }}
         run: |
           docker run -d --name web-smoke -p 127.0.0.1:3000:3000 \
-            -e AUTH_SECRET=release-smoke-only-0123456789abcdef \
+            -e AUTH_SECRET="$(openssl rand -hex 32)" \
             -e DATABASE_URL=postgresql://smoke:smoke@127.0.0.1:1/smoke_test "$WEB_REF"
           for _ in $(seq 1 30); do
             curl -fsS http://127.0.0.1:3000/api/health && break

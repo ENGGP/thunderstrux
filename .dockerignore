@@ -17,11 +17,27 @@ next-env.d.ts
 .env*
 !.env.example
 !.env.db.example
-# Key material and backups never enter an image (as .gitignore).
+# Key material and backups never enter an image (as .gitignore). Docker patterns are anchored
+# at the context root, so each also has a **/ form for any depth (SEC-086).
 *.pem
 *.key
 *.p12
 *.dump
+**/.env*
+!.env.example
+!.env.db.example
+**/*.pem
+**/*.key
+**/*.p12
+**/*.dump
+**/tmp
+# Local tool settings and caches (ignored by git) stay out of test images too.
+.claude/settings.local.json
+.impeccable/*.local.json
+.impeccable/hook.cache.json
+.ds-sync
+ds-bundle
+.design-sync/.cache
 test-results
 playwright-report
 blob-report

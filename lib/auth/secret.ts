@@ -3,7 +3,9 @@ const unsafeAuthSecrets = new Set([
   "dev-secret",
   "replace-with-a-non-empty-secret",
   // docker/Dockerfile's build-only value must never sign sessions at runtime.
-  "build-time-only-auth-secret-change-at-runtime"
+  "build-time-only-auth-secret-change-at-runtime",
+  // The release smoke test's old value, which is public in the workflow history (SEC-086).
+  "release-smoke-only-0123456789abcdef"
 ]);
 const minimumProductionLength = 32;
 

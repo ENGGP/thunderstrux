@@ -260,7 +260,8 @@ async function waitReady(url, attempts = 60) {
 // SEC-053, SEC-072: the environment Compose will really give the app, as a deploy requires it.
 async function assertDeployableEnvironment(ctx, env) {
   const configured = JSON.parse(await compose(ctx, ["config", "--format", "json"], { capture: true, env }));
-  assertDeployedAppEnvironment(configured.services?.app?.environment);
+  // The preview's edge is a Cloudflare Tunnel, with no Caddy in front (SEC-085).
+  assertDeployedAppEnvironment(configured.services?.app?.environment, "cloudflare");
 }
 
 // SEC-072: for restoring the release that was serving before this deploy: never refuses it.

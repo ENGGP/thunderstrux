@@ -1,6 +1,11 @@
 import { createJiti } from "jiti";
 import { createHash } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
+import { validateIntegrationDatabaseUrl } from "./integration-test-guards.mjs";
+
+// It writes synthetic orders, tokens and a staff invite into the first society, so it runs
+// only against a disposable _test database, like the other seeds (SEC-086).
+validateIntegrationDatabaseUrl(process.env.DATABASE_URL);
 
 const prisma = new PrismaClient();
 const jiti = createJiti(import.meta.url);

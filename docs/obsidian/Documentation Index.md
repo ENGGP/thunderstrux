@@ -42,11 +42,12 @@ The Obsidian vault is `docs/`. The living notes are `docs/obsidian/*.md`; dated 
 | Deploy, schedule workers, handle an alert, back up or restore | [[Production Operations]], [[Production Operations Alerts]], [[Production Operations Hosting]], [[Pre-hosting Candidate]] | `scripts/operations.mjs`, `scripts/droplet.mjs`, `lib/ops/` |
 | Update dependencies | [[Dependency Automation]] | `renovate.json`, `package.json` |
 | Debug something that looks broken | [[Troubleshooting]], [[Issue and Defect Register]], [[Resolved Defects]] | — |
+| Pick the next piece of work, or size a product change | [[Product Backlog]], [[Issue and Defect Register]] | — |
 | Check product intent or a target design | [[THUNDERSTRUX_PRD\|Product Requirements]], then the specs below by section | — |
 
 ## Notes by area
 
-- **Start:** [[Project Handover]] · [[Engineering Delivery Workflow]] · [[Issue and Defect Register]] · [[Glossary]]
+- **Start:** [[Project Handover]] · [[Engineering Delivery Workflow]] · [[Issue and Defect Register]] · [[Product Backlog]] · [[Glossary]]
 - **Architecture:** [[Architecture Overview]] · [[Thunderstrux Codebase Map]] · [[Database and Multi Tenancy]]
 - **Domain:** [[Authentication and Dashboard Access]] · [[Platform Admin Portal]] · [[Event Lifecycle]] · [[Ticket Check-in Implementation]] · [[Payment Lifecycle]] · [[Payment Lifecycle Refunds and Disputes]] · [[Payment Disputes]] · [[Stripe Payments and Connect]] · [[Stripe Payments and Connect Payouts]] · [[Memberships and Merchandise]] · [[Society Profiles and Assets]] · [[Analytics and Calendar]] · [[Email Delivery Implementation]] · [[Audit Coverage]]
 - **Interfaces:** [[API Reference]] · [[Route Security Inventory]] · [[Frontend and Backend Flow]] · [[UI Architecture Rules]] · [[UI Page Patterns]] · [[Accessibility Review]]

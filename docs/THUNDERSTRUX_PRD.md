@@ -499,7 +499,7 @@ Thunderstrux should integrate or interoperate with external services where appro
 
 ### What comes next
 
-The order after the 2026-10-30 audit, set by what depends on what. Each item gets its own short plan.
+The order after the 2026-10-30 audit, set by what depends on what. Each item gets its own short plan. [Product Backlog](obsidian/Product%20Backlog.md) ranks these with the rest of the work and gives the smallest version of each.
 
 1. No email step before guest checkout. Stripe already collects the address, so tickets and a signed order link go there; the email check stays for finding a purchase and claiming it.
 2. Buyer pays the fee, as an option, shown in the first price.

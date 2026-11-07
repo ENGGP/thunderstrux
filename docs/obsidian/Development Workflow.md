@@ -70,7 +70,7 @@ Start it with `pnpm docker:dev` (foreground, `--build`) or `pnpm docker:up` (det
 
 **Loopback only.** Don't tunnel the dev app to a public domain: `next dev` answers its development endpoints to anyone who reaches it (SEC-014), and `next.config.ts` `allowedDevOrigins` lists only `127.0.0.1` and `localhost`. The public preview runs the production build ([[Production Operations]]).
 
-**Env in dev.** Compose passes the variables listed in `docker-compose.yml`; `next dev` also reads the bind-mounted `.env` for any variable Compose left unset (so `PLATFORM_SUPPORT_EMAIL` reaches the dev app but not the base web image). Release images contain no `.env` (`.dockerignore`). The `development` target has no entrypoint, so `_FILE` secrets work only in release images.
+**Env in dev.** Compose passes the variables listed in `docker-compose.yml`; `next dev` also reads the bind-mounted `.env` for any variable Compose left unset (so `PLATFORM_SUPPORT_EMAIL` reaches the dev app but not the base web image). Release images contain no `.env` (`.dockerignore`), at any depth, nor key files, dumps or local tool settings (SEC-086). The `development` target has no entrypoint, so `_FILE` secrets work only in release images.
 
 ## Startup
 

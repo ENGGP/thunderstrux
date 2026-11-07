@@ -179,7 +179,7 @@ async function deploy(args) {
   log("check-config");
   const config = JSON.parse((await target.run(compose(["config", "--format", "json"]))).stdout);
   // The hosted contract holds on the real host; local ids aren't registry digests, so the rehearsal skips it.
-  if (!target.local) validateHostedConfig(config);
+  if (!target.local) validateHostedConfig(config, { edge: "caddy" });
   // #108: any service, not only the app: a published database or worker port would skip the edge.
   const published = Object.entries(config.services).filter(([name, service]) => name !== "caddy" && service.ports?.length).map(([name]) => name);
   if (!config.services.caddy || published.length) throw new Error(`Only Caddy may publish ports${published.length ? ` (${published.join(", ")} does)` : ""}`);
@@ -230,7 +230,7 @@ async function rollback(args) {
   // images GitHub built on main from its revision, and the hosted config (edge header included).
   log("check-previous", { to });
   if (!target.local) for (const check of provenanceChecks(previous)) await spawnText("gh", check);
-  if (!target.local) validateHostedConfig(JSON.parse((await target.run(compose(["config", "--format", "json"]))).stdout));
+  if (!target.local) validateHostedConfig(JSON.parse((await target.run(compose(["config", "--format", "json"]))).stdout), { edge: "caddy" });
   log("stop-workers", { from: current, to });
   await target.run(compose(["stop", "-t", "60", ...workerServices]));
   log("start-web");

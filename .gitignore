@@ -83,6 +83,9 @@ ds-bundle/
 # Claude Code: session worktrees and personal settings stay local; shared skills are committed.
 .claude/worktrees/
 .claude/settings.local.json
+# Impeccable's local settings and hook cache (SEC-086).
+.impeccable/*.local.json
+.impeccable/hook.cache.json
 
 # Key material and database dumps never belong in Git (T53)
 *.pem

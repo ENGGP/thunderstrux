@@ -21,17 +21,25 @@ function requireService(config, name) {
 // through from the client, letting it pick its own bucket.
 // shortcut: two known edges; add the header of a new edge here when hosting is chosen (OPS-004).
 export const edgeClientIpHeaders = ["cf-connecting-ip", "x-thunderstrux-client-ip"];
-export function assertDeployedAppEnvironment(environment = {}) {
+// SEC-085: and the header of the edge actually in front. ops:deploy serves the preview through a
+// Cloudflare Tunnel with no Caddy, so a client-sent x-thunderstrux-client-ip passes straight
+// through; the Droplet's Caddy sets that header and Cloudflare isn't in front of it. The hosted
+// stack's edge isn't chosen yet (OPS-004), so it may use either.
+const edgeHeaders = { cloudflare: ["cf-connecting-ip"], caddy: ["x-thunderstrux-client-ip"] };
+export function assertDeployedAppEnvironment(environment = {}, edge) {
   if (environment.RATE_LIMIT_ENABLED !== "true") throw new Error("The deployed app must set RATE_LIMIT_ENABLED=true: sign-in and checkout limits need Redis");
   const header = String(environment.RATE_LIMIT_TRUSTED_PROXY_HEADER ?? "").trim().toLowerCase();
-  if (!edgeClientIpHeaders.includes(header)) {
-    throw new Error(`The deployed app must set RATE_LIMIT_TRUSTED_PROXY_HEADER to a header its edge overwrites: ${edgeClientIpHeaders.join(" or ")}`);
+  const accepted = edgeHeaders[edge] ?? edgeClientIpHeaders;
+  if (!accepted.includes(header)) {
+    throw new Error(`The deployed app must set RATE_LIMIT_TRUSTED_PROXY_HEADER to a header its edge overwrites: ${accepted.join(" or ")}`);
   }
+  // SEC-085: legacy organisation logins act as owners only in development and old data.
+  if (environment.LEGACY_ORGANISATION_ACCESS_MODE === "allow") throw new Error("The deployed app must not set LEGACY_ORGANISATION_ACCESS_MODE=allow");
   // T54: the admin portal runs only on loopback, on demand (pnpm ops:admin), never in the public app.
   if (environment.ADMIN_PORTAL_ENABLED !== undefined) throw new Error("The deployed app must not set ADMIN_PORTAL_ENABLED: the admin portal runs only on loopback");
 }
 
-export function validateHostedConfig(config) {
+export function validateHostedConfig(config, { edge } = {}) {
   if (config.services?.db || config.services?.redis) {
     throw new Error("Hosted Compose must not bundle PostgreSQL or Redis");
   }
@@ -63,7 +71,7 @@ export function validateHostedConfig(config) {
   const app = requireService(config, "app");
   if (app.ports?.length) throw new Error("Hosted app must leave public port publication to the platform ingress");
   if (!app.healthcheck) throw new Error("Hosted app must define a readiness healthcheck");
-  assertDeployedAppEnvironment(app.environment);
+  assertDeployedAppEnvironment(app.environment, edge);
   // T53: staff authority on a hosted app always needs an authenticator and a live staff row.
   if (app.environment?.MFA_ENFORCEMENT_MODE !== "enforce") throw new Error("Hosted app must set MFA_ENFORCEMENT_MODE=enforce");
   if (app.environment?.LEGACY_ORGANISATION_ACCESS_MODE !== "deny") throw new Error("Hosted app must set LEGACY_ORGANISATION_ACCESS_MODE=deny");

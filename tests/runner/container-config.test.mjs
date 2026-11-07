@@ -151,3 +151,16 @@ test("every deployed app rate-limits behind an overwritten client-IP header, wit
   }
   assert.throws(() => assertDeployedAppEnvironment({ ...base, ADMIN_PORTAL_ENABLED: "false" }), /ADMIN_PORTAL_ENABLED/);
 });
+
+test("each deploy path accepts only its own edge's client-IP header, and no deployed app allows legacy access (SEC-085)", () => {
+  const base = { RATE_LIMIT_ENABLED: "true", MFA_ENFORCEMENT_MODE: "off" };
+  const withHeader = (header) => ({ ...base, RATE_LIMIT_TRUSTED_PROXY_HEADER: header });
+  assert.doesNotThrow(() => assertDeployedAppEnvironment(withHeader("cf-connecting-ip"), "cloudflare"));
+  assert.throws(() => assertDeployedAppEnvironment(withHeader("x-thunderstrux-client-ip"), "cloudflare"), /cf-connecting-ip/);
+  assert.doesNotThrow(() => assertDeployedAppEnvironment(withHeader("x-thunderstrux-client-ip"), "caddy"));
+  assert.throws(() => assertDeployedAppEnvironment(withHeader("cf-connecting-ip"), "caddy"), /x-thunderstrux-client-ip/);
+  for (const edge of [undefined, "cloudflare"]) {
+    assert.throws(() => assertDeployedAppEnvironment({ ...withHeader("cf-connecting-ip"), LEGACY_ORGANISATION_ACCESS_MODE: "allow" }, edge), /LEGACY_ORGANISATION_ACCESS_MODE/);
+    assert.doesNotThrow(() => assertDeployedAppEnvironment({ ...withHeader("cf-connecting-ip"), LEGACY_ORGANISATION_ACCESS_MODE: "deny" }, edge));
+  }
+});
